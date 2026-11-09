@@ -93,11 +93,56 @@ The plugin responds with a complete replacement snapshot for that subscription:
 ```
 
 An empty `panels` array removes all panels for that subscription. IDs are scoped to plugin
-and thread; do not reuse panel or row IDs within a snapshot. Version 1 renders text and list
-filters, not HTML or executable UI. The external-process transport is independent of any
-future panel renderer.
+and thread; do not reuse panel or row IDs within a snapshot. Panels without a `kind` remain native lists for backwards compatibility.
+Use `kind: "web"` for the isolated SPA renderer described below.
 
 Frames are limited to 1 MiB, snapshots to 20 panels, and panels to 2,000 rows. Malformed
 frames disconnect the plugin and show an error. Plugins should validate all incoming messages
 and bind locally unless deliberately deployed remotely. The example rejects browser Origins;
 a separately deployed plugin must provide its own transport access controls.
+
+## Embedded web applications
+
+A plugin may also send a web panel alongside native lists:
+
+```json
+{ "kind": "web", "id": "dashboard", "title": "Dashboard", "path": "/app/", "height": 420 }
+```
+
+`path` is a directory ending in `/` on the **same origin as the plugin's WebSocket**.
+The plugin serves its HTML at that directory. T3 replaces the path with a temporary gateway
+capability before sending it to clients. HTML, styles, module scripts, dynamic imports, HTTP
+API calls, and WebSocket connections all travel through that gateway, including on remote
+web, desktop, and mobile clients. The capability is scoped to this subscription and panel;
+removing the panel, losing the plugin connection, or closing the subscription revokes it and
+closes active requests and sockets. Do not persist or share gateway URLs.
+
+Build the SPA with relative asset URLs and a relative base, for example `./main.js`,
+`import('./chunk.js')`, and `fetch('./api/context')`. Use a hash router, or keep all paths within
+the panel's directory. Absolute `/api` and `/assets` paths address T3, not the plugin. For a
+WebSocket, resolve a relative path against `location.href` and change `http:` to `ws:` or
+`https:` to `wss:`. External origins and redirects are not supported.
+
+Each upstream HTTP request and socket handshake receives `x-t3-thread-id` and
+`x-t3-workspace` (the workspace is URI-component encoded). Use these server-supplied values to
+scope data; do not trust a client-provided thread identifier in an API payload. T3's cookies,
+authorization, DPoP and other client headers are not forwarded. Plugin response cookies are
+also discarded. Store state in the plugin backend, keyed by thread.
+
+Web panels run in an opaque-origin sandbox with scripts and forms enabled. They cannot read
+T3's DOM, cookies, local storage, or credentials. Local storage, service workers, popups,
+embedding other frames, arbitrary external resources and JavaScript `eval` are unavailable.
+The gateway's response CSP applies even when a panel URL is navigated directly. Module/API
+responses allow the sandbox's `null` origin without credentialed CORS. Native mobile uses a
+sandboxed iframe inside an isolated WebView with no native message bridge.
+
+Requests are limited to 1 MiB, HTTP responses to 8 MiB, WebSocket frames to 1 MiB and concurrent
+operations to 32 per capability. HTTP requests time out after 30 seconds. Web panels require `orchestration:operate`; read-only viewers see a permission notice and
+receive no web capability. Native lists remain available with `orchestration:read`. Configure
+only trusted plugins. Use a DNS name or IPv4 address for the T3 browser connection: Chromium
+does not accept IPv6 literal hosts in the gateway’s path-restricted CSP sources.
+
+The runnable example `apps/server/scripts/plugin-spa-demo.mjs` (server package script
+`plugin:spa-demo`) serves a thread counter. Configure it as a sidecar like the Bullseye example.
+It exercises a stylesheet, module entrypoint, dynamic import, a JSON API, a POST mutation and
+live WebSocket updates. Its “Isolated” indicator checks parent DOM and local-storage denial.

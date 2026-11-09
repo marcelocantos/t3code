@@ -1,3 +1,4 @@
+import { PluginWebPanel } from "../plugins/PluginWebPanel";
 import { useState } from "react";
 import { createPanelPluginAtoms } from "@t3tools/client-runtime/state/panelPlugins";
 import type { EnvironmentId, ThreadId, SubscribePluginPanelsInput } from "@t3tools/contracts";
@@ -37,53 +38,64 @@ function Panels({ environmentId, threadId }: { environmentId: EnvironmentId; thr
             </p>
           </ThreadDetailsSection>
         ) : (
-          plugin.panels.map((panel) => (
-            <ThreadDetailsSection
-              key={`${plugin.pluginId}:${panel.id}`}
-              headingId={`plugin-${plugin.pluginId}-${panel.id}`}
-              title={panel.title}
-              actions={
-                panel.filters.length > 0 ? (
-                  <select
-                    aria-label={`${panel.title} filter`}
-                    className="max-w-32 rounded border border-border bg-background text-xs"
-                    value={panel.filter}
-                    onChange={(event) => {
-                      const filter = event.target.value;
-                      setFilters((current) => [
-                        ...current.filter(
-                          (item) => item.pluginId !== plugin.pluginId || item.panelId !== panel.id,
-                        ),
-                        { pluginId: plugin.pluginId, panelId: panel.id, filter },
-                      ]);
-                    }}
-                  >
-                    {panel.filters.map((filter) => (
-                      <option key={filter.id} value={filter.id}>
-                        {filter.label}
-                      </option>
-                    ))}
-                  </select>
-                ) : undefined
-              }
-            >
-              <ul className="space-y-2 px-2.5 text-xs">
-                {panel.rows.map((row) => (
-                  <li key={row.id} className="break-words">
-                    <div>{row.label}</div>
-                    {row.detail ? (
-                      <div className="mt-0.5 whitespace-pre-wrap text-muted-foreground">
-                        {row.detail}
-                      </div>
-                    ) : null}
-                  </li>
-                ))}
-              </ul>
-              {panel.rows.length === 0 ? (
-                <p className="px-2.5 text-xs text-muted-foreground">No items.</p>
-              ) : null}
-            </ThreadDetailsSection>
-          ))
+          plugin.panels.map((panel) =>
+            panel.kind === "web" ? (
+              <ThreadDetailsSection
+                key={`${plugin.pluginId}:${panel.id}`}
+                headingId={`plugin-${plugin.pluginId}-${panel.id}`}
+                title={panel.title}
+              >
+                <PluginWebPanel environmentId={environmentId} panel={panel} />
+              </ThreadDetailsSection>
+            ) : (
+              <ThreadDetailsSection
+                key={`${plugin.pluginId}:${panel.id}`}
+                headingId={`plugin-${plugin.pluginId}-${panel.id}`}
+                title={panel.title}
+                actions={
+                  panel.filters.length > 0 ? (
+                    <select
+                      aria-label={`${panel.title} filter`}
+                      className="max-w-32 rounded border border-border bg-background text-xs"
+                      value={panel.filter}
+                      onChange={(event) => {
+                        const filter = event.target.value;
+                        setFilters((current) => [
+                          ...current.filter(
+                            (item) =>
+                              item.pluginId !== plugin.pluginId || item.panelId !== panel.id,
+                          ),
+                          { pluginId: plugin.pluginId, panelId: panel.id, filter },
+                        ]);
+                      }}
+                    >
+                      {panel.filters.map((filter) => (
+                        <option key={filter.id} value={filter.id}>
+                          {filter.label}
+                        </option>
+                      ))}
+                    </select>
+                  ) : undefined
+                }
+              >
+                <ul className="space-y-2 px-2.5 text-xs">
+                  {panel.rows.map((row) => (
+                    <li key={row.id} className="break-words">
+                      <div>{row.label}</div>
+                      {row.detail ? (
+                        <div className="mt-0.5 whitespace-pre-wrap text-muted-foreground">
+                          {row.detail}
+                        </div>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+                {panel.rows.length === 0 ? (
+                  <p className="px-2.5 text-xs text-muted-foreground">No items.</p>
+                ) : null}
+              </ThreadDetailsSection>
+            ),
+          )
         ),
       )}
     </>

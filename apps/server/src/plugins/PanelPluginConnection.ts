@@ -22,7 +22,7 @@ const STOP_TIMEOUT_MS = 2_000;
 type Subscription = {
   input: SubscribePluginPanelsInput;
   cwd: string;
-  emit: (snapshot: PluginPanelSnapshot) => void;
+  emit: (snapshot: PluginPanelSnapshot, endpoint?: string) => void;
 };
 
 export function pluginSocketUrl(baseUrl: string): string {
@@ -186,14 +186,18 @@ export class PanelPluginConnection {
           const ids = message.panels.map((panel) => panel.id);
           if (new Set(ids).size !== ids.length) throw new Error("Duplicate panels");
           for (const panel of message.panels) {
+            if (panel.kind === "web") continue;
             if (new Set(panel.rows.map((row) => row.id)).size !== panel.rows.length)
               throw new Error("Duplicate rows");
           }
-          this.subscriptions.get(message.subscriptionId)?.emit({
-            pluginId: this.config.id,
-            panels: message.panels,
-            status: "connected",
-          });
+          this.subscriptions.get(message.subscriptionId)?.emit(
+            {
+              pluginId: this.config.id,
+              panels: message.panels,
+              status: "connected",
+            },
+            socket.url,
+          );
         } catch {
           this.publish("error");
           socket.close(1008, "Invalid panel message");

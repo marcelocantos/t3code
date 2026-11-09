@@ -15,7 +15,8 @@ export const PanelPluginConfig = Schema.Struct({
   ]),
 });
 export type PanelPluginConfig = typeof PanelPluginConfig.Type;
-export const PluginPanel = Schema.Struct({
+const NativePluginPanel = Schema.Struct({
+  kind: Schema.optional(Schema.Literal("list")),
   id: Id,
   title: Label,
   rows: Schema.Array(Schema.Struct({ id: Id, label: Label, detail: Schema.optional(Label) })).check(
@@ -24,6 +25,16 @@ export const PluginPanel = Schema.Struct({
   filters: Schema.Array(Schema.Struct({ id: Id, label: Label })).check(Schema.isMaxLength(20)),
   filter: Id,
 });
+export const PluginPanel = Schema.Union([
+  NativePluginPanel,
+  Schema.Struct({
+    kind: Schema.Literal("web"),
+    id: Id,
+    title: Label,
+    path: Schema.String.check(Schema.isNonEmpty(), Schema.isMaxLength(2048)),
+    height: Schema.optional(Schema.Int.check(Schema.isBetween({ minimum: 200, maximum: 1200 }))),
+  }),
+]);
 export type PluginPanel = typeof PluginPanel.Type;
 export const PluginPanelSnapshot = Schema.Struct({
   pluginId: Id,

@@ -15,6 +15,7 @@ import {
 import { ServerConfig } from "../config.ts";
 import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
 import * as ProjectService from "../project/ProjectService.ts";
+import * as PluginGateway from "./PluginGateway.ts";
 import { PanelPluginConnection } from "./PanelPluginConnection.ts";
 
 const encodeConfig = Schema.encodeEffect(Schema.fromJsonString(PanelPluginConfig));
@@ -27,11 +28,13 @@ export class PanelPlugins extends Context.Service<
   {
     readonly subscribe: (
       input: SubscribePluginPanelsInput,
+      options: { readonly allowWeb: boolean },
     ) => Stream.Stream<ReadonlyArray<PluginPanelSnapshot>>;
   }
 >()("t3/plugins/PanelPlugins") {}
 
 const make = Effect.gen(function* () {
+  const gateway = yield* PluginGateway.PluginGateway;
   const fs = yield* FileSystem.FileSystem;
   const pathService = yield* Path.Path;
   const config = yield* ServerConfig;
@@ -45,7 +48,7 @@ const make = Effect.gen(function* () {
     }),
   );
 
-  const subscribe: PanelPlugins["Service"]["subscribe"] = (input) =>
+  const subscribe: PanelPlugins["Service"]["subscribe"] = (input, options) =>
     Stream.callback(
       (queue) =>
         Effect.gen(function* () {
@@ -91,15 +94,17 @@ const make = Effect.gen(function* () {
                   connections.set(key, entry);
                 }
                 entry.refs++;
+                const webSession = gateway.session(input.threadId, cwd, options.allowWeb);
                 const unsubscribe = entry.connection.subscribe({
                   input,
                   cwd,
-                  emit: (snapshot) => {
-                    snapshots.set(plugin.id, snapshot);
+                  emit: (snapshot, endpoint) => {
+                    snapshots.set(plugin.id, webSession.rewrite(snapshot, endpoint));
                     Queue.offerUnsafe(queue, [...snapshots.values()]);
                   },
                 });
                 return () => {
+                  webSession.close();
                   unsubscribe();
                   entry.refs--;
                 };
