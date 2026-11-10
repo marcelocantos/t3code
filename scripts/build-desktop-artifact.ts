@@ -2762,7 +2762,7 @@ export function resolvePackageManagerUserAgent(packageManager: string): string {
 }
 
 export function resolveDesktopProductName(version: string): string {
-  if (PLUGIN_BUILD) return "T3 Code Plugins";
+  if (PLUGIN_BUILD) return "T3 Code+";
   return resolveDesktopUpdateChannel(version) === "nightly"
     ? "T3 Code (Nightly)"
     : (desktopPackageJson.productName ?? "T3 Code");

@@ -49,7 +49,7 @@ describe("T3CODE_PLUGIN_BUILD packaging", () => {
     Effect.gen(function* () {
       const { config, productName } = yield* loadBuild("1");
       assert.equal(config.appId, "com.marcelocantos.t3code.plugins");
-      assert.equal(productName, "T3 Code Plugins");
+      assert.equal(productName, "T3 Code+");
       assert.isNull(config.publish);
     }),
   );

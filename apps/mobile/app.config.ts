@@ -20,7 +20,7 @@ if (pluginBuildMode === "upgrade") {
 const isPluginBuild = pluginBuildMode === "parallel";
 // Installed beside the official app, signed by the fork maintainer's Personal Team (docs/operations/panel-plugins.md).
 const PLUGIN_BUILD_IDENTITY = {
-  appName: "T3 Code Plugins",
+  appName: "T3 Code+",
   scheme: "t3code-plugins",
   appId: "com.marcelocantos.t3code.plugins",
   appleTeamId: "WG8QTTL954",

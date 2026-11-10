@@ -2,7 +2,7 @@
 
 ## Install the macOS plugin build
 
-Download the Apple Silicon DMG from [this fork's releases](https://github.com/marcelocantos/t3code/releases), open it, and drag **T3 Code Plugins.app** to Applications. This unsigned build may require approval in **System Settings → Privacy & Security → Open Anyway** after the first launch attempt.
+Download the Apple Silicon DMG from [this fork's releases](https://github.com/marcelocantos/t3code/releases), open it, and drag **T3 Code+.app** to Applications. (Releases before the rename installed **T3 Code Plugins.app**; delete it after installing, as both are the same app and share their data.) This unsigned build may require approval in **System Settings → Privacy & Security → Open Anyway** after the first launch attempt.
 
 The fork runs alongside the official app. Its data lives in `~/.t3-plugins/userdata` and its browser profile in `~/Library/Application Support/t3code-plugins`. It starts with a separate workspace list; add your existing project directories. Automatic updates are disabled for this build; install subsequent releases from the same release page. Do not set `T3CODE_HOME` to the official app's data directory.
 
@@ -14,11 +14,11 @@ A plugin that advertises itself (see [Discovery](#discovery)) appears in **Setti
 
 `T3CODE_PLUGIN_BUILD` selects the packaging variant. Set the same value for both `vp run build:desktop` and `vp run dist:desktop:artifact --platform mac --target dmg --arch arm64 --skip-build`; the build rejects any other value.
 
-| Value     | Variant              | App identity                                            | State                                     | Updates          |
-| --------- | -------------------- | ------------------------------------------------------- | ----------------------------------------- | ---------------- |
-| unset     | Upstream             | `com.t3tools.t3code`, **T3 Code (Beta)**                | `~/.t3`, `t3code-v2` profile              | Upstream feed    |
-| `1`       | Parallel (above)     | `com.marcelocantos.t3code.plugins`, **T3 Code Plugins** | `~/.t3-plugins`, `t3code-plugins` profile | No feed          |
-| `upgrade` | In-place replacement | `com.t3tools.t3code`, **T3 Code (Beta)**                | `~/.t3`, `t3code-v2` profile              | Disabled in code |
+| Value     | Variant              | App identity                                     | State                                     | Updates          |
+| --------- | -------------------- | ------------------------------------------------ | ----------------------------------------- | ---------------- |
+| unset     | Upstream             | `com.t3tools.t3code`, **T3 Code (Beta)**         | `~/.t3`, `t3code-v2` profile              | Upstream feed    |
+| `1`       | Parallel (above)     | `com.marcelocantos.t3code.plugins`, **T3 Code+** | `~/.t3-plugins`, `t3code-plugins` profile | No feed          |
+| `upgrade` | In-place replacement | `com.t3tools.t3code`, **T3 Code (Beta)**         | `~/.t3`, `t3code-v2` profile              | Disabled in code |
 
 The `upgrade` build is for replacing an installed official app with this fork while keeping its settings, projects, threads, browser profile and Keychain entry name. It shares the official bundle identifier, package name, product name and state paths, so installing it over `T3 Code (Beta).app` continues the same installation. Plugin configuration lives in its own files and this mode adds no schema of its own. The merged upstream code may still migrate the shared database, which an older official build may not open, so keep the backup until the new build has proven itself. A build signed with a different identity than the installed app may prompt for Keychain access.
 
@@ -28,7 +28,7 @@ Back up `~/.t3` and `~/Library/Application Support/t3code-v2` before the first l
 
 ### Mobile
 
-`T3CODE_PLUGIN_BUILD=1` gives the mobile app the matching identity: `com.marcelocantos.t3code.plugins`, **T3 Code Plugins**, scheme `t3code-plugins`, signed by the maintainer's Personal Team. It installs beside the store app and never checks the upstream OTA feed. A Personal Team cannot sign extension targets, App Groups, push or associated domains, so the build has no widgets, share extension or push notifications, and `app.t3.codes` links keep opening the official app. `upgrade` is rejected on mobile because the official identifiers only sign inside T3's team.
+`T3CODE_PLUGIN_BUILD=1` gives the mobile app the matching identity: `com.marcelocantos.t3code.plugins`, **T3 Code+**, scheme `t3code-plugins`, signed by the maintainer's Personal Team. It installs beside the store app and never checks the upstream OTA feed. A Personal Team cannot sign extension targets, App Groups, push or associated domains, so the build has no widgets, share extension or push notifications, and `app.t3.codes` links keep opening the official app. `upgrade` is rejected on mobile because the official identifiers only sign inside T3's team.
 
 Both builds bundle the JavaScript, so no Metro server is needed. Run them from `apps/mobile`.
 

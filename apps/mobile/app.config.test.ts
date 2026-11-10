@@ -53,7 +53,7 @@ it.each([
 it("gives the plugin build its own identity beside the official app", async () => {
   const config = await loadConfig("production", "1");
   const identifier = "com.marcelocantos.t3code.plugins";
-  expect(config.name).toBe("T3 Code Plugins");
+  expect(config.name).toBe("T3 Code+");
   expect(config.scheme).toBe("t3code-plugins");
   expect(config.ios?.bundleIdentifier).toBe(identifier);
   expect(config.android?.package).toBe(identifier);
