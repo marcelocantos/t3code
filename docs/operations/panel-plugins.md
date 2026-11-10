@@ -20,8 +20,6 @@ A plugin that advertises itself (see [Discovery](#discovery)) appears in **Setti
 | `1`       | Parallel (above)     | `com.marcelocantos.t3code.plugins`, **T3 Code Plugins** | `~/.t3-plugins`, `t3code-plugins` profile | No feed          |
 | `upgrade` | In-place replacement | `com.t3tools.t3code`, **T3 Code (Beta)**                | `~/.t3`, `t3code-v2` profile              | Disabled in code |
 
-Both fork modes wear the blue blueprint icon from `assets/dev/` on the desktop app, its bundled web client and the mobile app, so the fork is never mistaken for the official app, even when it replaces that app in place.
-
 The `upgrade` build is for replacing an installed official app with this fork while keeping its settings, projects, threads, browser profile and Keychain entry name. It shares the official bundle identifier, package name, product name and state paths, so installing it over `T3 Code (Beta).app` continues the same installation. Plugin configuration lives in its own files and this mode adds no schema of its own. The merged upstream code may still migrate the shared database, which an older official build may not open, so keep the backup until the new build has proven itself. A build signed with a different identity than the installed app may prompt for Keychain access.
 
 The updater is switched off by the build itself, not only by the absence of a publish feed: the packaged app carries no `app-update.yml`, and the desktop refuses to configure or check any feed, including a managed-policy or mock feed. Otherwise an official release could replace the fork without notice. About shows "Plugin panels build" to tell the two apart.

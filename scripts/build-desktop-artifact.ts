@@ -2726,21 +2726,11 @@ export function isDesktopPreviewVersion(version: string): boolean {
   return /-pr\./.test(version) || /-preview\.\d{8}\.\d+$/.test(version);
 }
 
-// Both fork modes wear the blueprint icon, so the fork is never mistaken for the official app,
-// even when it replaces that app in place.
 export function resolveDesktopWebAssetBrand(version: string): WebAssetBrand {
-  if (PLUGIN_BUILD_MODE !== "off") return "development";
   return resolveWebAssetBrandForChannel(resolveDesktopUpdateChannel(version));
 }
 
 export function resolveDesktopBuildIconAssets(version: string): DesktopBuildIconAssets {
-  if (PLUGIN_BUILD_MODE !== "off") {
-    return {
-      macIconPng: BRAND_ASSET_PATHS.developmentDesktopIconPng,
-      linuxIconPng: BRAND_ASSET_PATHS.developmentUniversalIconPng,
-      windowsIconIco: BRAND_ASSET_PATHS.developmentWindowsIconIco,
-    };
-  }
   if (resolveDesktopUpdateChannel(version) === "nightly") {
     return {
       macIconPng: BRAND_ASSET_PATHS.nightlyMacIconPng,

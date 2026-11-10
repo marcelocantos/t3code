@@ -26,12 +26,7 @@ const loadBuild = (mode: string) =>
               ),
             ),
           );
-        return {
-          config,
-          productName: script.resolveDesktopProductName("0.2.0"),
-          icons: script.resolveDesktopBuildIconAssets("0.2.0"),
-          webBrand: script.resolveDesktopWebAssetBrand("0.2.0"),
-        };
+        return { config, productName: script.resolveDesktopProductName("0.2.0") };
       }),
     () =>
       Effect.sync(() => {
@@ -43,21 +38,16 @@ const loadBuild = (mode: string) =>
 describe("T3CODE_PLUGIN_BUILD packaging", () => {
   it.effect("keeps the official identity and publish feed when unset", () =>
     Effect.gen(function* () {
-      const { config, productName, icons, webBrand } = yield* loadBuild("");
+      const { config, productName } = yield* loadBuild("");
       assert.equal(config.appId, "com.t3tools.t3code");
       assert.equal(productName, "T3 Code (Beta)");
       assert.isNotNull(config.publish);
-      assert.equal(icons.macIconPng, "assets/prod/black-macos-1024.png");
-      assert.equal(webBrand, "production");
     }),
   );
 
   it.effect("installs beside the official app in parallel mode", () =>
     Effect.gen(function* () {
-      const { config, productName, icons, webBrand } = yield* loadBuild("1");
-      assert.equal(icons.macIconPng, "assets/dev/blueprint-macos-1024.png");
-      assert.equal(icons.windowsIconIco, "assets/dev/blueprint-windows.ico");
-      assert.equal(webBrand, "development");
+      const { config, productName } = yield* loadBuild("1");
       assert.equal(config.appId, "com.marcelocantos.t3code.plugins");
       assert.equal(productName, "T3 Code Plugins");
       assert.isNull(config.publish);
@@ -66,10 +56,7 @@ describe("T3CODE_PLUGIN_BUILD packaging", () => {
 
   it.effect("replaces the official app in upgrade mode without a publish feed", () =>
     Effect.gen(function* () {
-      const { config, productName, icons, webBrand } = yield* loadBuild("upgrade");
-      assert.equal(icons.macIconPng, "assets/dev/blueprint-macos-1024.png");
-      assert.equal(icons.windowsIconIco, "assets/dev/blueprint-windows.ico");
-      assert.equal(webBrand, "development");
+      const { config, productName } = yield* loadBuild("upgrade");
       assert.equal(config.appId, "com.t3tools.t3code");
       assert.equal(productName, "T3 Code (Beta)");
       assert.isNull(config.publish);
