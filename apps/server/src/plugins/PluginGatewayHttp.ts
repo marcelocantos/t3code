@@ -183,7 +183,7 @@ const handler = Effect.gen(function* () {
     "access-control-allow-origin": "null",
     "access-control-allow-methods": [...METHODS].join(", "),
     "access-control-allow-headers": "content-type, accept",
-    "content-security-policy": `sandbox allow-scripts allow-forms; default-src 'none'; script-src 'unsafe-inline' ${root}; style-src 'unsafe-inline' ${root}; img-src data: blob: ${root}; font-src ${root}; connect-src ${root} ${wsRoot}; base-uri ${root}; form-action ${root}; frame-src 'none'; worker-src 'none'; object-src 'none'`,
+    "content-security-policy": `sandbox allow-scripts allow-forms; default-src 'none'; script-src 'unsafe-inline' 'wasm-unsafe-eval' ${root}; style-src 'unsafe-inline' ${root}; img-src data: blob: ${root}; font-src ${root}; connect-src ${root} ${wsRoot}; base-uri ${root}; form-action ${root}; frame-src 'none'; worker-src 'none'; object-src 'none'`,
   };
   if (request.method === "OPTIONS") return HttpServerResponse.empty({ status: 204, headers });
   if (grant.active >= ACTIVE_LIMIT) return HttpServerResponse.empty({ status: 429, headers });

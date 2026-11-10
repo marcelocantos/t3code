@@ -373,6 +373,7 @@ also discarded. Store state in the plugin backend, keyed by thread.
 Web panels run in an opaque-origin sandbox with scripts and forms enabled. They cannot read
 T3's DOM, cookies, local storage, or credentials. Local storage, service workers, popups,
 embedding other frames, arbitrary external resources and JavaScript `eval` are unavailable.
+WebAssembly compiles (`'wasm-unsafe-eval'`), so a panel can ship a wasm build of its engine.
 The gateway's response CSP applies even when a panel URL is navigated directly. Module/API
 responses allow the sandbox's `null` origin without credentialed CORS. Native mobile uses a
 sandboxed iframe inside an isolated WebView with no native message bridge.
