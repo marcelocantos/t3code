@@ -37,6 +37,8 @@ import { confirmAsync, usePluginRequests } from "./usePluginRequests";
 
 const DEFAULT_WEB_SIZE = { width: 360, height: 320 };
 const PAGE_SIZE = { width: 800, height: 720 };
+/** The sheet header, safe areas and padding a maximized page leaves room for. */
+const MAXIMIZED_CHROME_HEIGHT = 160;
 
 interface PluginBridgeHostValue {
   readonly environmentId: EnvironmentId;
@@ -208,7 +210,7 @@ function PluginBridgeSheet() {
     }
   };
   return (
-    <Sheet title={top.title} onClose={dismissAll}>
+    <Sheet title={top.title} onClose={dismissAll} expanded={top.maximized === true}>
       <ScrollView
         contentInsetAdjustmentBehavior="automatic"
         keyboardShouldPersistTaps="handled"
@@ -250,7 +252,7 @@ function SurfaceBody({ node }: { node: PluginBridgeSurfaceNode }) {
     <PluginBridgeWebView
       key={content.url}
       src={content.url}
-      height={size.height}
+      height={node.maximized === true ? viewport.height - MAXIMIZED_CHROME_HEIGHT : size.height}
       nodeId={node.id}
       ownSurfaceId={node.bridgeSurfaceId}
       gatewayUrl={node.opener.gatewayUrl}

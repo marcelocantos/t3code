@@ -14,7 +14,7 @@ export function Sheet(props: SheetProps) {
   return (
     <FormSheet
       isOpen={isOpen}
-      detents={[0.5, 0.9]}
+      detents={props.expanded ? [1] : [0.5, 0.9]}
       prefersGrabberVisible={false}
       preventNativeDismiss={props.dismissDisabled}
       nativeContainerStyle={containerStyle}

@@ -7,6 +7,8 @@ import * as Schema from "effect/Schema";
  * `window` messages, which any frame could forge.
  */
 export const PLUGIN_BRIDGE_VERSION = 1;
+/** Optional host abilities, listed in `t3.bridge.init` so a page can offer them only when present. */
+export const PLUGIN_BRIDGE_FEATURES = ["surface.maximize"] as const;
 /** Serialized size limit for one frame message, results included. */
 export const PLUGIN_BRIDGE_MAX_MESSAGE_BYTES = 256 * 1024;
 const PLUGIN_SURFACE_LIMITS = {
@@ -65,12 +67,16 @@ export const PluginBridgeInbound = Schema.Union([
     placement: Schema.optional(PluginBridgePlacement),
     size: Schema.optional(Schema.Struct({ width: Extent, height: Extent })),
     content: PluginBridgeContent,
+    /** Web content only: as large as the host allows, ignoring `size`. */
+    maximized: Schema.optional(Schema.Boolean),
   }),
   Schema.Struct({
     type: Schema.Literal("surface.update"),
     surfaceId: Id,
     anchor: Schema.optional(PluginBridgeRect),
     content: Schema.optional(PluginBridgeContent),
+    /** Also accepted for the frame's own surface, so a web surface can maximize itself. */
+    maximized: Schema.optional(Schema.Boolean),
   }),
   Schema.Struct({
     type: Schema.Literal("surface.close"),
@@ -93,6 +99,7 @@ export type PluginBridgeOutbound =
       readonly version: typeof PLUGIN_BRIDGE_VERSION;
       /** Set for a web surface: the id its opener gave it, which `surface.close` takes. */
       readonly surfaceId?: string;
+      readonly features: typeof PLUGIN_BRIDGE_FEATURES;
     }
   | { readonly type: "surface.opened"; readonly requestId: string; readonly surfaceId: string }
   | {

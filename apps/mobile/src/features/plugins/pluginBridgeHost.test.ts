@@ -67,6 +67,42 @@ describe("handlePluginBridgeRelay", () => {
     ]);
   });
 
+  it("lets a web surface maximize itself but never replace itself", () => {
+    const { tree, frame, receive } = setup();
+    const panel = frame("panel");
+    receive(panel, {
+      type: "surface.open",
+      requestId: "1",
+      surfaceId: "editor",
+      presentation: "modal",
+      maximized: true,
+      content: { kind: "web", path: "editor.html" },
+    });
+    const node = tree.nodes[0]!;
+    expect(node.maximized).toBe(true);
+    const editor = frame("editor", node.id, "editor");
+    receive(editor, {
+      type: "surface.update",
+      surfaceId: "editor",
+      maximized: false,
+      content: { kind: "web", path: "other.html" },
+    });
+    expect(tree.nodes[0]).toMatchObject({
+      maximized: false,
+      content: { kind: "web", url: `${GATEWAY}editor.html` },
+    });
+    // Structured surfaces have no maximized state.
+    receive(panel, {
+      type: "surface.open",
+      requestId: "2",
+      surfaceId: "card",
+      presentation: "dialog",
+      maximized: true,
+      content: structured,
+    });
+    expect(tree.nodes.at(-1)?.maximized).toBe(false);
+  });
+
   it("rejects paths outside the panel, unknown parents and reused ids", () => {
     const { tree, sent, frame, receive } = setup();
     const panel = frame("panel");

@@ -2,6 +2,7 @@ import {
   parsePluginBridgeMessage,
   resolvePluginWebPath,
   PLUGIN_BRIDGE_MAX_MESSAGE_BYTES,
+  PLUGIN_BRIDGE_FEATURES,
   PLUGIN_BRIDGE_VERSION,
   type PluginBridgeContent,
   type PluginBridgeOutbound,
@@ -38,6 +39,8 @@ export interface PluginBridgeSurfaceNode extends PluginSurfaceTreeNode {
   readonly presentation: PluginBridgePresentation;
   readonly title: string;
   readonly size: { readonly width: number; readonly height: number } | undefined;
+  /** Web content only: a full-height sheet, ignoring `size`. */
+  readonly maximized?: boolean;
   readonly content: PluginBridgeSurfaceContent;
   /** The frame that opened this surface; its actions and close go back there. */
   readonly opener: PluginBridgeFrame;
@@ -178,6 +181,7 @@ export function handlePluginBridgeRelay(
         presentation: message.presentation,
         title: content.kind === "structured" ? content.surface.title : frame.panelTitle,
         size: message.size,
+        maximized: message.maximized === true && content.kind === "web",
         content,
         opener: frame,
         bridgeSurfaceId: surfaceId,
@@ -198,9 +202,17 @@ export function handlePluginBridgeRelay(
       return;
     }
     case "surface.update": {
-      const id = frame.surfaces.get(message.surfaceId);
+      const opened = frame.surfaces.get(message.surfaceId);
+      // A frame may change only its own surface's size, never replace itself.
+      const own =
+        opened === undefined && frame.nodeId !== null && frame.ownSurfaceId === message.surfaceId
+          ? frame.nodeId
+          : undefined;
+      const id = opened ?? own;
       const content =
-        message.content === undefined ? undefined : contentFor(frame, message.content);
+        message.content === undefined || own !== undefined
+          ? undefined
+          : contentFor(frame, message.content);
       if (id === undefined || content === null) {
         frame.send({
           type: "error",
@@ -208,6 +220,9 @@ export function handlePluginBridgeRelay(
             id === undefined ? "That surface is not open." : "That path is outside this plugin.",
         });
         return;
+      }
+      if (message.maximized !== undefined && tree.get(id)?.content.kind === "web") {
+        tree.update(id, { maximized: message.maximized });
       }
       // Sheets have no anchor, so only content changes apply.
       if (content !== undefined) {
@@ -263,6 +278,7 @@ export function pluginBridgeHostHtml(src: string, ownSurfaceId: string | undefin
   const init = {
     type: "t3.bridge.init",
     version: PLUGIN_BRIDGE_VERSION,
+    features: PLUGIN_BRIDGE_FEATURES,
     ...(ownSurfaceId === undefined ? {} : { surfaceId: ownSurfaceId }),
   } satisfies PluginBridgeOutbound;
   // `<` is escaped so plugin-chosen ids cannot close the script element.

@@ -127,6 +127,11 @@ it("opens a composer page in a modal that prompts the thread and closes itself",
   };
   window.addEventListener("message", listener);
   using _listener = { [Symbol.dispose]: () => window.removeEventListener("message", listener) };
+  const viewport = { width: window.innerWidth, height: window.innerHeight };
+  await page.viewport(1200, 800);
+  await using _viewport = {
+    [Symbol.asyncDispose]: () => page.viewport(viewport.width, viewport.height),
+  };
   function Opener() {
     const surfaces = usePluginSurfaceHost();
     return (
@@ -156,11 +161,16 @@ it("opens a composer page in a modal that prompts the thread and closes itself",
   await screen.getByRole("button", { name: "Sketch" }).click();
   const modal = page.getByRole("dialog", { name: "Sketch" });
   await expect.element(modal).toBeVisible();
-  await vi.waitFor(() => expect(reports).toContain("opened #t3-composer"));
-  await page
-    .frameLocator(page.getByTitle("Sketch", { exact: true }))
-    .getByRole("button", { name: "Send sketch" })
-    .click();
+  await vi.waitFor(() => expect(reports).toContain("opened #t3-composer surface.maximize"));
+  const sketch = page.frameLocator(page.getByTitle("Sketch", { exact: true }));
+  // The page maximizes its own surface: the modal fills the viewport less its margin.
+  const before = modal.element().getBoundingClientRect().width;
+  await sketch.getByRole("button", { name: "Maximize" }).click();
+  await vi.waitFor(() =>
+    expect(modal.element().getBoundingClientRect().width).toBeGreaterThan(before),
+  );
+  await expect.element(modal.getByRole("button", { name: "Restore size" })).toBeVisible();
+  await sketch.getByRole("button", { name: "Send sketch" }).click();
   await expect.element(modal).not.toBeInTheDocument();
   expect(host.submit).toHaveBeenCalledWith("frame:sketch", "See my sketch.");
 });

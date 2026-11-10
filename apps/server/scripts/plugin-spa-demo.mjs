@@ -3,7 +3,7 @@ import { WebSocketServer, WebSocket } from "ws";
 
 const counts = new Map();
 const viewers = new Map();
-const html = `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="./style.css"></head><body><h1>Thread counter</h1><p id="thread">Loading…</p><p id="module"></p><p id="isolation"></p><output id="count">0</output><button id="increment">Increment</button><section id="bridge"><p><span id="details" tabindex="0">Counter details</span></p><button id="pick">Pick a colour…</button> <output id="picked"></output><p><button id="ask">Ask the agent</button> <output id="agent"></output></p><p id="last-action"></p></section><script type="module" src="./main.js"></script></body></html>`;
+const html = `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="./style.css"></head><body><h1>Thread counter</h1><p id="thread">Loading…</p><p id="module"></p><p id="isolation"></p><output id="count">0</output><button id="increment">Increment</button><section id="bridge"><p><span id="details" tabindex="0">Counter details</span></p><button id="pick">Pick a colour…</button> <output id="picked"></output><p><button id="ask">Ask the agent</button> <output id="agent"></output></p><p><button id="maximize" hidden>Maximize</button></p><p id="last-action"></p></section><script type="module" src="./main.js"></script></body></html>`;
 // A web surface the panel opens through the host bridge; it closes itself with a result.
 const dialog = `<!doctype html><html><head><link rel="stylesheet" href="./style.css"></head><body><p>Pick a colour</p><button data-colour="red">Red</button> <button data-colour="blue">Blue</button><script type="module" src="./dialog.js"></script></body></html>`;
 const dialogMain = `
@@ -26,6 +26,15 @@ window.addEventListener('message', event => {
   if (event.source !== parent || event.data?.type !== 't3.bridge.init' || !event.ports[0]) return;
   port = event.ports[0];
   const ownSurfaceId = event.data.surfaceId;
+  // A surface (not the panel) on a host that can maximize it offers a toggle.
+  const toggle = document.querySelector('#maximize');
+  toggle.hidden = !ownSurfaceId || !event.data.features?.includes('surface.maximize');
+  let maximized = false;
+  toggle.onclick = () => {
+    maximized = !maximized;
+    toggle.textContent = maximized ? 'Restore' : 'Maximize';
+    port.postMessage({ type: 'surface.update', surfaceId: ownSurfaceId, maximized });
+  };
   port.onmessage = ({ data }) => {
     // Opened from the composer: a sent prompt finishes the page's job.
     if (data.type === 'agent.result' && data.ok && location.hash === '#t3-composer') port.postMessage({ type: 'surface.close', surfaceId: ownSurfaceId });

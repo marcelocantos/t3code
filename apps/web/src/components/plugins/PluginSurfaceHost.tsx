@@ -24,6 +24,8 @@ import {
 import { requestConfirmDialog } from "../../confirmDialog";
 import { readPreparedConnection } from "../../state/session";
 import { useAtomCommand } from "../../state/use-atom-command";
+import { Maximize2Icon, Minimize2Icon } from "lucide-react";
+import { Button } from "../ui/button";
 import { Dialog, DialogHeader, DialogPanel, DialogPopup, DialogTitle } from "../ui/dialog";
 import { Popover, PopoverPopup } from "../ui/popover";
 import { Spinner } from "../ui/spinner";
@@ -34,6 +36,7 @@ import {
   pluginAnchorInWindow,
   pluginPlacementParts,
   resolvePluginWebPath,
+  PLUGIN_BRIDGE_FEATURES,
   PLUGIN_BRIDGE_VERSION,
   type PluginBridgeContent,
   type PluginBridgeOutbound,
@@ -51,6 +54,9 @@ const HOVER_CLOSE_MS = 200;
 const DEFAULT_POPOVER_WIDTH = 320;
 const DEFAULT_WEB_SIZE = { width: 360, height: 240 };
 const WEB_MODAL_SIZE = { width: 800, height: 720 };
+const MAXIMIZED_EXTENT = "calc(100vw - 2rem)";
+/** The popup's height less its header and panel padding. */
+const MAXIMIZED_FRAME_HEIGHT = "calc(100dvh - 2rem - 7rem)";
 const LINK_CARD_CACHE_LIMIT = 200;
 /** Link cards fetched this page session, by environment, plugin, link and URL. */
 const linkCardCache = new Map<string, PluginLinkCard>();
@@ -130,6 +136,8 @@ export interface PluginSurfaceNode extends PluginSurfaceTreeNode {
   readonly side: PluginSide;
   readonly align: "start" | "center" | "end";
   readonly size: { readonly width: number; readonly height: number } | undefined;
+  /** Web content only: fills the window less a margin, ignoring `size`. */
+  readonly maximized?: boolean;
   readonly content: SurfaceContent;
   readonly route: SurfaceRoute;
   readonly panelTitle: string;
@@ -526,6 +534,7 @@ function useHostApi(
                   height: window.innerHeight,
                 }),
           content,
+          maximized: message.maximized === true && content.kind === "web",
           route: { kind: "frame", frame, bridgeSurfaceId: surfaceId },
           panelTitle: frame.panelTitle,
           agentSource: frame.agentSource,
@@ -545,9 +554,15 @@ function useHostApi(
         return;
       }
       case "surface.update": {
-        const id = frame.surfaces.get(message.surfaceId);
+        const opened = frame.surfaces.get(message.surfaceId);
+        // A frame may change only its own surface's size, never replace or move itself.
+        const own =
+          opened === undefined && frame.nodeId !== null && frame.ownSurfaceId === message.surfaceId
+            ? frame.nodeId
+            : undefined;
+        const id = opened ?? own;
         const content =
-          message.content === undefined
+          message.content === undefined || own !== undefined
             ? undefined
             : frameContent(frame, message.surfaceId, message.content);
         if (id === undefined || content === null) {
@@ -558,8 +573,14 @@ function useHostApi(
           });
           return;
         }
+        const target = tree.get(id);
         tree.update(id, {
-          ...(message.anchor === undefined ? {} : { anchor: frameAnchor(frame, message.anchor) }),
+          ...(message.maximized === undefined || target?.content.kind !== "web"
+            ? {}
+            : { maximized: message.maximized }),
+          ...(message.anchor === undefined || own !== undefined
+            ? {}
+            : { anchor: frameAnchor(frame, message.anchor) }),
           ...(content === undefined
             ? {}
             : {
@@ -788,8 +809,17 @@ function SurfaceNodeView({ node, blocked }: { node: PluginSurfaceNode; blocked: 
       </Popover>
     );
   }
-  const style: CSSProperties | undefined =
-    width > DIALOG_DEFAULT_MAX_WIDTH ? { width, maxWidth: "calc(100vw - 2rem)" } : undefined;
+  const maximized = node.maximized === true;
+  const style: CSSProperties | undefined = maximized
+    ? {
+        width: MAXIMIZED_EXTENT,
+        maxWidth: "none",
+        height: "calc(100dvh - 2rem)",
+        maxHeight: "none",
+      }
+    : width > DIALOG_DEFAULT_MAX_WIDTH
+      ? { width, maxWidth: "calc(100vw - 2rem)" }
+      : undefined;
   return (
     <Dialog
       open
@@ -805,6 +835,18 @@ function SurfaceNodeView({ node, blocked }: { node: PluginSurfaceNode; blocked: 
         <DialogHeader>
           <DialogTitle>{node.title}</DialogTitle>
         </DialogHeader>
+        {node.content.kind === "web" ? (
+          <Button
+            size="icon"
+            variant="ghost"
+            className="absolute end-12 top-2"
+            aria-label={maximized ? "Restore size" : "Maximize"}
+            title={maximized ? "Restore size" : "Maximize"}
+            onClick={() => host.tree.update(node.id, { maximized: !maximized })}
+          >
+            {maximized ? <Minimize2Icon /> : <Maximize2Icon />}
+          </Button>
+        ) : null}
         <DialogPanel>{body}</DialogPanel>
         <SurfaceLayer parentId={node.id} />
       </DialogPopup>
@@ -847,7 +889,7 @@ function SurfaceContentView({ node }: { node: PluginSurfaceNode }) {
         <PluginFrame
           src={content.url}
           title={node.title}
-          height={size.height}
+          height={node.maximized === true ? MAXIMIZED_FRAME_HEIGHT : size.height}
           nodeId={node.id}
           ownSurfaceId={content.bridgeSurfaceId}
           gatewayUrl={content.gatewayUrl}
@@ -882,6 +924,7 @@ function openBridge(
     {
       type: "t3.bridge.init",
       version: PLUGIN_BRIDGE_VERSION,
+      features: PLUGIN_BRIDGE_FEATURES,
       ...(endpoint.ownSurfaceId === undefined ? {} : { surfaceId: endpoint.ownSurfaceId }),
     } satisfies PluginBridgeOutbound,
     "*",
