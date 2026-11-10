@@ -2,28 +2,30 @@
 import * as NodeFS from "node:fs";
 import * as NodeHttp from "node:http";
 import * as NodePath from "node:path";
-import { DiscoveredPluginId } from "@t3tools/contracts";
+import { PluginIdentity } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import { readThemeFileGuarded } from "../environmentTheme.ts";
 
 /**
  * A plugin advertises itself by writing one JSON file into the per-user plugin directory
- * (`$XDG_DATA_HOME/t3code/plugins`, else `~/.local/share/t3code/plugins`). The manifest is only a
- * pointer: nothing in it is executed, and T3 asks its user before connecting.
+ * (`$XDG_DATA_HOME/t3code/plugins`, else `~/.local/share/t3code/plugins`), named after its
+ * identity (see `manifestFileIdentity`). The manifest is only a pointer: nothing in it is executed,
+ * and T3 asks its user before connecting.
  */
 const MAX_MANIFEST_FILES = 32;
 const MAX_MANIFEST_BYTES = 4 * 1024;
 const MAX_PROBE_BYTES = 1024;
 const PROBE_TIMEOUT_MS = 2_000;
 const PROBE_CONCURRENCY = 4;
-const MANIFEST_FILE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}\.json$/;
+const MANIFEST_SUFFIX = ".json";
+const INSTANCE = /^[a-z0-9][a-z0-9._-]{0,31}$/;
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]"]);
 
 const Name = Schema.String.check(Schema.isNonEmpty(), Schema.isMaxLength(128));
 const Manifest = Schema.Struct({
   protocol: Schema.Literal(1),
-  id: DiscoveredPluginId,
+  id: PluginIdentity,
   name: Name,
   connection: Schema.Struct({
     kind: Schema.Literal("server"),
@@ -32,9 +34,10 @@ const Manifest = Schema.Struct({
 });
 const ProbeResponse = Schema.Struct({
   protocol: Schema.Literal(1),
-  id: DiscoveredPluginId,
+  id: PluginIdentity,
   name: Name,
 });
+const isPluginIdentity = Schema.is(PluginIdentity);
 const decodeManifest = Schema.decodeUnknownOption(Schema.fromJsonString(Manifest));
 const decodeProbe = Schema.decodeUnknownOption(Schema.fromJsonString(ProbeResponse));
 
@@ -44,6 +47,20 @@ export interface PluginCandidate {
   readonly baseUrl: string;
   /** Newest manifest advertising this endpoint, for choosing among several. */
   readonly mtimeMs: number;
+}
+
+/**
+ * The identity a manifest file name claims: `host+owner+repo.json`, optionally with one more
+ * `+instance` segment so several running instances of one plugin never share a file. `+` cannot
+ * occur inside an identity segment, so the mapping is exact. Undefined for any other name.
+ */
+export function manifestFileIdentity(fileName: string): string | undefined {
+  if (!fileName.endsWith(MANIFEST_SUFFIX)) return undefined;
+  const parts = fileName.slice(0, -MANIFEST_SUFFIX.length).split("+");
+  if (parts.length !== 3 && parts.length !== 4) return undefined;
+  if (parts.length === 4 && !INSTANCE.test(parts[3] ?? "")) return undefined;
+  const id = parts.slice(0, 3).join("/");
+  return isPluginIdentity(id) ? id : undefined;
 }
 
 export function pluginManifestDirectory(
@@ -99,7 +116,7 @@ export function readManifests(directory: string): ReadonlyArray<PluginCandidate>
   let names: Array<string>;
   try {
     names = NodeFS.readdirSync(directory)
-      .filter((name) => MANIFEST_FILE.test(name))
+      .filter((name) => manifestFileIdentity(name) !== undefined)
       .toSorted()
       .slice(0, MAX_MANIFEST_FILES);
   } catch {
@@ -111,7 +128,7 @@ export function readManifests(directory: string): ReadonlyArray<PluginCandidate>
     const raw = readThemeFileGuarded(file, MAX_MANIFEST_BYTES);
     if (raw === null) continue;
     const manifest = decodeManifest(raw);
-    if (manifest._tag === "None") continue;
+    if (manifest._tag === "None" || manifest.value.id !== manifestFileIdentity(name)) continue;
     const baseUrl = normalizeLoopbackBaseUrl(manifest.value.connection.baseUrl);
     if (baseUrl === undefined) continue;
     let mtimeMs: number;

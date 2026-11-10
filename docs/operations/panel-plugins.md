@@ -19,24 +19,33 @@ configured by hand. Discovery runs on the environment that hosts the thread, so 
 mobile clients, local or remote, see the same offers through their existing connection and permissions.
 
 **Advertise.** Write one JSON file into `$XDG_DATA_HOME/t3code/plugins/` (`~/.local/share/t3code/plugins/`
-when `XDG_DATA_HOME` is unset or not an absolute path). Use a file name of letters, digits, `.`, `_` and
-`-` ending in `.json`, a distinct one per running instance (for example the port), and write it
-atomically: create a temporary file in the same directory beginning with `.`, then rename it. Keep the
-directory private to the user (mode `0700`; T3 ignores a directory other users can write), remove the
-file when the service stops, and replace it only if it still holds what you wrote. Files left by a
-crashed service are harmless: they fail the probe below and are ignored.
+when `XDG_DATA_HOME` is unset or not an absolute path), and write it atomically: create a temporary file
+in the same directory beginning with `.`, then rename it. Keep the directory private to the user (mode
+`0700`; T3 ignores a directory other users can write), remove the file when the service stops, and
+replace it only if it still holds what you wrote. Files left by a crashed service are harmless: they
+fail the probe below and are ignored.
+
+The file is named after the plugin's identity: `host+owner+repo.json`, optionally `host+owner+repo+instance.json`.
+Give each simultaneously running instance its own `instance` (for example its port) so they never
+share a file. T3 ignores a file whose name does not decode to the manifest's `id`.
 
 ```json
 {
   "protocol": 1,
-  "id": "example",
+  "id": "github.com/example/example",
   "name": "Example",
   "connection": { "kind": "server", "baseUrl": "http://127.0.0.1:49152/plugins/t3" }
 }
 ```
 
-- `id` is the plugin's stable identity: 1 to 64 characters of `a-z`, `0-9` and `-`, starting with a
-  letter or digit. It becomes the plugin id in panels, and a user's decision is remembered under it.
+(for example `github.com+example+example+49152.json`)
+
+- `id` is the plugin's stable identity: the `host/owner/repo` of the project that runs it, in lowercase
+  (`github.com/example/example`). The host is a DNS name; owner and repo are letters, digits, `.`,
+  `_` and `-`, starting with a letter or digit; the whole id is at most 128 characters. `+` never occurs
+  in an id, so replacing `/` with `+` gives the file name without ambiguity, and two ids can never share
+  a name. `instance` is 1 to 32 characters of `a-z`, `0-9`, `.`, `_` and `-`. The id becomes the plugin id in panels
+  (including the `pluginId` of filter selections), and a user's decision is remembered under it.
 - `name` is the display name, at most 128 characters.
 - `connection.kind` must be `"server"`. A discovered file can never name a command: T3 does not start
   discovered programs. Managed sidecars remain a hand-written configuration.
@@ -50,7 +59,7 @@ and no `Upgrade` header, cookies, thread or workspace. The plugin must answer `2
 type and a body of at most 1 KiB:
 
 ```json
-{ "protocol": 1, "id": "example", "name": "Example" }
+{ "protocol": 1, "id": "github.com/example/example", "name": "Example" }
 ```
 
 `id` and `name` must equal the manifest's. Redirects, other statuses and unreachable endpoints mean
@@ -74,7 +83,9 @@ viewing offers requires only `orchestration:read`.
 - When several instances advertise one id, the newest advertisement is offered; each live endpoint
   can still be enabled by its own address.
 - A plugin in `panel-plugins.json` takes precedence over a discovered one with the same id, and T3
-  never rewrites that file.
+  never rewrites that file. A hand-written entry may use any id (a short one such as `example` keeps
+  working); it is a different plugin from the advertised `github.com/...` identity, so a service that
+  accepts filter selections should treat its old short id as an alias of its canonical one.
 
 ## Configure other installations
 

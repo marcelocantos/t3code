@@ -20,6 +20,8 @@ import * as PluginDiscovery from "./PluginDiscovery.ts";
 import * as PluginGateway from "./PluginGateway.ts";
 
 /** A plugin: probe answer on plain GET, panel snapshots on the same route's WebSocket. */
+const ALPHA = "github.com/acme/alpha";
+
 const startPlugin = Effect.acquireRelease(
   Effect.promise(async () => {
     const sockets = new Set<import("ws").WebSocket>();
@@ -28,7 +30,7 @@ const startPlugin = Effect.acquireRelease(
     const server = NodeHttp.createServer((_request, response) =>
       response
         .writeHead(200, { "content-type": "application/json" })
-        .end(JSON.stringify({ protocol: 1, id: "alpha", name: "Alpha" })),
+        .end(JSON.stringify({ protocol: 1, id: ALPHA, name: "Alpha" })),
     );
     const wss = new WebSocketServer({ server });
     wss.on("connection", (socket) => {
@@ -89,10 +91,10 @@ it.live("activates and removes a panel on an already-open thread as the user dec
     yield* fs.makeDirectory(path.join(baseDir, "userdata"), { recursive: true });
     const plugin = yield* startPlugin;
     yield* fs.writeFileString(
-      path.join(manifestDirectory, "alpha-1.json"),
+      path.join(manifestDirectory, "github.com+acme+alpha+1.json"),
       JSON.stringify({
         protocol: 1,
-        id: "alpha",
+        id: ALPHA,
         name: "Alpha",
         connection: { kind: "server", baseUrl: plugin.baseUrl },
       }),
@@ -129,7 +131,7 @@ it.live("activates and removes a panel on an already-open thread as the user dec
       const showsPanel = (snapshots: ReadonlyArray<PluginPanelSnapshot>) =>
         snapshots.some(
           (snapshot) =>
-            snapshot.pluginId === "alpha" &&
+            snapshot.pluginId === ALPHA &&
             snapshot.status === "connected" &&
             snapshot.panels[0]?.title === "cwd /work/tree",
         );
@@ -144,19 +146,19 @@ it.live("activates and removes a panel on an already-open thread as the user dec
       assert.equal(plugin.sockets.size, 0);
 
       const connected = plugin.nextConnection();
-      yield* discovery.act({ action: "enable", id: "alpha", baseUrl: plugin.baseUrl });
+      yield* discovery.act({ action: "enable", id: ALPHA, baseUrl: plugin.baseUrl });
       assert.equal(Option.isSome(yield* next(showsPanel)), true);
       yield* Deferred.await(connected);
 
       const closed = plugin.nextClose();
-      yield* discovery.act({ action: "disable", id: "alpha" });
+      yield* discovery.act({ action: "disable", id: ALPHA });
       assert.equal(
-        Option.isSome(yield* next((snapshots) => snapshots.every((s) => s.pluginId !== "alpha"))),
+        Option.isSome(yield* next((snapshots) => snapshots.every((s) => s.pluginId !== ALPHA))),
         true,
       );
       yield* Deferred.await(closed);
 
-      yield* discovery.act({ action: "enable", id: "alpha", baseUrl: plugin.baseUrl });
+      yield* discovery.act({ action: "enable", id: ALPHA, baseUrl: plugin.baseUrl });
       assert.equal(Option.isSome(yield* next(showsPanel)), true);
     }).pipe(Effect.provide(layer));
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),

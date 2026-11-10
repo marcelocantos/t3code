@@ -6,16 +6,22 @@ import * as NodePath from "node:path";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import {
+  manifestFileIdentity,
   normalizeLoopbackBaseUrl,
   pluginManifestDirectory,
   readManifests,
   scanLivePlugins,
 } from "./PluginManifests.ts";
 
+const ID = "github.com/acme/example";
+const FILE = "github.com+acme+example.json";
+/** A conforming file name for one running instance of the example plugin. */
+const instanceFile = (instance: string) => `github.com+acme+example+${instance}.json`;
+
 const manifest = (baseUrl: string, overrides: Record<string, unknown> = {}) =>
   JSON.stringify({
     protocol: 1,
-    id: "example",
+    id: ID,
     name: "Example",
     connection: { kind: "server", baseUrl },
     ...overrides,
@@ -71,15 +77,44 @@ describe("manifest location and endpoints", () => {
   });
 });
 
+describe("manifest file names", () => {
+  it("maps host+owner+repo[+instance].json to the identity it claims", () => {
+    expect(manifestFileIdentity("github.com+marcelocantos+bullseye.json")).toBe(
+      "github.com/marcelocantos/bullseye",
+    );
+    expect(manifestFileIdentity("github.com+marcelocantos+bullseye+18743.json")).toBe(
+      "github.com/marcelocantos/bullseye",
+    );
+    expect(manifestFileIdentity("gitlab.example.com+team+my_repo.v2+a-b.json")).toBe(
+      "gitlab.example.com/team/my_repo.v2",
+    );
+    for (const rejected of [
+      "bullseye.json",
+      "github.com+marcelocantos.json",
+      "github.com+marcelocantos+bullseye+1+2.json",
+      "github.com+marcelocantos+bullseye+.json",
+      "github.com+marcelocantos+bullseye+A.json",
+      "github.com++bullseye.json",
+      "github.com+..+bullseye.json",
+      "github.com+marcelocantos+Bullseye.json",
+      "github.com+marcelocantos+bullseye.txt",
+      "github.com/marcelocantos/bullseye.json",
+      ".github.com+marcelocantos+bullseye.json.1.tmp",
+    ]) {
+      expect(manifestFileIdentity(rejected), rejected).toBeUndefined();
+    }
+  });
+});
+
 describe("reading manifests", () => {
   it("reads valid manifests and ignores unknown fields", () => {
     withDirectory((directory) => {
       NodeFS.writeFileSync(
-        NodePath.join(directory, "example-1.json"),
+        NodePath.join(directory, instanceFile("1")),
         manifest("http://127.0.0.1:9/plugins/example", { future: { anything: true } }),
       );
       expect(readManifests(directory)).toMatchObject([
-        { id: "example", name: "Example", baseUrl: "http://127.0.0.1:9/plugins/example" },
+        { id: ID, name: "Example", baseUrl: "http://127.0.0.1:9/plugins/example" },
       ]);
     });
   });
@@ -91,25 +126,33 @@ describe("reading manifests", () => {
       write("garbage.json", "{not json");
       write("array.json", "[]");
       write("future-protocol.json", manifest("http://127.0.0.1:9/p", { protocol: 2 }));
-      write("bad-id.json", manifest("http://127.0.0.1:9/p", { id: "../etc" }));
-      write("upper-id.json", manifest("http://127.0.0.1:9/p", { id: "Example" }));
-      write("empty-name.json", manifest("http://127.0.0.1:9/p", { name: "" }));
-      write("remote.json", manifest("http://example.com:9/p"));
+      // The id must be a lowercase host/owner/repo, and the file must be named for exactly that id.
+      write(instanceFile("a"), manifest("http://127.0.0.1:9/p", { id: "../etc" }));
+      write(instanceFile("b"), manifest("http://127.0.0.1:9/p", { id: "example" }));
+      write(instanceFile("c"), manifest("http://127.0.0.1:9/p", { id: "GitHub.com/acme/example" }));
+      write(instanceFile("d"), manifest("http://127.0.0.1:9/p", { id: "github.com/acme/other" }));
+      write(instanceFile("e"), manifest("http://127.0.0.1:9/p", { id: "github.com/acme/ex+am" }));
+      write("example.json", manifest("http://127.0.0.1:9/p"));
+      write("github.com+acme.json", manifest("http://127.0.0.1:9/p"));
+      write("github.com+acme+example+a+b.json", manifest("http://127.0.0.1:9/p"));
+      write("github.com+acme+Other.json", manifest("http://127.0.0.1:9/p"));
+      write(instanceFile("f"), manifest("http://127.0.0.1:9/p", { name: "" }));
+      write(instanceFile("g"), manifest("http://example.com:9/p"));
       write(
-        "sidecar.json",
+        instanceFile("sidecar"),
         manifest("http://127.0.0.1:9/p", {
           connection: { kind: "sidecar", command: "/bin/sh", args: ["-c", "true"] },
         }),
       );
-      write("huge.json", manifest("http://127.0.0.1:9/p", { name: "x".repeat(10_000) }));
+      write(instanceFile("huge"), manifest("http://127.0.0.1:9/p", { name: "x".repeat(10_000) }));
       write("notes.txt", manifest("http://127.0.0.1:9/p"));
       write(".example-9.json.123.tmp", manifest("http://127.0.0.1:9/p"));
       NodeFS.symlinkSync(
-        NodePath.join(directory, "remote.json"),
-        NodePath.join(directory, "link.json"),
+        NodePath.join(directory, instanceFile("g")),
+        NodePath.join(directory, instanceFile("link")),
       );
-      NodeFS.mkdirSync(NodePath.join(directory, "dir.json"));
-      write("good.json", manifest("http://127.0.0.1:9/p"));
+      NodeFS.mkdirSync(NodePath.join(directory, instanceFile("dir")));
+      write(FILE, manifest("http://127.0.0.1:9/p"));
       expect(readManifests(directory).map((found) => found.baseUrl)).toEqual([
         "http://127.0.0.1:9/p",
       ]);
@@ -120,7 +163,7 @@ describe("reading manifests", () => {
     withDirectory((directory) => {
       for (let index = 0; index < 100; index++) {
         NodeFS.writeFileSync(
-          NodePath.join(directory, `p${String(index).padStart(3, "0")}.json`),
+          NodePath.join(directory, instanceFile(String(index).padStart(3, "0"))),
           manifest(`http://127.0.0.1:${9000 + index}/p`),
         );
       }
@@ -130,7 +173,7 @@ describe("reading manifests", () => {
 
   it("does not trust a plugin directory other users can write", () => {
     withDirectory((directory) => {
-      NodeFS.writeFileSync(NodePath.join(directory, "a.json"), manifest("http://127.0.0.1:9/p"));
+      NodeFS.writeFileSync(NodePath.join(directory, FILE), manifest("http://127.0.0.1:9/p"));
       NodeFS.chmodSync(directory, 0o777);
       expect(readManifests(directory)).toEqual([]);
       NodeFS.chmodSync(directory, 0o700);
@@ -181,7 +224,7 @@ const scopedDirectory = Effect.acquireRelease(
 const json = (response: NodeHttp.ServerResponse, body: unknown, type = "application/json") =>
   response.writeHead(200, { "content-type": type }).end(JSON.stringify(body));
 
-const example = { protocol: 1, id: "example", name: "Example" };
+const example = { protocol: 1, id: ID, name: "Example" };
 
 describe("probing advertised services", () => {
   it.live("confirms a compatible service with a context-free GET", () =>
@@ -189,11 +232,11 @@ describe("probing advertised services", () => {
       const service = yield* upstream((response) => json(response, example));
       const directory = yield* scopedDirectory;
       NodeFS.writeFileSync(
-        NodePath.join(directory, "example-1.json"),
+        NodePath.join(directory, instanceFile("1")),
         manifest(`http://127.0.0.1:${service.port}/plugins/example`),
       );
       const live = yield* scanLivePlugins(directory);
-      expect(live.map((found) => found.id)).toEqual(["example"]);
+      expect(live.map((found) => found.id)).toEqual([ID]);
       expect(service.requests).toHaveLength(1);
       const [request] = service.requests;
       expect(request?.method).toBe("GET");
@@ -233,12 +276,12 @@ describe("probing advertised services", () => {
         "ok",
       ]) {
         NodeFS.writeFileSync(
-          NodePath.join(directory, `${path}.json`),
+          NodePath.join(directory, instanceFile(path)),
           manifest(`http://127.0.0.1:${service.port}/${path}`),
         );
       }
       NodeFS.writeFileSync(
-        NodePath.join(directory, "stale.json"),
+        NodePath.join(directory, instanceFile("stale")),
         manifest(`http://127.0.0.1:${gonePort}/plugins/example`),
       );
       const live = yield* scanLivePlugins(directory);
@@ -250,7 +293,7 @@ describe("probing advertised services", () => {
     Effect.gen(function* () {
       const service = yield* upstream((response) => json(response, example));
       const directory = yield* scopedDirectory;
-      for (const name of ["a.json", "b.json", "c.json"]) {
+      for (const name of [instanceFile("a"), instanceFile("b"), instanceFile("c")]) {
         NodeFS.writeFileSync(
           NodePath.join(directory, name),
           manifest(`http://127.0.0.1:${service.port}/p`),

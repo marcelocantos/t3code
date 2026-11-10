@@ -20,13 +20,16 @@ interface Service {
   readonly stop: Effect.Effect<void>;
 }
 
+/** Identity of the fictional project `acme/<name>` that runs a test plugin. */
+const identity = (name: string) => `github.com/acme/${name}`;
+
 /** A loopback service that answers the context-free probe as the named plugin. */
 const startService = (id: string, name: string, path = "/plugins/t3") =>
   Effect.promise(async (): Promise<Service> => {
     const server = NodeHttp.createServer((_request, response) =>
       response
         .writeHead(200, { "content-type": "application/json" })
-        .end(JSON.stringify({ protocol: 1, id, name })),
+        .end(JSON.stringify({ protocol: 1, id: identity(id), name })),
     );
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
     const address = server.address();
@@ -45,7 +48,7 @@ const withEnvironment = <A, E>(
     readonly manifestDirectory: string;
     readonly stateDirectory: string;
     readonly advertise: (
-      file: string,
+      instance: string,
       id: string,
       name: string,
       baseUrl: string,
@@ -72,10 +75,10 @@ const withEnvironment = <A, E>(
     return yield* body({
       manifestDirectory,
       stateDirectory,
-      advertise: (file, id, name, baseUrl) =>
+      advertise: (instance, id, name, baseUrl) =>
         Effect.orDie(
           fs.writeFileString(
-            path.join(manifestDirectory, file),
+            path.join(manifestDirectory, `${id.replaceAll("/", "+")}+${instance}.json`),
             JSON.stringify({
               protocol: 1,
               id,
@@ -119,7 +122,7 @@ test(
     Effect.gen(function* () {
       const first = yield* runningService("alpha", "Alpha");
       const second = yield* runningService("beta", "Beta");
-      yield* advertise("alpha-1.json", "alpha", "Alpha", first.baseUrl);
+      yield* advertise("1", "github.com/acme/alpha", "Alpha", first.baseUrl);
       yield* start(
         Effect.gen(function* () {
           const discovery = yield* PluginDiscovery.PluginDiscovery;
@@ -129,23 +132,26 @@ test(
             Effect.forkScoped,
           );
           const initial = yield* Stream.fromQueue(offers).pipe(
-            Stream.filter((snapshot) => item(snapshot, "alpha")?.state === "offered"),
+            Stream.filter((snapshot) => item(snapshot, identity("alpha"))?.state === "offered"),
             Stream.runHead,
           );
-          assert.deepEqual(item(initial._tag === "Some" ? initial.value : undefined, "alpha"), {
-            id: "alpha",
-            name: "Alpha",
-            state: "offered",
-            baseUrl: first.baseUrl,
-            live: true,
-          });
+          assert.deepEqual(
+            item(initial._tag === "Some" ? initial.value : undefined, identity("alpha")),
+            {
+              id: "github.com/acme/alpha",
+              name: "Alpha",
+              state: "offered",
+              baseUrl: first.baseUrl,
+              live: true,
+            },
+          );
           // Nothing is connected or enabled by being offered.
           const configs = yield* firstConfigs(discovery);
           assert.deepEqual(configs._tag === "Some" ? configs.value.configs : undefined, []);
 
-          yield* advertise("beta-1.json", "beta", "Beta", second.baseUrl);
+          yield* advertise("1", "github.com/acme/beta", "Beta", second.baseUrl);
           const later = yield* Stream.fromQueue(offers).pipe(
-            Stream.filter((snapshot) => item(snapshot, "beta")?.state === "offered"),
+            Stream.filter((snapshot) => item(snapshot, identity("beta"))?.state === "offered"),
             Stream.runHead,
           );
           assert.equal(later._tag, "Some");
@@ -160,7 +166,7 @@ test(
   withEnvironment(({ advertise, start, stateDirectory }) =>
     Effect.gen(function* () {
       const service = yield* runningService("alpha", "Alpha");
-      yield* advertise("alpha-1.json", "alpha", "Alpha", service.baseUrl);
+      yield* advertise("1", "github.com/acme/alpha", "Alpha", service.baseUrl);
       yield* start(
         Effect.gen(function* () {
           const discovery = yield* PluginDiscovery.PluginDiscovery;
@@ -170,12 +176,22 @@ test(
             Effect.forkScoped,
           );
           assert.deepEqual((yield* Queue.take(configs)).configs, []);
-          yield* until(discovery, (snapshot) => item(snapshot, "alpha")?.state === "offered");
+          yield* until(
+            discovery,
+            (snapshot) => item(snapshot, identity("alpha"))?.state === "offered",
+          );
 
-          yield* discovery.act({ action: "enable", id: "alpha", baseUrl: service.baseUrl });
+          yield* discovery.act({
+            action: "enable",
+            id: "github.com/acme/alpha",
+            baseUrl: service.baseUrl,
+          });
           // The already-open consumer learns of the new plugin without reopening anything.
           assert.deepEqual((yield* Queue.take(configs)).configs, [
-            { id: "alpha", connection: { kind: "server", baseUrl: service.baseUrl } },
+            {
+              id: "github.com/acme/alpha",
+              connection: { kind: "server", baseUrl: service.baseUrl },
+            },
           ]);
         }),
       );
@@ -184,7 +200,14 @@ test(
       const saved = yield* fs.readFileString(path.join(stateDirectory, "plugin-discovery.json"));
       assert.deepEqual(JSON.parse(saved), {
         version: 1,
-        plugins: [{ id: "alpha", name: "Alpha", status: "enabled", baseUrl: service.baseUrl }],
+        plugins: [
+          {
+            id: "github.com/acme/alpha",
+            name: "Alpha",
+            status: "enabled",
+            baseUrl: service.baseUrl,
+          },
+        ],
       });
       // After a restart the choice stands, with no manifest and no live service needed.
       yield* service.stop;
@@ -193,7 +216,7 @@ test(
           const discovery = yield* PluginDiscovery.PluginDiscovery;
           const configs = yield* firstConfigs(discovery);
           assert.deepEqual(configs._tag === "Some" ? configs.value.configs.map((c) => c.id) : [], [
-            "alpha",
+            identity("alpha"),
           ]);
         }),
       );
@@ -207,9 +230,9 @@ test(
     Effect.gen(function* () {
       const service = yield* runningService("alpha", "Alpha");
       const impostor = yield* runningService("other", "Other");
-      yield* advertise("alpha-1.json", "alpha", "Alpha", service.baseUrl);
+      yield* advertise("1", "github.com/acme/alpha", "Alpha", service.baseUrl);
       // A second manifest claims the id but its service identifies as something else.
-      yield* advertise("alpha-2.json", "alpha", "Alpha", impostor.baseUrl);
+      yield* advertise("2", "github.com/acme/alpha", "Alpha", impostor.baseUrl);
       yield* start(
         Effect.gen(function* () {
           const discovery = yield* PluginDiscovery.PluginDiscovery;
@@ -221,7 +244,8 @@ test(
             "http://127.0.0.1:9/plugins/t3?x=1",
           ]) {
             reasons.push(
-              (yield* act(discovery, { action: "enable", id: "alpha", baseUrl })).reason,
+              (yield* act(discovery, { action: "enable", id: "github.com/acme/alpha", baseUrl }))
+                .reason,
             );
           }
           assert.deepEqual(reasons, [
@@ -238,8 +262,11 @@ test(
           // A service that vanished between display and click is not enabled.
           yield* service.stop;
           assert.equal(
-            (yield* act(discovery, { action: "enable", id: "alpha", baseUrl: service.baseUrl }))
-              .reason,
+            (yield* act(discovery, {
+              action: "enable",
+              id: "github.com/acme/alpha",
+              baseUrl: service.baseUrl,
+            })).reason,
             "not-available",
           );
           const configs = yield* firstConfigs(discovery);
@@ -255,38 +282,44 @@ test(
   withEnvironment(({ advertise, start }) =>
     Effect.gen(function* () {
       const first = yield* runningService("alpha", "Alpha");
-      yield* advertise("alpha-1.json", "alpha", "Alpha", first.baseUrl);
+      yield* advertise("1", "github.com/acme/alpha", "Alpha", first.baseUrl);
       yield* start(
         Effect.gen(function* () {
           const discovery = yield* PluginDiscovery.PluginDiscovery;
-          yield* until(discovery, (snapshot) => item(snapshot, "alpha")?.state === "offered");
-          yield* discovery.act({ action: "dismiss", id: "alpha" });
+          yield* until(
+            discovery,
+            (snapshot) => item(snapshot, identity("alpha"))?.state === "offered",
+          );
+          yield* discovery.act({ action: "dismiss", id: "github.com/acme/alpha" });
         }),
       );
       // The service restarts on another port and advertises again; the user is not asked again.
       const moved = yield* runningService("alpha", "Alpha");
-      yield* advertise("alpha-1.json", "alpha", "Alpha", moved.baseUrl);
+      yield* advertise("1", "github.com/acme/alpha", "Alpha", moved.baseUrl);
       yield* start(
         Effect.gen(function* () {
           const discovery = yield* PluginDiscovery.PluginDiscovery;
-          const snapshot = yield* until(discovery, (value) => item(value, "alpha")?.live === true);
-          assert.equal(item(snapshot, "alpha")?.state, "dismissed");
+          const snapshot = yield* until(
+            discovery,
+            (value) => item(value, identity("alpha"))?.live === true,
+          );
+          assert.equal(item(snapshot, identity("alpha"))?.state, "dismissed");
           assert.deepEqual(
             snapshot?.plugins.filter((plugin) => plugin.state === "offered"),
             [],
           );
           assert.equal(
-            (yield* act(discovery, { action: "disable", id: "alpha" })).reason,
+            (yield* act(discovery, { action: "disable", id: "github.com/acme/alpha" })).reason,
             "invalid-state",
           );
 
           // Resetting forgets the decision, so the live service is offered afresh.
-          yield* discovery.act({ action: "reset", id: "alpha" });
+          yield* discovery.act({ action: "reset", id: "github.com/acme/alpha" });
           const offered = yield* until(
             discovery,
-            (value) => item(value, "alpha")?.state === "offered",
+            (value) => item(value, identity("alpha"))?.state === "offered",
           );
-          assert.equal(item(offered, "alpha")?.baseUrl, moved.baseUrl);
+          assert.equal(item(offered, identity("alpha"))?.baseUrl, moved.baseUrl);
         }),
       );
     }),
@@ -298,22 +331,26 @@ test(
   withEnvironment(({ advertise, start }) =>
     Effect.gen(function* () {
       const service = yield* runningService("alpha", "Alpha");
-      yield* advertise("alpha-1.json", "alpha", "Alpha", service.baseUrl);
+      yield* advertise("1", "github.com/acme/alpha", "Alpha", service.baseUrl);
       yield* start(
         Effect.gen(function* () {
           const discovery = yield* PluginDiscovery.PluginDiscovery;
-          yield* discovery.act({ action: "enable", id: "alpha", baseUrl: service.baseUrl });
+          yield* discovery.act({
+            action: "enable",
+            id: "github.com/acme/alpha",
+            baseUrl: service.baseUrl,
+          });
           assert.equal(
-            (yield* act(discovery, { action: "reset", id: "alpha" })).reason,
+            (yield* act(discovery, { action: "reset", id: "github.com/acme/alpha" })).reason,
             "invalid-state",
           );
 
-          yield* discovery.act({ action: "disable", id: "alpha" });
+          yield* discovery.act({ action: "disable", id: "github.com/acme/alpha" });
           const disabled = yield* until(
             discovery,
-            (snapshot) => item(snapshot, "alpha")?.state === "disabled",
+            (snapshot) => item(snapshot, identity("alpha"))?.state === "disabled",
           );
-          assert.equal(item(disabled, "alpha")?.baseUrl, service.baseUrl);
+          assert.equal(item(disabled, identity("alpha"))?.baseUrl, service.baseUrl);
           const configs = yield* firstConfigs(discovery);
           assert.deepEqual(configs._tag === "Some" ? configs.value.configs : undefined, []);
 
@@ -324,10 +361,14 @@ test(
           );
 
           yield* service.stop;
-          yield* discovery.act({ action: "enable", id: "alpha", baseUrl: service.baseUrl });
+          yield* discovery.act({
+            action: "enable",
+            id: "github.com/acme/alpha",
+            baseUrl: service.baseUrl,
+          });
           const again = yield* firstConfigs(discovery);
           assert.deepEqual(again._tag === "Some" ? again.value.configs.map((c) => c.id) : [], [
-            "alpha",
+            identity("alpha"),
           ]);
         }),
       );
@@ -340,35 +381,42 @@ test(
   withEnvironment(({ advertise, start }) =>
     Effect.gen(function* () {
       const original = yield* runningService("alpha", "Alpha");
-      yield* advertise("alpha-1.json", "alpha", "Alpha", original.baseUrl);
+      yield* advertise("1", "github.com/acme/alpha", "Alpha", original.baseUrl);
       yield* start(
         Effect.gen(function* () {
           const discovery = yield* PluginDiscovery.PluginDiscovery;
-          yield* discovery.act({ action: "enable", id: "alpha", baseUrl: original.baseUrl });
+          yield* discovery.act({
+            action: "enable",
+            id: "github.com/acme/alpha",
+            baseUrl: original.baseUrl,
+          });
         }),
       );
       yield* original.stop;
       const moved = yield* runningService("alpha", "Alpha");
-      yield* advertise("alpha-1.json", "alpha", "Alpha", moved.baseUrl);
+      yield* advertise("1", "github.com/acme/alpha", "Alpha", moved.baseUrl);
       yield* start(
         Effect.gen(function* () {
           const discovery = yield* PluginDiscovery.PluginDiscovery;
           const snapshot = yield* until(
             discovery,
-            (value) => item(value, "alpha")?.discoveredBaseUrl !== undefined,
+            (value) => item(value, identity("alpha"))?.discoveredBaseUrl !== undefined,
           );
-          assert.equal(item(snapshot, "alpha")?.baseUrl, original.baseUrl);
-          assert.equal(item(snapshot, "alpha")?.discoveredBaseUrl, moved.baseUrl);
+          assert.equal(item(snapshot, identity("alpha"))?.baseUrl, original.baseUrl);
+          assert.equal(item(snapshot, identity("alpha"))?.discoveredBaseUrl, moved.baseUrl);
           // Until the user agrees, the connection still points at what they approved.
           const before = yield* firstConfigs(discovery);
           assert.deepEqual(before._tag === "Some" ? before.value.configs : undefined, [
-            { id: "alpha", connection: { kind: "server", baseUrl: original.baseUrl } },
+            {
+              id: "github.com/acme/alpha",
+              connection: { kind: "server", baseUrl: original.baseUrl },
+            },
           ]);
           // Declining stops the prompt; so does approving.
-          yield* discovery.act({ action: "dismiss", id: "alpha" });
+          yield* discovery.act({ action: "dismiss", id: "github.com/acme/alpha" });
           const declined = yield* until(discovery, () => true);
-          assert.equal(item(declined, "alpha")?.discoveredBaseUrl, undefined);
-          assert.equal(item(declined, "alpha")?.state, "enabled");
+          assert.equal(item(declined, identity("alpha"))?.discoveredBaseUrl, undefined);
+          assert.equal(item(declined, identity("alpha"))?.state, "enabled");
         }),
       );
       yield* start(
@@ -376,14 +424,18 @@ test(
           const discovery = yield* PluginDiscovery.PluginDiscovery;
           const snapshot = yield* until(
             discovery,
-            (value) => item(value, "alpha")?.state === "enabled",
+            (value) => item(value, identity("alpha"))?.state === "enabled",
           );
           // The refusal persisted; no prompt returns after a restart.
-          assert.equal(item(snapshot, "alpha")?.discoveredBaseUrl, undefined);
-          yield* discovery.act({ action: "enable", id: "alpha", baseUrl: moved.baseUrl });
+          assert.equal(item(snapshot, identity("alpha"))?.discoveredBaseUrl, undefined);
+          yield* discovery.act({
+            action: "enable",
+            id: "github.com/acme/alpha",
+            baseUrl: moved.baseUrl,
+          });
           const after = yield* firstConfigs(discovery);
           assert.deepEqual(after._tag === "Some" ? after.value.configs : undefined, [
-            { id: "alpha", connection: { kind: "server", baseUrl: moved.baseUrl } },
+            { id: "github.com/acme/alpha", connection: { kind: "server", baseUrl: moved.baseUrl } },
           ]);
         }),
       );
@@ -398,9 +450,9 @@ test(
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
       const service = yield* runningService("alpha", "Alpha");
-      yield* advertise("alpha-1.json", "alpha", "Alpha", service.baseUrl);
+      yield* advertise("1", "github.com/acme/alpha", "Alpha", service.baseUrl);
       const manual = {
-        id: "alpha",
+        id: "github.com/acme/alpha",
         connection: { kind: "server" as const, baseUrl: "http://127.0.0.1:5/x" },
       };
       yield* fs.writeFileString(
@@ -410,11 +462,17 @@ test(
       yield* start(
         Effect.gen(function* () {
           const discovery = yield* PluginDiscovery.PluginDiscovery;
-          const snapshot = yield* until(discovery, (value) => item(value, "alpha") !== undefined);
-          assert.equal(item(snapshot, "alpha")?.state, "manual");
+          const snapshot = yield* until(
+            discovery,
+            (value) => item(value, identity("alpha")) !== undefined,
+          );
+          assert.equal(item(snapshot, identity("alpha"))?.state, "manual");
           assert.equal(
-            (yield* act(discovery, { action: "enable", id: "alpha", baseUrl: service.baseUrl }))
-              .reason,
+            (yield* act(discovery, {
+              action: "enable",
+              id: "github.com/acme/alpha",
+              baseUrl: service.baseUrl,
+            })).reason,
             "invalid-state",
           );
           const configs = yield* firstConfigs(discovery);
@@ -435,11 +493,15 @@ test(
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
       const service = yield* runningService("alpha", "Alpha");
-      yield* advertise("alpha-1.json", "alpha", "Alpha", service.baseUrl);
+      yield* advertise("1", "github.com/acme/alpha", "Alpha", service.baseUrl);
       yield* start(
         Effect.gen(function* () {
           const discovery = yield* PluginDiscovery.PluginDiscovery;
-          yield* discovery.act({ action: "enable", id: "alpha", baseUrl: service.baseUrl });
+          yield* discovery.act({
+            action: "enable",
+            id: "github.com/acme/alpha",
+            baseUrl: service.baseUrl,
+          });
         }),
       );
       yield* fs.writeFileString(path.join(stateDirectory, "panel-plugins.json"), "{broken");
@@ -449,8 +511,49 @@ test(
           const configs = yield* firstConfigs(discovery);
           assert.equal(configs._tag === "Some" ? configs.value.error : undefined, true);
           assert.deepEqual(configs._tag === "Some" ? configs.value.configs.map((c) => c.id) : [], [
-            "alpha",
+            identity("alpha"),
           ]);
+        }),
+      );
+    }),
+  ),
+);
+
+test(
+  "keeps a hand-written short id and a decision saved under one working",
+  withEnvironment(({ start, stateDirectory }) =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      yield* fs.writeFileString(
+        path.join(stateDirectory, "panel-plugins.json"),
+        JSON.stringify([
+          { id: "bullseye", connection: { kind: "server", baseUrl: "http://127.0.0.1:5/x" } },
+        ]),
+      );
+      yield* fs.writeFileString(
+        path.join(stateDirectory, "plugin-discovery.json"),
+        JSON.stringify({
+          version: 1,
+          plugins: [
+            { id: "legacy", name: "Legacy", status: "enabled", baseUrl: "http://127.0.0.1:6/y" },
+          ],
+        }),
+      );
+      yield* start(
+        Effect.gen(function* () {
+          const discovery = yield* PluginDiscovery.PluginDiscovery;
+          const configs = yield* firstConfigs(discovery);
+          assert.deepEqual(
+            configs._tag === "Some" ? configs.value.configs.map((c) => c.id).toSorted() : [],
+            ["bullseye", "legacy"],
+          );
+          const snapshot = yield* until(
+            discovery,
+            (value) => item(value, "bullseye") !== undefined,
+          );
+          assert.equal(item(snapshot, "bullseye")?.state, "manual");
+          assert.equal(item(snapshot, "legacy")?.state, "enabled");
         }),
       );
     }),
@@ -466,9 +569,9 @@ test(
       const a = yield* runningService("alpha", "Alpha");
       const b = yield* runningService("beta", "Beta");
       const c = yield* runningService("gamma", "Gamma");
-      yield* advertise("a.json", "alpha", "Alpha", a.baseUrl);
-      yield* advertise("b.json", "beta", "Beta", b.baseUrl);
-      yield* advertise("c.json", "gamma", "Gamma", c.baseUrl);
+      yield* advertise("a", "github.com/acme/alpha", "Alpha", a.baseUrl);
+      yield* advertise("b", "github.com/acme/beta", "Beta", b.baseUrl);
+      yield* advertise("c", "github.com/acme/gamma", "Gamma", c.baseUrl);
       yield* start(
         Effect.gen(function* () {
           const discovery = yield* PluginDiscovery.PluginDiscovery;
@@ -478,9 +581,9 @@ test(
           );
           yield* Effect.all(
             [
-              discovery.act({ action: "enable", id: "alpha", baseUrl: a.baseUrl }),
-              discovery.act({ action: "dismiss", id: "beta" }),
-              discovery.act({ action: "enable", id: "gamma", baseUrl: c.baseUrl }),
+              discovery.act({ action: "enable", id: "github.com/acme/alpha", baseUrl: a.baseUrl }),
+              discovery.act({ action: "dismiss", id: "github.com/acme/beta" }),
+              discovery.act({ action: "enable", id: "github.com/acme/gamma", baseUrl: c.baseUrl }),
             ],
             { concurrency: "unbounded" },
           );
@@ -490,9 +593,9 @@ test(
         yield* fs.readFileString(path.join(stateDirectory, "plugin-discovery.json")),
       ) as { plugins: Array<{ id: string; status: string }> };
       assert.deepEqual(saved.plugins.map((p) => `${p.id}:${p.status}`).toSorted(), [
-        "alpha:enabled",
-        "beta:dismissed",
-        "gamma:enabled",
+        "github.com/acme/alpha:enabled",
+        "github.com/acme/beta:dismissed",
+        "github.com/acme/gamma:enabled",
       ]);
     }),
   ),

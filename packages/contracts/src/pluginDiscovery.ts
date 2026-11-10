@@ -1,8 +1,28 @@
 import * as Schema from "effect/Schema";
 
-/** A discovered plugin's stable identity; also the `id` of the configuration it becomes. */
+const MAX_PLUGIN_ID_LENGTH = 128;
+const IDENTITY_PATTERN =
+  "[a-z0-9]([a-z0-9.-]{0,61}[a-z0-9])?/[a-z0-9][a-z0-9._-]{0,99}/[a-z0-9][a-z0-9._-]{0,99}";
+const SLUG_PATTERN = "[a-z0-9][a-z0-9-]{0,63}";
+
+/**
+ * What an advertised plugin is called: `host/owner/repo` of the project that runs it, lowercase,
+ * for example `github.com/example/example`. `+` never occurs in a segment, so the manifest
+ * file name (`host+owner+repo[+instance].json`) encodes the identity without collisions.
+ */
+export const PluginIdentity = Schema.String.check(
+  Schema.isMaxLength(MAX_PLUGIN_ID_LENGTH),
+  Schema.isPattern(new RegExp(`^${IDENTITY_PATTERN}$`)),
+);
+export type PluginIdentity = typeof PluginIdentity.Type;
+
+/**
+ * The id of any plugin discovery shows or acts on: an advertised identity, or the short name of a
+ * plugin written by hand in `panel-plugins.json` (or decided before identities were canonical).
+ */
 export const DiscoveredPluginId = Schema.String.check(
-  Schema.isPattern(/^[a-z0-9][a-z0-9-]{0,63}$/),
+  Schema.isMaxLength(MAX_PLUGIN_ID_LENGTH),
+  Schema.isPattern(new RegExp(`^(${IDENTITY_PATTERN}|${SLUG_PATTERN})$`)),
 );
 export type DiscoveredPluginId = typeof DiscoveredPluginId.Type;
 
