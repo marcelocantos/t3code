@@ -35,6 +35,7 @@ import * as ElectronUpdater from "../electron/ElectronUpdater.ts";
 import * as ElectronWindow from "../electron/ElectronWindow.ts";
 import * as IpcChannels from "../ipc/channels.ts";
 import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
+import { isUpgradePluginBuild } from "../app/PluginBuild.ts";
 import * as DesktopUpdatePolicy from "./DesktopUpdatePolicy.ts";
 import { normalizeDesktopUpdateReleaseNotes } from "./releaseNotes.ts";
 import { desktopUpdateChannelOf } from "@t3tools/shared/cliRelease";
@@ -338,7 +339,12 @@ function getAutoUpdateDisabledReason(args: {
   isDebPackage: boolean;
   disabledByEnv: boolean;
   hasUpdateFeedConfig: boolean;
+  disabledByBuild?: boolean;
 }): string | null {
+  // First, so neither a managed feed nor a leftover app-update.yml can turn updates back on.
+  if (args.disabledByBuild) {
+    return "Automatic updates are disabled in this plugin-panels build.";
+  }
   if (args.policy.mode === "off") {
     return args.policy.message ?? "Updates are turned off on this machine.";
   }
@@ -471,6 +477,7 @@ export const make = Effect.gen(function* () {
         isDebPackage,
         disabledByEnv: config.disableAutoUpdate,
         hasUpdateFeedConfig: hasFeedConfig,
+        disabledByBuild: isUpgradePluginBuild,
       }),
     );
   });
@@ -1131,7 +1138,9 @@ export const make = Effect.gen(function* () {
         });
       }
 
-      if (mockUpdates) {
+      if (isUpgradePluginBuild) {
+        // Never point electron-updater at any feed in this build.
+      } else if (mockUpdates) {
         yield* electronUpdater.setFeedURL({
           provider: "generic",
           url: `http://localhost:${config.mockUpdateServerPort}`,

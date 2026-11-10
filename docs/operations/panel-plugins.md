@@ -10,7 +10,21 @@ Use this fork's desktop app or bundled web client for panels; official T3 client
 
 A plugin that advertises itself (see [Discovery](#discovery)) appears in thread details with an **Enable** button; nothing needs configuring by hand. The URL it advertises is resolved by the T3 environment hosting the thread, so a loopback address refers to that machine. T3 does not bundle or launch any plugin: each one is a service its own project runs.
 
-Maintainers build this variant with `T3CODE_PLUGIN_BUILD=1` set for both `vp run build:desktop` and `vp run dist:desktop:artifact --platform mac --target dmg --arch arm64 --skip-build`. Omitting the switch preserves upstream packaging and profiles.
+## Build modes
+
+`T3CODE_PLUGIN_BUILD` selects the packaging variant. Set the same value for both `vp run build:desktop` and `vp run dist:desktop:artifact --platform mac --target dmg --arch arm64 --skip-build`; the build rejects any other value.
+
+| Value     | Variant              | App identity                                            | State                                     | Updates          |
+| --------- | -------------------- | ------------------------------------------------------- | ----------------------------------------- | ---------------- |
+| unset     | Upstream             | `com.t3tools.t3code`, **T3 Code (Beta)**                | `~/.t3`, `t3code-v2` profile              | Upstream feed    |
+| `1`       | Parallel (above)     | `com.marcelocantos.t3code.plugins`, **T3 Code Plugins** | `~/.t3-plugins`, `t3code-plugins` profile | No feed          |
+| `upgrade` | In-place replacement | `com.t3tools.t3code`, **T3 Code (Beta)**                | `~/.t3`, `t3code-v2` profile              | Disabled in code |
+
+The `upgrade` build is for replacing an installed official app with this fork while keeping its settings, projects, threads, browser profile and Keychain entry name. It shares the official bundle identifier, package name, product name and state paths, so installing it over `T3 Code (Beta).app` continues the same installation. Plugin configuration lives in its own files and this mode adds no schema of its own. The merged upstream code may still migrate the shared database, which an older official build may not open, so keep the backup until the new build has proven itself. A build signed with a different identity than the installed app may prompt for Keychain access.
+
+The updater is switched off by the build itself, not only by the absence of a publish feed: the packaged app carries no `app-update.yml`, and the desktop refuses to configure or check any feed, including a managed-policy or mock feed. Otherwise an official release could replace the fork without notice. About shows "Plugin panels build" to tell the two apart.
+
+Back up `~/.t3` and `~/Library/Application Support/t3code-v2` before the first launch. Chromium and the SQLite database are not safe to share between two running versions, so quit the old app first. This repository does not take or verify backups.
 
 ## Discovery
 

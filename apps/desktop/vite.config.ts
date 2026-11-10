@@ -2,6 +2,7 @@ import "vite-plus/test/config";
 import { defaultInclude, defineConfig } from "vite-plus";
 
 import { isDesktopRuntimeExternalDependency } from "../../scripts/lib/desktop-external-packages.ts";
+import { parsePluginBuildMode } from "../../scripts/lib/plugin-build-mode.ts";
 import { loadRepoEnv } from "../../scripts/lib/public-config.ts";
 
 const repoEnv = loadRepoEnv();
@@ -11,7 +12,7 @@ const isMainProcessExternal = (id: string) =>
   id === "electron" || id.startsWith("electron/") || isDesktopRuntimeExternalDependency(id);
 const shouldLaunchElectronAfterPack = process.env.T3CODE_DESKTOP_DEV === "1";
 const publicConfigDefine = {
-  __T3CODE_PLUGIN_BUILD__: JSON.stringify(process.env.T3CODE_PLUGIN_BUILD === "1"),
+  __T3CODE_PLUGIN_BUILD__: JSON.stringify(parsePluginBuildMode(process.env.T3CODE_PLUGIN_BUILD)),
   __T3CODE_BUILD_CLERK_PUBLISHABLE_KEY__: JSON.stringify(
     repoEnv.T3CODE_CLERK_PUBLISHABLE_KEY?.trim() ?? "",
   ),

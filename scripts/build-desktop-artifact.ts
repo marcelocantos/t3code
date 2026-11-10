@@ -40,6 +40,7 @@ import {
   findInlinedExternalPackages,
   selectCliRuntimeExternalDependencies,
 } from "./lib/cli-external-packages.ts";
+import { parsePluginBuildMode } from "./lib/plugin-build-mode.ts";
 import { loadRepoEnv } from "./lib/public-config.ts";
 import { selectDesktopRuntimeExternalDependencies } from "./lib/desktop-external-packages.ts";
 import { resolveCatalogDependencies } from "./lib/resolve-catalog.ts";
@@ -62,7 +63,9 @@ import { Command, Flag } from "effect/cli";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 const LINUX_ICON_SIZES = [16, 22, 24, 32, 48, 64, 128, 256, 512] as const;
-const PLUGIN_BUILD = process.env.T3CODE_PLUGIN_BUILD === "1";
+// "parallel" installs beside the official app; "upgrade" keeps its identity and never updates.
+const PLUGIN_BUILD_MODE = parsePluginBuildMode(process.env.T3CODE_PLUGIN_BUILD);
+const PLUGIN_BUILD = PLUGIN_BUILD_MODE === "parallel";
 const DESKTOP_APP_ID = PLUGIN_BUILD ? "com.marcelocantos.t3code.plugins" : "com.t3tools.t3code";
 const APPLE_TEAM_ID_PATTERN = /^[A-Z0-9]{10}$/u;
 
@@ -2813,7 +2816,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
   const updateChannel = resolveDesktopUpdateChannel(version);
   // Missing publish config infers a GitHub feed from tokens; staging has no repository, so manifest generation would crash.
   buildConfig.publish = null;
-  if (!PLUGIN_BUILD && !isDesktopPreviewVersion(version)) {
+  if (PLUGIN_BUILD_MODE === "off" && !isDesktopPreviewVersion(version)) {
     const publishConfig = yield* resolveGitHubPublishConfig(updateChannel);
     if (publishConfig) {
       buildConfig.publish = [publishConfig];
