@@ -6,16 +6,20 @@ import assetLinks from "../web/public/.well-known/assetlinks.json";
 
 // Keep config parsing independent of local env files and build credentials.
 vi.mock("../../scripts/lib/public-config.ts", () => ({
-  loadRepoEnv: () => ({ APP_VARIANT: process.env.APP_VARIANT }),
+  loadRepoEnv: () => ({
+    APP_VARIANT: process.env.APP_VARIANT,
+    T3CODE_PLUGIN_BUILD: process.env.T3CODE_PLUGIN_BUILD,
+  }),
 }));
 
 afterEach(() => {
   vi.unstubAllEnvs();
 });
 
-async function loadConfig(variant: string | undefined) {
+async function loadConfig(variant: string | undefined, pluginBuild?: string) {
   vi.resetModules();
   vi.stubEnv("APP_VARIANT", variant);
+  vi.stubEnv("T3CODE_PLUGIN_BUILD", pluginBuild);
   return (await import("./app.config.ts")).default;
 }
 
@@ -44,4 +48,23 @@ it.each([
     { scheme: "https", host, pathPrefix: "/threads/" },
   ]);
   expect(assetLinks.map((link) => link.target.package_name)).toContain(identifier);
+});
+
+it("gives the plugin build its own identity beside the official app", async () => {
+  const config = await loadConfig("production", "1");
+  const identifier = "com.marcelocantos.t3code.plugins";
+  expect(config.name).toBe("T3 Code+");
+  expect(config.scheme).toBe("t3code-plugins");
+  expect(config.ios?.bundleIdentifier).toBe(identifier);
+  expect(config.android?.package).toBe(identifier);
+  expect(config.ios?.appleTeamId).not.toBe("ARK85ZXQ4Z");
+  // A Personal Team cannot claim T3's domains, and upstream's OTA bundle lacks the panel renderers.
+  expect(config.ios?.associatedDomains).toBeUndefined();
+  expect(config.updates?.enabled).toBe(false);
+  expect(config.extra?.iosPersonalTeamBuild).toBe(true);
+  expect(appleAppSiteAssociation.applinks.details[0]?.appIDs.join()).not.toContain(identifier);
+});
+
+it("rejects the in-place upgrade mode, which only the desktop can sign", async () => {
+  await expect(loadConfig("production", "upgrade")).rejects.toThrow("no mobile build");
 });

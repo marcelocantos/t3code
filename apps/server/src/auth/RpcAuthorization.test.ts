@@ -68,6 +68,23 @@ describe("RPC authorization scopes", () => {
     }
   });
 
+  it("lets readers see plugin offers and panels but reserves decisions and actions", () => {
+    for (const method of [
+      WS_METHODS.subscribePluginDiscovery,
+      WS_METHODS.subscribePluginPanels,
+      WS_METHODS.subscribeEnvironmentPluginPanels,
+      WS_METHODS.pluginPanelsSurface,
+      WS_METHODS.subscribePluginLinks,
+      WS_METHODS.pluginLinksCard,
+    ]) {
+      expect(requiredScopeForRpcMethod(method)).toBe(AuthOrchestrationReadScope);
+    }
+    expect(requiredScopeForRpcMethod(WS_METHODS.pluginDiscoveryAct)).toBe(AuthSettingsWriteScope);
+    expect(requiredScopeForRpcMethod(WS_METHODS.pluginPanelsAct)).toBe(
+      AuthOrchestrationOperateScope,
+    );
+  });
+
   it("lets thread readers observe and refresh checkout branches", () => {
     for (const method of [WS_METHODS.subscribeVcsBranch, WS_METHODS.vcsRefreshBranch]) {
       expect(requiredScopeForRpcMethod(method)).toBe(AuthOrchestrationReadScope);

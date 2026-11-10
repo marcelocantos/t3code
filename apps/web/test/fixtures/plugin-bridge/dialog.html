@@ -1,0 +1,15 @@
+<!doctype html>
+<html>
+  <body>
+    <button>Blue</button>
+    <script>
+      window.addEventListener("message", (event) => {
+        if (event.source !== parent || event.data?.type !== "t3.bridge.init") return;
+        const port = event.ports[0];
+        const surfaceId = event.data.surfaceId;
+        document.querySelector("button").onclick = () =>
+          port.postMessage({ type: "surface.close", surfaceId, result: { colour: "blue" } });
+      });
+    </script>
+  </body>
+</html>

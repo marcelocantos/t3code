@@ -40,6 +40,7 @@ import {
   findInlinedExternalPackages,
   selectCliRuntimeExternalDependencies,
 } from "./lib/cli-external-packages.ts";
+import { parsePluginBuildMode } from "./lib/plugin-build-mode.ts";
 import { loadRepoEnv } from "./lib/public-config.ts";
 import { selectDesktopRuntimeExternalDependencies } from "./lib/desktop-external-packages.ts";
 import { resolveCatalogDependencies } from "./lib/resolve-catalog.ts";
@@ -62,7 +63,9 @@ import { Command, Flag } from "effect/cli";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 const LINUX_ICON_SIZES = [16, 22, 24, 32, 48, 64, 128, 256, 512] as const;
-const PLUGIN_BUILD = process.env.T3CODE_PLUGIN_BUILD === "1";
+// "parallel" installs beside the official app; "upgrade" keeps its identity and never updates.
+const PLUGIN_BUILD_MODE = parsePluginBuildMode(process.env.T3CODE_PLUGIN_BUILD);
+const PLUGIN_BUILD = PLUGIN_BUILD_MODE === "parallel";
 const DESKTOP_APP_ID = PLUGIN_BUILD ? "com.marcelocantos.t3code.plugins" : "com.t3tools.t3code";
 const APPLE_TEAM_ID_PATTERN = /^[A-Z0-9]{10}$/u;
 
@@ -1101,6 +1104,10 @@ export const DESKTOP_EXTRA_RESOURCES = [
     to: "resource-monitor",
   },
 ] as const;
+const UPGRADE_DISPLAY_NAME_RESOURCE = {
+  from: "apps/desktop/resources/upgrade/InfoPlist.strings",
+  to: "en.lproj/InfoPlist.strings",
+} as const;
 export const LINUX_CAPTURE_EXTRA_RESOURCES = [
   {
     from: "apps/desktop/prod-resources/hyprland-capture",
@@ -2759,7 +2766,7 @@ export function resolvePackageManagerUserAgent(packageManager: string): string {
 }
 
 export function resolveDesktopProductName(version: string): string {
-  if (PLUGIN_BUILD) return "T3 Code Plugins";
+  if (PLUGIN_BUILD) return "T3 Code+";
   return resolveDesktopUpdateChannel(version) === "nightly"
     ? "T3 Code (Nightly)"
     : (desktopPackageJson.productName ?? "T3 Code");
@@ -2813,7 +2820,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
   const updateChannel = resolveDesktopUpdateChannel(version);
   // Missing publish config infers a GitHub feed from tokens; staging has no repository, so manifest generation would crash.
   buildConfig.publish = null;
-  if (!PLUGIN_BUILD && !isDesktopPreviewVersion(version)) {
+  if (PLUGIN_BUILD_MODE === "off" && !isDesktopPreviewVersion(version)) {
     const publishConfig = yield* resolveGitHubPublishConfig(updateChannel);
     if (publishConfig) {
       buildConfig.publish = [publishConfig];
@@ -2827,6 +2834,15 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
     }
   }
 
+  if (platform === "mac" && PLUGIN_BUILD_MODE === "upgrade") {
+    // Spotlight and Finder show "T3 Code+" through a localized display name, so the bundle and
+    // product name that the state paths and the Keychain entry hang off stay "T3 Code (Beta)".
+    buildConfig.extraResources = [
+      ...(buildConfig.extraResources as ReadonlyArray<unknown>),
+      UPGRADE_DISPLAY_NAME_RESOURCE,
+    ];
+  }
+
   if (platform === "mac") {
     const path = yield* Path.Path;
     const repoRoot = yield* RepoRoot;
@@ -2837,6 +2853,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
       extendInfo: {
         // macOS 26 offers Messages/Mail codes in every text field unless opted out.
         NSAutoFillRequiresTextContentTypeForOneTimeCodeOnMac: true,
+        ...(PLUGIN_BUILD_MODE === "upgrade" ? { LSHasLocalizedDisplayName: true } : {}),
         NSLocalNetworkUsageDescription:
           "T3 Code connects to devices on your local network for remote environments and commands run by terminals and coding agents.",
         NSCalendarsUsageDescription:

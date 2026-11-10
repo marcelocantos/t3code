@@ -86,7 +86,10 @@ export class DesktopEnvironment extends Context.Service<
   }
 >()("@t3tools/desktop/app/DesktopEnvironment") {}
 
+// Electron's own name stays "T3 Code Plugins" in the fork: macOS keys the Keychain "Safe Storage"
+// item that protects saved environment secrets to it. Only the name people see is "T3 Code+".
 const APP_BASE_NAME = isPluginBuild ? "T3 Code Plugins" : "T3 Code";
+const APP_DISPLAY_BASE_NAME = isPluginBuild ? "T3 Code+" : APP_BASE_NAME;
 
 function resolveDesktopAppStageLabel(input: {
   readonly isDevelopment: boolean;
@@ -107,7 +110,7 @@ export function resolveDesktopAppBranding(input: {
   return {
     baseName: APP_BASE_NAME,
     stageLabel,
-    displayName: `${APP_BASE_NAME} (${stageLabel})`,
+    displayName: `${APP_DISPLAY_BASE_NAME} (${stageLabel})`,
   };
 }
 

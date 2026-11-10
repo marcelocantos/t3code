@@ -69,7 +69,7 @@ jobs:
           hdiutil attach -nobrowse -readonly -mountpoint "$mount" release/*.dmg
           trap 'hdiutil detach "$mount" -force' EXIT
           node scripts/smoke-desktop-app.ts \
-            --executable "$mount/T3 Code Plugins.app/Contents/MacOS/T3 Code Plugins" \
+            --executable "$mount/T3 Code+.app/Contents/MacOS/T3 Code+" \
             --artifacts-dir "$RUNNER_TEMP/plugin-launch-check"
 
       - name: Checksums

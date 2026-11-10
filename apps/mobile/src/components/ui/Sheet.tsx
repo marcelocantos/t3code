@@ -24,7 +24,7 @@ export function Sheet(props: SheetProps) {
   return (
     <FormSheet
       isOpen={isOpen}
-      detents={formSheetDetents(0.5, 0.9)}
+      detents={props.expanded ? [1] : formSheetDetents(0.5, 0.9)}
       prefersGrabberVisible
       preventNativeDismiss={props.dismissDisabled}
       // The header holds the close button, so the Duo needs no rail inside this sheet.

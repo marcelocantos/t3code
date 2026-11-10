@@ -201,6 +201,13 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.previewStopLocalServer]: AuthTerminalOperateScope,
   [WS_METHODS.subscribePreviewEvents]: AuthOrchestrationReadScope,
   [WS_METHODS.subscribePluginPanels]: AuthOrchestrationReadScope,
+  [WS_METHODS.subscribeEnvironmentPluginPanels]: AuthOrchestrationReadScope,
+  [WS_METHODS.pluginPanelsSurface]: AuthOrchestrationReadScope,
+  [WS_METHODS.subscribePluginLinks]: AuthOrchestrationReadScope,
+  [WS_METHODS.pluginLinksCard]: AuthOrchestrationReadScope,
+  // Plugin actions can change the plugin's own data, such as a Bullseye ledger.
+  [WS_METHODS.pluginPanelsAct]: AuthOrchestrationOperateScope,
+  [WS_METHODS.subscribePluginDiscovery]: AuthOrchestrationReadScope,
   [WS_METHODS.subscribeDiscoveredLocalServers]: AuthOrchestrationReadScope,
   [WS_METHODS.deviceConfigure]: AuthSettingsWriteScope,
   [WS_METHODS.deviceTestHost]: AuthSettingsWriteScope,

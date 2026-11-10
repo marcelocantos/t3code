@@ -76,6 +76,11 @@ const socketConstructor = Layer.succeed(Socket.WebSocketConstructor)((url, optio
   return socket;
 });
 
+const contextHeaders = (grant: PluginGatewayGrant): Record<string, string> => ({
+  ...(grant.threadId === undefined ? {} : { "x-t3-thread-id": grant.threadId }),
+  ...(grant.cwd === undefined ? {} : { "x-t3-workspace": encodeURIComponent(grant.cwd) }),
+});
+
 const pump = Effect.fnUntraced(function* (source: Socket.Socket, target: Socket.Writer) {
   // Continuous frame forwarding shares its enclosing gateway request span.
   const { pull } = yield* source.reader;
@@ -100,7 +105,7 @@ const proxySocket = Effect.fn("PluginGateway.socket")(function* (
 ) {
   const upstream = yield* Socket.makeWebSocket(url.replace(/^http/, "ws"), {
     openTimeout: "10 seconds",
-    headers: { "x-t3-thread-id": grant.threadId, "x-t3-workspace": encodeURIComponent(grant.cwd) },
+    headers: contextHeaders(grant),
   }).pipe(Effect.provide(socketConstructor));
   const client = yield* request.upgrade;
   yield* Effect.scoped(
@@ -132,8 +137,7 @@ const proxyHttp = Effect.fn("PluginGateway.http")(function* (
     HttpClientRequest.setHeaders({
       accept: request.headers.accept ?? "*/*",
       "content-type": request.headers["content-type"] ?? "application/octet-stream",
-      "x-t3-thread-id": grant.threadId,
-      "x-t3-workspace": encodeURIComponent(grant.cwd),
+      ...contextHeaders(grant),
     }),
     body ? HttpClientRequest.bodyUint8Array(body, request.headers["content-type"]) : (self) => self,
   );
@@ -179,7 +183,7 @@ const handler = Effect.gen(function* () {
     "access-control-allow-origin": "null",
     "access-control-allow-methods": [...METHODS].join(", "),
     "access-control-allow-headers": "content-type, accept",
-    "content-security-policy": `sandbox allow-scripts allow-forms; default-src 'none'; script-src 'unsafe-inline' ${root}; style-src 'unsafe-inline' ${root}; img-src data: blob: ${root}; font-src ${root}; connect-src ${root} ${wsRoot}; base-uri ${root}; form-action ${root}; frame-src 'none'; worker-src 'none'; object-src 'none'`,
+    "content-security-policy": `sandbox allow-scripts allow-forms; default-src 'none'; script-src 'unsafe-inline' 'wasm-unsafe-eval' ${root}; style-src 'unsafe-inline' ${root}; img-src data: blob: ${root}; font-src ${root}; connect-src ${root} ${wsRoot}; base-uri ${root}; form-action ${root}; frame-src 'none'; worker-src 'none'; object-src 'none'`,
   };
   if (request.method === "OPTIONS") return HttpServerResponse.empty({ status: 204, headers });
   if (grant.active >= ACTIVE_LIMIT) return HttpServerResponse.empty({ status: 429, headers });

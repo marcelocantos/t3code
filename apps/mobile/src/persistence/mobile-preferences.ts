@@ -130,6 +130,8 @@ export interface Preferences {
   readonly threadListFilters?: ThreadListFilters;
   readonly pullRequestListFilters?: PullRequestListPreferences;
   readonly workspaceSelections?: WorkspaceSelections;
+  /** Plugin panel heights by `pluginId/panelId`. */
+  readonly pluginPanelHeights?: Readonly<Record<string, number>>;
 }
 
 export class MobilePreferencesLoadError extends Schema.TaggedError<MobilePreferencesLoadError>()(
@@ -211,6 +213,7 @@ function sanitizePreferences(parsed: Preferences): Preferences {
     threadListFilters?: ThreadListFilters;
     pullRequestListFilters?: PullRequestListPreferences;
     workspaceSelections?: WorkspaceSelections;
+    pluginPanelHeights?: Readonly<Record<string, number>>;
   } = {};
 
   if (Array.isArray(parsed.hiddenNavigationTabs)) {
@@ -364,6 +367,13 @@ function sanitizePreferences(parsed: Preferences): Preferences {
   }
   if (isWorkspaceSelections(parsed.workspaceSelections)) {
     preferences.workspaceSelections = parsed.workspaceSelections;
+  }
+  if (typeof parsed.pluginPanelHeights === "object" && parsed.pluginPanelHeights !== null) {
+    preferences.pluginPanelHeights = Object.fromEntries(
+      Object.entries(parsed.pluginPanelHeights).filter(
+        (entry): entry is [string, number] => typeof entry[1] === "number",
+      ),
+    );
   }
   return preferences;
 }
