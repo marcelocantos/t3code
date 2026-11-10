@@ -65,6 +65,7 @@ export type EnvironmentSubscriptionRpcTag =
   | typeof WS_METHODS.subscribeTerminalMetadata
   | typeof WS_METHODS.subscribePreviewEvents
   | typeof WS_METHODS.subscribePluginPanels
+  | typeof WS_METHODS.subscribeEnvironmentPluginPanels
   | typeof WS_METHODS.subscribePluginDiscovery
   | typeof WS_METHODS.subscribeDiscoveredLocalServers
   | typeof WS_METHODS.subscribeDeviceState

@@ -18,18 +18,26 @@ import * as PluginDiscovery from "./PluginDiscovery.ts";
 interface Service {
   readonly baseUrl: string;
   readonly stop: Effect.Effect<void>;
+  /** Change the scopes the probe declares from now on. */
+  readonly declare: (scopes: ReadonlyArray<string>) => void;
 }
 
 /** Identity of the fictional project `acme/<name>` that runs a test plugin. */
 const identity = (name: string) => `github.com/acme/${name}`;
 
 /** A loopback service that answers the context-free probe as the named plugin. */
-const startService = (id: string, name: string, path = "/plugins/t3") =>
+const startService = (
+  id: string,
+  name: string,
+  path = "/plugins/t3",
+  scopes?: ReadonlyArray<string>,
+) =>
   Effect.promise(async (): Promise<Service> => {
+    let declared = scopes;
     const server = NodeHttp.createServer((_request, response) =>
       response
         .writeHead(200, { "content-type": "application/json" })
-        .end(JSON.stringify({ protocol: 1, id: identity(id), name })),
+        .end(JSON.stringify({ protocol: 1, id: identity(id), name, scopes: declared })),
     );
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
     const address = server.address();
@@ -37,11 +45,14 @@ const startService = (id: string, name: string, path = "/plugins/t3") =>
     return {
       baseUrl: `http://127.0.0.1:${address.port}${path}`,
       stop: Effect.promise(() => new Promise<void>((resolve) => server.close(() => resolve()))),
+      declare: (next) => {
+        declared = next;
+      },
     };
   });
 
-const runningService = (id: string, name: string, path?: string) =>
-  Effect.acquireRelease(startService(id, name, path), (service) => service.stop);
+const runningService = (id: string, name: string, path?: string, scopes?: ReadonlyArray<string>) =>
+  Effect.acquireRelease(startService(id, name, path, scopes), (service) => service.stop);
 
 const withEnvironment = <A, E>(
   body: (environment: {
@@ -165,7 +176,12 @@ test(
   "enabling saves the configuration, activates it live, and survives a restart",
   withEnvironment(({ advertise, start, stateDirectory }) =>
     Effect.gen(function* () {
-      const service = yield* runningService("alpha", "Alpha");
+      // Scopes from the probe ride along; ones this T3 doesn't know are dropped, not fatal.
+      const service = yield* runningService("alpha", "Alpha", undefined, [
+        "environment",
+        "sidebar",
+        "thread",
+      ]);
       yield* advertise("1", "github.com/acme/alpha", "Alpha", service.baseUrl);
       yield* start(
         Effect.gen(function* () {
@@ -191,6 +207,7 @@ test(
             {
               id: "github.com/acme/alpha",
               connection: { kind: "server", baseUrl: service.baseUrl },
+              scopes: ["environment", "thread"],
             },
           ]);
         }),
@@ -206,6 +223,8 @@ test(
             name: "Alpha",
             status: "enabled",
             baseUrl: service.baseUrl,
+            scopes: ["environment", "thread"],
+            approvedScopes: ["environment", "thread"],
           },
         ],
       });
@@ -215,8 +234,78 @@ test(
         Effect.gen(function* () {
           const discovery = yield* PluginDiscovery.PluginDiscovery;
           const configs = yield* firstConfigs(discovery);
-          assert.deepEqual(configs._tag === "Some" ? configs.value.configs.map((c) => c.id) : [], [
-            identity("alpha"),
+          assert.deepEqual(
+            configs._tag === "Some"
+              ? configs.value.configs.map((c) => [c.id, c.scopes] as const)
+              : [],
+            [[identity("alpha"), ["environment", "thread"]]],
+          );
+        }),
+      );
+    }),
+  ),
+);
+
+test(
+  "a plugin that widens its scopes waits for fresh consent and may narrow silently",
+  withEnvironment(({ advertise, start }) =>
+    Effect.gen(function* () {
+      const service = yield* runningService("alpha", "Alpha", undefined, ["thread"]);
+      yield* advertise("1", "github.com/acme/alpha", "Alpha", service.baseUrl);
+      yield* start(
+        Effect.gen(function* () {
+          const discovery = yield* PluginDiscovery.PluginDiscovery;
+          const scopesOf = (value: PluginDiscovery.EffectivePluginConfigs) =>
+            value.configs.find((config) => config.id === identity("alpha"))?.scopes;
+          const configs = yield* Queue.unbounded<PluginDiscovery.EffectivePluginConfigs>();
+          yield* discovery.configs.pipe(
+            Stream.runForEach((value) => Queue.offer(configs, value)),
+            Effect.forkScoped,
+          );
+          // Scanning runs only while someone watches, as a settings page would.
+          yield* discovery.snapshots.pipe(Stream.runDrain, Effect.forkScoped);
+          yield* until(discovery, (snapshot) => item(snapshot, identity("alpha")) !== undefined);
+          const enable = { action: "enable", id: identity("alpha"), baseUrl: service.baseUrl };
+          yield* discovery.act({ ...enable, action: "enable" });
+          const approved = yield* Stream.fromQueue(configs).pipe(
+            Stream.filter((value) => scopesOf(value) !== undefined),
+            Stream.runHead,
+          );
+          assert.deepEqual(approved._tag === "Some" ? scopesOf(approved.value) : [], ["thread"]);
+
+          // The plugin starts asking for every project; nothing widens until the user allows it.
+          service.declare(["thread", "environment"]);
+          yield* advertise("1", "github.com/acme/alpha", "Alpha", service.baseUrl);
+          const pending = yield* until(
+            discovery,
+            (snapshot) => item(snapshot, identity("alpha"))?.pendingScopes !== undefined,
+          );
+          assert.deepEqual(item(pending, identity("alpha"))?.pendingScopes, ["environment"]);
+          assert.deepEqual(
+            (yield* firstConfigs(discovery)).pipe(Option.map(scopesOf), Option.getOrUndefined),
+            ["thread"],
+          );
+
+          yield* discovery.act({ ...enable, action: "enable" });
+          const allowed = yield* until(
+            discovery,
+            (snapshot) => item(snapshot, identity("alpha"))?.pendingScopes === undefined,
+          );
+          assert.equal(item(allowed, identity("alpha"))?.state, "enabled");
+          assert.deepEqual(
+            (yield* firstConfigs(discovery)).pipe(Option.map(scopesOf), Option.getOrUndefined),
+            ["thread", "environment"],
+          );
+
+          // Dropping a scope needs no consent.
+          service.declare(["environment"]);
+          yield* advertise("1", "github.com/acme/alpha", "Alpha", service.baseUrl);
+          const narrowed = yield* Stream.fromQueue(configs).pipe(
+            Stream.filter((value) => scopesOf(value)?.length === 1),
+            Stream.runHead,
+          );
+          assert.deepEqual(narrowed._tag === "Some" ? scopesOf(narrowed.value) : [], [
+            "environment",
           ]);
         }),
       );

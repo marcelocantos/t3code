@@ -2,7 +2,7 @@
 import * as NodeFS from "node:fs";
 import * as NodeHttp from "node:http";
 import * as NodePath from "node:path";
-import { PluginIdentity } from "@t3tools/contracts";
+import { PluginIdentity, PluginPanelScope } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import { readThemeFileGuarded } from "../environmentTheme.ts";
@@ -36,8 +36,11 @@ const ProbeResponse = Schema.Struct({
   protocol: Schema.Literal(1),
   id: PluginIdentity,
   name: Name,
+  // Strings, not literals: a scope this T3 doesn't know must not make the plugin incompatible.
+  scopes: Schema.optional(Schema.Array(Schema.String).check(Schema.isMaxLength(8))),
 });
 const isPluginIdentity = Schema.is(PluginIdentity);
+const isPluginPanelScope = Schema.is(PluginPanelScope);
 const decodeManifest = Schema.decodeUnknownOption(Schema.fromJsonString(Manifest));
 const decodeProbe = Schema.decodeUnknownOption(Schema.fromJsonString(ProbeResponse));
 
@@ -47,6 +50,8 @@ export interface PluginCandidate {
   readonly baseUrl: string;
   /** Newest manifest advertising this endpoint, for choosing among several. */
   readonly mtimeMs: number;
+  /** Scopes the probe answer declared; absent means thread panels only. */
+  readonly scopes?: ReadonlyArray<PluginPanelScope>;
 }
 
 /**
@@ -147,10 +152,10 @@ export function readManifests(directory: string): ReadonlyArray<PluginCandidate>
  * upgrade, must name the same plugin. Redirects are not followed, and anything but a small JSON
  * answer counts as not compatible.
  */
-function probePlugin(candidate: PluginCandidate): Promise<boolean> {
+function probePlugin(candidate: PluginCandidate): Promise<PluginCandidate | undefined> {
   return new Promise((resolve) => {
     let settled = false;
-    const settle = (value: boolean) => {
+    const settle = (value: PluginCandidate | undefined) => {
       if (settled) return;
       settled = true;
       resolve(value);
@@ -168,7 +173,7 @@ function probePlugin(candidate: PluginCandidate): Promise<boolean> {
           const contentType = response.headers["content-type"] ?? "";
           if (response.statusCode !== 200 || !/^application\/json\s*(;|$)/i.test(contentType)) {
             response.resume();
-            settle(false);
+            settle(undefined);
             return;
           }
           const chunks: Array<Buffer> = [];
@@ -177,26 +182,32 @@ function probePlugin(candidate: PluginCandidate): Promise<boolean> {
             size += chunk.length;
             if (size > MAX_PROBE_BYTES) {
               response.destroy();
-              settle(false);
+              settle(undefined);
               return;
             }
             chunks.push(chunk);
           });
           response.on("end", () => {
             const body = decodeProbe(Buffer.concat(chunks).toString("utf8"));
-            settle(
-              body._tag === "Some" &&
-                body.value.id === candidate.id &&
-                body.value.name === candidate.name,
-            );
+            if (
+              body._tag === "None" ||
+              body.value.id !== candidate.id ||
+              body.value.name !== candidate.name
+            ) {
+              settle(undefined);
+              return;
+            }
+            const declared = body.value.scopes;
+            const scopes = declared && [...new Set(declared.filter(isPluginPanelScope))];
+            settle(scopes ? { ...candidate, scopes } : candidate);
           });
-          response.on("error", () => settle(false));
+          response.on("error", () => settle(undefined));
         },
       );
-      request.on("error", () => settle(false));
+      request.on("error", () => settle(undefined));
       request.end();
     } catch {
-      settle(false);
+      settle(undefined);
     }
   });
 }
@@ -216,10 +227,7 @@ export const scanLivePlugins = Effect.fn("PluginManifests.scanLivePlugins")(func
   }
   const probed = yield* Effect.forEach(
     [...newest.values()],
-    (candidate) =>
-      Effect.promise(() => probePlugin(candidate)).pipe(
-        Effect.map((live) => (live ? candidate : undefined)),
-      ),
+    (candidate) => Effect.promise(() => probePlugin(candidate)),
     { concurrency: PROBE_CONCURRENCY },
   );
   return probed

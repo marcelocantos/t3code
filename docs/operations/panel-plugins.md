@@ -8,7 +8,7 @@ The fork runs alongside the official app. Its data lives in `~/.t3-plugins/userd
 
 Use this fork's desktop app or bundled web client for panels; official T3 clients do not include the panel renderers. Both desktop apps register the upstream `t3code` link scheme, so external sign-in/deep links can open either app. Direct environment connections avoid that ambiguity.
 
-A plugin that advertises itself (see [Discovery](#discovery)) appears in thread details with an **Enable** button; nothing needs configuring by hand. The URL it advertises is resolved by the T3 environment hosting the thread, so a loopback address refers to that machine. T3 does not bundle or launch any plugin: each one is a service its own project runs.
+A plugin that advertises itself (see [Discovery](#discovery)) appears in **Settings → Plugins**; nothing needs configuring by hand. The URL it advertises is resolved by the T3 environment hosting the thread, so a loopback address refers to that machine. T3 does not bundle or launch any plugin: each one is a service its own project runs.
 
 ## Build modes
 
@@ -81,11 +81,14 @@ the advertisement is stale and it is ignored. The same route's WebSocket upgrade
 [protocol](#protocol-version-1) connection and is unaffected.
 
 **Consent.** T3 re-checks advertisements when the directory changes and every ten seconds while a
-client has thread details open. A compatible plugin is offered with **Enable** and **Dismiss**.
-Nothing connects, and no workspace or thread reaches the plugin, until the user enables it. Enabling
-saves the endpoint the user saw to `plugin-discovery.json` beside `settings.json` and shows the panel
-in already-open threads without a restart. The choice requires the `settings:write` permission;
-viewing offers requires only `orchestration:read`.
+client is connected. New plugins appear in **Settings → Plugins**, which explains why it opened:
+the first time a desktop or web client sees an undecided plugin, it opens that page once; a plugin
+found later in the session gets a "New plugin found" notice instead. Mobile shows a count on its
+Plugins settings row. Select plugins and choose **Enable selected** (the unselected ones are
+dismissed) or **Not now** (nothing is decided). Nothing connects, and no workspace or thread reaches
+the plugin, until the user enables it. Enabling saves the endpoint the user saw, and the scopes it
+declared, to `plugin-discovery.json` beside `settings.json` and shows its panels without a restart.
+The choice requires the `settings:write` permission; viewing requires only `orchestration:read`.
 
 - **Dismiss** is remembered per plugin id across restarts and endpoint changes; the plugin is not
   offered again until the user chooses **Ask again**.
@@ -94,6 +97,9 @@ viewing offers requires only `orchestration:read`.
 - If an enabled plugin advertises a different endpoint (for example it restarted on another port), T3
   keeps using the endpoint the user approved and offers **Switch** or **Keep current**. A changed
   endpoint is never trusted silently.
+- If an enabled plugin starts declaring a scope the user did not approve, such as `environment`
+  (which reveals every project root), T3 keeps the approved scopes and asks again with **Allow**.
+  Dropping a scope needs no consent.
 - When several instances advertise one id, the newest advertisement is offered; each live endpoint
   can still be enabled by its own address.
 - A plugin in `panel-plugins.json` takes precedence over a discovered one with the same id, and T3
@@ -202,6 +208,69 @@ frames disconnect the plugin and show an error. Plugins should validate all inco
 and bind locally unless deliberately deployed remotely. The example rejects browser Origins;
 a separately deployed plugin must provide its own transport access controls.
 
+## Row actions, surfaces and environment panels
+
+These additions keep `protocol: 1`. A plugin that sends none of the new fields behaves exactly as before.
+
+**Rows** may carry `badges` (`{ "label", "tone"? }`, tones `default`, `muted`, `info`, `success`,
+`warning`, `danger`), `actions`, a `primaryActionId` shown as a visible button, a `hoverSurfaceId`
+fetched as a hover card, and, in environment panels, `navigate: { "projectIds": [...] }`. Every other
+action appears in the row's `…` menu. Action kinds:
+
+| `kind`    | T3 does                                                                                                                                                                                                                |
+| --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `agent`   | Sends `prompt` to the thread as the user's own message, then offers Stop while that run is active. Thread panels only; needs `orchestration:operate`. The plugin never sees it.                                        |
+| `plugin`  | Sends an `action` frame. `confirm` asks the user first.                                                                                                                                                                |
+| `date`    | Offers Tomorrow, the day after tomorrow (by weekday name), Next week (the coming Monday), Custom… and, when `value` is set, Clear (`clearLabel`). The value is a local calendar date `YYYY-MM-DD`, or `null` to clear. |
+| `surface` | Requests surface `surfaceId` for the row and opens it as a dialog (`modal: true` blocks the panel).                                                                                                                    |
+| `menu`    | A submenu of the kinds above.                                                                                                                                                                                          |
+
+**Surfaces** are structured content T3 renders: `{ "title", "blocks", "width"? }` with blocks `heading`,
+`text`, `fields`, `list` (an item with `surfaceId` opens a child card anchored to it and sends the item
+id), `form` (submitting sends `actionId` with `{ fieldId: value }`), and `actions` (buttons). Children
+close with their parent. A plugin never supplies executable UI to T3's page.
+
+**Requests.** T3 sends:
+
+```json
+{ "type": "action", "requestId": "r1", "scope": "thread", "threadId": "…", "cwd": "/workspace",
+  "panelId": "targets", "rowId": "T12", "actionId": "due", "surfaceId": "details", "value": "2026-11-12" }
+{ "type": "surface", "requestId": "r2", "scope": "thread", "threadId": "…", "cwd": "/workspace",
+  "panelId": "targets", "rowId": "T12", "surfaceId": "details", "itemId": "T9" }
+```
+
+`surfaceId`, `value` and `itemId` are omitted when not applicable. The plugin answers each with
+`{ "type": "result", "requestId": "r1", "ok": true, "surface"?: {…}, "close"?: true }` or
+`{ "type": "result", "requestId": "r1", "ok": false, "error": "Shown to the user" }`. A surface request
+must answer with a `surface`. For an action, `close` closes the surface it came from and `surface`
+opens a child of it (or a dialog for a row action). T3 waits ten seconds and allows 64 outstanding
+requests per connection; a result for an unknown request is ignored. Push a fresh `panels` snapshot
+after a change rather than waiting for your own refresh cycle. Actions need `orchestration:operate`;
+surfaces need `orchestration:read`.
+
+**Scopes.** A plugin declares where its panels go with `"scopes": ["thread", "environment"]` in its
+discovery probe answer, or in its `panel-plugins.json` entry. The default is `["thread"]`, so an older
+plugin never receives the frames below. Thread panels sit in thread details; environment panels sit
+in the left sidebar. An environment subscription has no thread:
+
+```json
+{
+  "type": "subscribe",
+  "protocol": 1,
+  "scope": "environment",
+  "subscriptionId": "opaque-id",
+  "projects": [{ "projectId": "…", "title": "t3code", "cwd": "/work/t3code" }],
+  "filters": []
+}
+```
+
+`projects` lists the environment's unarchived projects. When it changes, T3 sends `subscribe` again
+with the same `subscriptionId`; treat that as a replacement. Environment `action` and `surface` frames
+carry `"scope": "environment"` and the same `projects` instead of `threadId` and `cwd`, so encode
+enough in row ids to find your data. A row's `navigate.projectIds` lets T3 open a thread of one of
+those projects, ask the user to choose when several exist, or offer a new thread. Environment web
+panels receive neither `x-t3-thread-id` nor `x-t3-workspace`.
+
 ## Embedded web applications
 
 A plugin may also send a web panel alongside native lists:
@@ -242,6 +311,33 @@ operations to 32 per capability. HTTP requests time out after 30 seconds. Web pa
 receive no web capability. Native lists remain available with `orchestration:read`. Configure
 only trusted plugins. Use a DNS name or IPv4 address for the T3 browser connection: Chromium
 does not accept IPv6 literal hosts in the gateway’s path-restricted CSP sources.
+
+### Host bridge
+
+A web panel cannot draw outside its iframe, so T3 offers a narrow bridge for hover cards, dialogs
+and agent requests. After each load T3 posts `{ "type": "t3.bridge.init", "version": 1 }` with a
+`MessagePort` (`event.ports[0]`); talk only over that port. Messages are JSON, at most 256 KiB, and
+validated; an invalid one gets an `error` reply.
+
+| Panel → T3                                                                                                   | Meaning                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| ------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `surface.open { requestId, surfaceId, parentSurfaceId?, presentation, anchor?, placement?, size?, content }` | `presentation` is `popover`, `dialog` or `modal`. `anchor` is a `{ x, y, width, height }` rectangle from `getBoundingClientRect()` in the panel's viewport; T3 translates and clamps it. `placement` is `left`, `right`, `top` or `bottom`, optionally with `-start` or `-end`. `content` is `{ "kind": "structured", "surface": {…} }` or `{ "kind": "web", "path": "./card.html" }`; a web path is relative and must stay inside the panel's directory. Sizes are clamped to 160–800 × 80–900 px. |
+| `surface.update { surfaceId, anchor?, content? }`                                                            | Move or refresh an open surface.                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `surface.close { surfaceId, result? }`                                                                       | Close a surface this frame opened, or the frame's own surface.                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `agent.prompt { requestId, prompt }`, `agent.stop { requestId }`                                             | Ask to send a message to the thread, or stop a run this panel started. T3 asks the user first.                                                                                                                                                                                                                                                                                                                                                                                                      |
+
+| T3 → panel                                                                | Meaning                                                                                                    |
+| ------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `surface.opened { requestId, surfaceId }`                                 | The surface is showing.                                                                                    |
+| `surface.closed { surfaceId, reason, result? }`                           | `reason` is `closed`, `dismissed` or `parent`. A child web surface's `result` reaches its parent this way. |
+| `surface.action { surfaceId, actionId, value? }`                          | A button, form or list item in a structured surface this frame opened.                                     |
+| `agent.result { requestId, ok, error? }`, `error { requestId?, message }` | Outcomes.                                                                                                  |
+
+Surfaces with web content are sandboxed frames like the panel and get their own bridge, whose init
+message also carries their `surfaceId`. Surface ids are chosen by the frame and unique within it.
+Closing a surface closes its children, and everything closes when the panel unmounts or the thread
+changes. The demo plugin opens a structured hover card, a web dialog that returns a result to its
+parent, and an agent request.
 
 The runnable example `apps/server/scripts/plugin-spa-demo.mjs` (server package script
 `plugin:spa-demo`) serves a thread counter. Configure it as a sidecar using the example above.

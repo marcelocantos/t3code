@@ -3283,6 +3283,12 @@ export const layerWsRpc = (
           panelPlugins.subscribe(input, {
             allowWeb: currentSession.scopes.includes(AuthOrchestrationOperateScope),
           }),
+        [WS_METHODS.subscribeEnvironmentPluginPanels]: (input) =>
+          panelPlugins.subscribeEnvironment(input, {
+            allowWeb: currentSession.scopes.includes(AuthOrchestrationOperateScope),
+          }),
+        [WS_METHODS.pluginPanelsAct]: (input) => panelPlugins.act(input),
+        [WS_METHODS.pluginPanelsSurface]: (input) => panelPlugins.surface(input),
         [WS_METHODS.subscribePluginDiscovery]: () => pluginDiscovery.snapshots,
         [WS_METHODS.pluginDiscoveryAct]: (input) => pluginDiscovery.act(input),
         [WS_METHODS.subscribeDiscoveredLocalServers]: (input) =>

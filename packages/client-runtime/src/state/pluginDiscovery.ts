@@ -1,5 +1,6 @@
 import {
   WS_METHODS,
+  type EnvironmentId,
   type PluginDiscoveryActionInput,
   type PluginDiscoveryItem,
 } from "@t3tools/contracts";
@@ -42,13 +43,17 @@ const host = (baseUrl: string) => {
 
 /** Whether the plugin waits on a decision rather than merely being listed. */
 export const pluginNeedsDecision = (item: PluginDiscoveryItem) =>
-  item.state === "offered" || (item.state === "enabled" && item.discoveredBaseUrl !== undefined);
+  item.state === "offered" ||
+  (item.state === "enabled" &&
+    (item.discoveredBaseUrl !== undefined || item.pendingScopes !== undefined));
 
 export function describePluginDiscoveryItem(item: PluginDiscoveryItem): string {
   switch (item.state) {
     case "offered":
-      return `${item.name} is running at ${host(item.baseUrl ?? "")}. Show it in thread details?`;
+      return `Running at ${host(item.baseUrl ?? "")}`;
     case "enabled":
+      if (item.discoveredBaseUrl === undefined && item.pendingScopes?.includes("environment"))
+        return `${item.name} now also asks to show a sidebar panel that sees all your projects. Allow it?`;
       return item.discoveredBaseUrl === undefined
         ? item.live
           ? "Enabled"
@@ -78,7 +83,9 @@ export function pluginDiscoveryChoices(
     case "enabled":
       return [
         ...(item.discoveredBaseUrl === undefined
-          ? []
+          ? item.pendingScopes === undefined
+            ? []
+            : enable("Allow", item.baseUrl)
           : [
               ...enable("Switch", item.discoveredBaseUrl),
               {
@@ -101,4 +108,53 @@ export function pluginDiscoveryChoices(
     case "manual":
       return [];
   }
+}
+
+/**
+ * A decision a client has surfaced, keyed by the endpoint too, so a plugin that moves to a new
+ * endpoint is surfaced again.
+ */
+export const pluginSurfacingKey = (environmentId: EnvironmentId, item: PluginDiscoveryItem) =>
+  JSON.stringify([
+    environmentId,
+    item.id,
+    item.discoveredBaseUrl ?? item.baseUrl ?? "",
+    ...(item.pendingScopes ?? []),
+  ]);
+
+export interface PluginSurfacingPlan {
+  /** Open Settings → Plugins for this environment. */
+  readonly navigate: boolean;
+  /** Plugins to announce with a toast instead. */
+  readonly announce: ReadonlyArray<PluginDiscoveryItem>;
+  /** Keys to record as surfaced. */
+  readonly record: ReadonlyArray<string>;
+}
+
+/**
+ * What to do with an environment's discovery snapshot. The first snapshot an app session sees
+ * opens settings once, if anything waits on a decision this client has not shown; later
+ * discoveries get a toast. Clients that cannot decide surface nothing and record nothing, so a
+ * client granted access later still shows them.
+ */
+export function planPluginSurfacing(input: {
+  readonly environmentId: EnvironmentId;
+  readonly items: ReadonlyArray<PluginDiscoveryItem>;
+  readonly surfaced: ReadonlySet<string>;
+  readonly canDecide: boolean;
+  /** The app session already looked at this environment's plugins. */
+  readonly startupDone: boolean;
+  /** The app session already opened settings for some environment. */
+  readonly navigated: boolean;
+}): PluginSurfacingPlan {
+  if (!input.canDecide) return { navigate: false, announce: [], record: [] };
+  const fresh = input.items.filter(
+    (item) =>
+      pluginNeedsDecision(item) &&
+      !input.surfaced.has(pluginSurfacingKey(input.environmentId, item)),
+  );
+  const record = fresh.map((item) => pluginSurfacingKey(input.environmentId, item));
+  if (fresh.length === 0) return { navigate: false, announce: [], record };
+  if (!input.startupDone && !input.navigated) return { navigate: true, announce: [], record };
+  return { navigate: false, announce: fresh, record };
 }

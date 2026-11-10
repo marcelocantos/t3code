@@ -1,19 +1,76 @@
-import { PluginWebPanel } from "../plugins/PluginWebPanel";
-import { PluginDiscoveryCard } from "./PluginDiscoveryCard";
+import { useAtomSet, useAtomValue } from "@effect/atom-react";
+import {
+  CommandId,
+  MessageId,
+  type ScopedThreadRef,
+  type SubscribePluginPanelsInput,
+} from "@t3tools/contracts";
+import { Atom } from "effect/reactivity";
 import { useState } from "react";
-import { Pressable, View } from "react-native";
-import { createPanelPluginAtoms } from "@t3tools/client-runtime/state/panelPlugins";
-import type { ScopedThreadRef, SubscribePluginPanelsInput } from "@t3tools/contracts";
-import { AppText as Text } from "../../components/ui/AppText";
-import { connectionAtomRuntime } from "../../connection/runtime";
-import { useEnvironmentQuery } from "../../state/query";
+import { View } from "react-native";
 
-const pluginPanels = createPanelPluginAtoms(connectionAtomRuntime);
+import * as Dialog from "../../components/ui/Dialog";
+import { AppText as Text } from "../../components/ui/AppText";
+import { scopedThreadKey } from "../../lib/scopedEntities";
+import { uuidv4 } from "../../lib/uuid";
+import { useEnvironmentQuery } from "../../state/query";
+import { enqueueThreadOutboxMessage } from "../../state/thread-outbox";
+import { threadEnvironment } from "../../state/threads";
+import { useAtomCommand } from "../../state/use-atom-command";
+import { useQuietThreadStructure } from "../../state/use-thread-detail";
+import { useThreadOutboxMessages } from "../../state/use-thread-outbox";
+import { threadPluginPanels } from "../plugins/pluginAtoms";
+import { PluginPanels, type PluginAgentControls } from "../plugins/PluginPanels";
+import { pluginAgentRunState } from "../plugins/pluginRowMenu";
+
+/** The message each row's agent action last sent, by thread key and row key, for this session. */
+const sentAgentPromptsAtom = Atom.make<
+  Readonly<Record<string, Readonly<Record<string, MessageId>>>>
+>({}).pipe(Atom.keepAlive, Atom.withLabel("mobile:plugin-panels:sent-agent-prompts"));
+
+function useThreadAgentControls(threadRef: ScopedThreadRef): PluginAgentControls {
+  const threadKey = scopedThreadKey(threadRef.environmentId, threadRef.threadId);
+  const sent = useAtomValue(sentAgentPromptsAtom)[threadKey];
+  const setSent = useAtomSet(sentAgentPromptsAtom);
+  const runs = useQuietThreadStructure(threadRef)?.projection.runs ?? [];
+  const queued = useThreadOutboxMessages()[threadKey] ?? [];
+  const queuedMessageIds = new Set(queued.map((message) => message.messageId));
+  const interruptTurn = useAtomCommand(threadEnvironment.interruptTurn, "plugin agent stop");
+  return {
+    stateOf: (rowKey) => pluginAgentRunState({ messageId: sent?.[rowKey], queuedMessageIds, runs }),
+    start: (rowKey, prompt) => {
+      const messageId = MessageId.make(uuidv4());
+      setSent((current) => ({
+        ...current,
+        [threadKey]: { ...current[threadKey], [rowKey]: messageId },
+      }));
+      // The composer's path: queued behind a running turn, delivered by the outbox.
+      enqueueThreadOutboxMessage({
+        environmentId: threadRef.environmentId,
+        threadId: threadRef.threadId,
+        messageId,
+        commandId: CommandId.make(uuidv4()),
+        text: prompt,
+        attachments: [],
+        dispatchMode: "queue",
+        createdAt: new Date().toISOString(),
+      }).catch(() => Dialog.alert("Could not send the plugin's prompt"));
+    },
+    stop: (runId) =>
+      void interruptTurn({
+        environmentId: threadRef.environmentId,
+        input: { threadId: threadRef.threadId, runId },
+      }).then((result) => {
+        if (result._tag === "Failure") Dialog.alert("Could not stop the agent");
+      }),
+  };
+}
 
 export function ThreadPluginPanels({ threadRef }: { threadRef: ScopedThreadRef }) {
   const [filters, setFilters] = useState<SubscribePluginPanelsInput["filters"]>([]);
+  const agent = useThreadAgentControls(threadRef);
   const query = useEnvironmentQuery(
-    pluginPanels({
+    threadPluginPanels({
       environmentId: threadRef.environmentId,
       input: { threadId: threadRef.threadId, filters },
     }),
@@ -25,79 +82,18 @@ export function ThreadPluginPanels({ threadRef }: { threadRef: ScopedThreadRef }
           Plugin panels unavailable: {query.error}
         </Text>
       ) : null}
-      {query.data?.map((plugin) =>
-        plugin.status !== "connected" ? (
-          <Text key={plugin.pluginId} className="text-sm text-foreground-muted">
-            {plugin.pluginId}:{" "}
-            {plugin.status === "connecting"
-              ? "Connecting…"
-              : plugin.status === "error"
-                ? "Check the plugin configuration."
-                : "Disconnected. Reconnecting…"}
-          </Text>
-        ) : (
-          plugin.panels.map((panel) =>
-            panel.kind === "web" ? (
-              <View key={`${plugin.pluginId}:${panel.id}`} className="gap-2">
-                <Text accessibilityRole="header" className="font-t3-medium text-foreground">
-                  {panel.title}
-                </Text>
-                <PluginWebPanel environmentId={threadRef.environmentId} panel={panel} />
-              </View>
-            ) : (
-              <View
-                key={`${plugin.pluginId}:${panel.id}`}
-                className="gap-2 rounded-xl bg-grouped-card p-3"
-              >
-                <Text accessibilityRole="header" className="font-t3-medium text-foreground">
-                  {panel.title}
-                </Text>
-                <View className="flex-row flex-wrap gap-2">
-                  {panel.filters.map((filter) => (
-                    <Pressable
-                      key={filter.id}
-                      accessibilityRole="radio"
-                      accessibilityLabel={`${panel.title}: ${filter.label}`}
-                      accessibilityState={{ checked: panel.filter === filter.id }}
-                      className="min-h-11 justify-center rounded-lg bg-subtle px-3"
-                      onPress={() =>
-                        setFilters((current) => [
-                          ...current.filter(
-                            (item) =>
-                              item.pluginId !== plugin.pluginId || item.panelId !== panel.id,
-                          ),
-                          { pluginId: plugin.pluginId, panelId: panel.id, filter: filter.id },
-                        ])
-                      }
-                    >
-                      <Text className="text-sm text-foreground">
-                        {panel.filter === filter.id ? "✓ " : ""}
-                        {filter.label}
-                      </Text>
-                    </Pressable>
-                  ))}
-                </View>
-                {panel.rows.map((row) => (
-                  <View key={row.id} className="gap-1">
-                    <Text selectable className="text-sm text-foreground">
-                      {row.label}
-                    </Text>
-                    {row.detail ? (
-                      <Text selectable className="text-xs text-foreground-muted">
-                        {row.detail}
-                      </Text>
-                    ) : null}
-                  </View>
-                ))}
-                {panel.rows.length === 0 ? (
-                  <Text className="text-sm text-foreground-muted">No items.</Text>
-                ) : null}
-              </View>
-            ),
-          )
-        ),
-      )}
-      <PluginDiscoveryCard environmentId={threadRef.environmentId} />
+      <PluginPanels
+        environmentId={threadRef.environmentId}
+        target={{ scope: "thread", threadId: threadRef.threadId }}
+        snapshots={query.data ?? []}
+        agent={agent}
+        onFilter={(pluginId, panelId, filter) =>
+          setFilters((current) => [
+            ...current.filter((item) => item.pluginId !== pluginId || item.panelId !== panelId),
+            { pluginId, panelId, filter },
+          ])
+        }
+      />
     </View>
   );
 }

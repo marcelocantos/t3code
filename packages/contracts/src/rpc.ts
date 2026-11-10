@@ -33,7 +33,16 @@ import {
   ChatGptHandoffInput,
   ChatGptHandoffState,
 } from "./providerSetup.ts";
-import { PluginPanelsState, SubscribePluginPanelsInput } from "./panelPlugins.ts";
+import {
+  PluginActionResult,
+  PluginPanelActionInput,
+  PluginPanelRequestError,
+  PluginPanelsState,
+  PluginPanelSurfaceInput,
+  PluginSurface,
+  SubscribeEnvironmentPluginPanelsInput,
+  SubscribePluginPanelsInput,
+} from "./panelPlugins.ts";
 import {
   PluginDiscoveryActionError,
   PluginDiscoveryActionInput,
@@ -625,6 +634,9 @@ export const WS_METHODS = {
   subscribeTerminalMetadata: "subscribeTerminalMetadata",
   subscribePreviewEvents: "subscribePreviewEvents",
   subscribePluginPanels: "subscribePluginPanels",
+  subscribeEnvironmentPluginPanels: "subscribeEnvironmentPluginPanels",
+  pluginPanelsAct: "pluginPanels.act",
+  pluginPanelsSurface: "pluginPanels.surface",
   subscribePluginDiscovery: "subscribePluginDiscovery",
   pluginDiscoveryAct: "pluginDiscovery.act",
   subscribeDiscoveredLocalServers: "subscribeDiscoveredLocalServers",
@@ -1711,6 +1723,28 @@ const WsSubscribePluginPanelsRpc = Rpc.make(WS_METHODS.subscribePluginPanels, {
   stream: true,
 });
 
+const WsSubscribeEnvironmentPluginPanelsRpc = Rpc.make(
+  WS_METHODS.subscribeEnvironmentPluginPanels,
+  {
+    payload: SubscribeEnvironmentPluginPanelsInput,
+    success: PluginPanelsState,
+    error: EnvironmentAuthorizationError,
+    stream: true,
+  },
+);
+
+const WsPluginPanelsActRpc = Rpc.make(WS_METHODS.pluginPanelsAct, {
+  payload: PluginPanelActionInput,
+  success: PluginActionResult,
+  error: Schema.Union([PluginPanelRequestError, EnvironmentAuthorizationError]),
+});
+
+const WsPluginPanelsSurfaceRpc = Rpc.make(WS_METHODS.pluginPanelsSurface, {
+  payload: PluginPanelSurfaceInput,
+  success: PluginSurface,
+  error: Schema.Union([PluginPanelRequestError, EnvironmentAuthorizationError]),
+});
+
 const WsSubscribePluginDiscoveryRpc = Rpc.make(WS_METHODS.subscribePluginDiscovery, {
   payload: Schema.Struct({}),
   success: PluginDiscoverySnapshot,
@@ -2274,6 +2308,9 @@ export const WsRpcGroup = RpcGroup.make(
   WsSubscribePreviewEventsRpc,
   WsPreviewStopLocalServerRpc,
   WsSubscribePluginPanelsRpc,
+  WsSubscribeEnvironmentPluginPanelsRpc,
+  WsPluginPanelsActRpc,
+  WsPluginPanelsSurfaceRpc,
   WsSubscribePluginDiscoveryRpc,
   WsPluginDiscoveryActRpc,
   WsSubscribeDiscoveredLocalServersRpc,

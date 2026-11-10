@@ -558,6 +558,10 @@
     "./state/pluginDiscovery": {
       "types": "./src/state/pluginDiscovery.ts",
       "default": "./src/state/pluginDiscovery.ts"
+    },
+    "./state/pluginNavigation": {
+      "types": "./src/state/pluginNavigation.ts",
+      "default": "./src/state/pluginNavigation.ts"
     }
   },
   "scripts": {

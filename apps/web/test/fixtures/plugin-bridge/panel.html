@@ -1,0 +1,63 @@
+<!doctype html>
+<html>
+  <body>
+    <button id="card">Open card</button>
+    <button id="dialog">Open dialog</button>
+    <button id="ask">Ask</button>
+    <button id="escape">Escape</button>
+    <script>
+      // Reports to the test through the window; the host must ignore these.
+      const report = (text) => parent.postMessage({ fixtureLog: text }, "*");
+      window.onerror = (message) => report(`fail ${message}`);
+      let port = null;
+      let next = 0;
+      const log = (text) => report(text);
+      const request = (message) => port.postMessage({ requestId: String(++next), ...message });
+      window.addEventListener("message", (event) => {
+        if (event.source !== parent || event.data?.type !== "t3.bridge.init") return;
+        port = event.ports[0];
+        port.onmessage = ({ data }) => {
+          if (data.type === "surface.action") log(`action ${data.actionId}`);
+          if (data.type === "surface.closed" && data.result) log(`picked ${data.result.colour}`);
+          if (data.type === "agent.result") log(data.ok ? "agent sent" : `agent ${data.error}`);
+          if (data.type === "error") log(`error ${data.message}`);
+        };
+        log("bridge ready");
+      });
+      document.querySelector("#card").onclick = () =>
+        request({
+          type: "surface.open",
+          surfaceId: "card",
+          presentation: "popover",
+          placement: "left-start",
+          anchor: { x: 0, y: 0, width: 20, height: 20 },
+          content: {
+            kind: "structured",
+            surface: {
+              title: "Card",
+              blocks: [
+                { type: "actions", items: [{ kind: "plugin", id: "reset", label: "Reset" }] },
+              ],
+            },
+          },
+        });
+      document.querySelector("#dialog").onclick = () =>
+        request({
+          type: "surface.open",
+          surfaceId: "picker",
+          presentation: "dialog",
+          size: { width: 320, height: 160 },
+          content: { kind: "web", path: "dialog.html" },
+        });
+      document.querySelector("#ask").onclick = () =>
+        request({ type: "agent.prompt", prompt: "Summarize the panel." });
+      document.querySelector("#escape").onclick = () =>
+        request({
+          type: "surface.open",
+          surfaceId: "out",
+          presentation: "dialog",
+          content: { kind: "web", path: "../escape.html" },
+        });
+    </script>
+  </body>
+</html>

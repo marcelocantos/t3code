@@ -15,6 +15,7 @@ import {
   DiscoveredPluginId,
   PanelPluginConfig,
   PluginDiscoveryActionError,
+  PluginPanelScope,
   type PluginDiscoveryActionInput,
   type PluginDiscoveryItem,
   type PluginDiscoverySnapshot,
@@ -42,6 +43,10 @@ const Decision = Schema.Struct({
   baseUrl: Schema.optional(BaseUrl),
   /** Endpoint of an enabled plugin whose change of address the user declined. */
   dismissedBaseUrl: Schema.optional(BaseUrl),
+  /** Scopes the endpoint's probe last declared, kept so they survive restarts and outages. */
+  scopes: Schema.optional(Schema.Array(PluginPanelScope).check(Schema.isMaxLength(2))),
+  /** Scopes the user approved by enabling; a probe can narrow `scopes` below these, never widen. */
+  approvedScopes: Schema.optional(Schema.Array(PluginPanelScope).check(Schema.isMaxLength(2))),
 });
 type Decision = typeof Decision.Type;
 const DecisionFile = Schema.Struct({
@@ -110,6 +115,7 @@ function discoverySnapshot(state: State): PluginDiscoverySnapshot {
       state: decision.status,
       baseUrl: decision.baseUrl,
       discoveredBaseUrl: pendingEndpoint(decision, state.candidates)?.baseUrl,
+      pendingScopes: pendingScopes(decision, state.candidates),
       live: live.some((candidate) => candidate.baseUrl === decision.baseUrl),
     });
   }
@@ -137,12 +143,55 @@ function effectiveConfigs(state: State): EffectivePluginConfigs {
     discovered.push({
       id: decision.id,
       connection: { kind: "server", baseUrl: decision.baseUrl },
+      ...(decision.scopes ? { scopes: decision.scopes } : {}),
     });
   }
   return { configs: [...state.manual.configs, ...discovered], error: state.manual.error };
 }
 
 const sameJson = <A>(a: A, b: A) => JSON.stringify(a) === JSON.stringify(b);
+
+const DEFAULT_SCOPES: ReadonlyArray<PluginPanelScope> = ["thread"];
+
+/** Scopes the approved endpoint now declares that the user has not approved. */
+function pendingScopes(
+  decision: Decision,
+  candidates: ReadonlyArray<PluginCandidate>,
+): ReadonlyArray<PluginPanelScope> | undefined {
+  if (decision.status !== "enabled") return undefined;
+  const live = candidates.find(
+    (candidate) => candidate.id === decision.id && candidate.baseUrl === decision.baseUrl,
+  );
+  if (!live) return undefined;
+  const approved = decision.approvedScopes ?? decision.scopes ?? DEFAULT_SCOPES;
+  const extra = (live.scopes ?? DEFAULT_SCOPES).filter((scope) => !approved.includes(scope));
+  return extra.length > 0 ? extra : undefined;
+}
+
+/**
+ * Enabled decisions narrowed to the scopes their live endpoint declares now, or undefined if none
+ * moved. A scope is never widened here: an environment panel sees every project, so a plugin that
+ * starts declaring one waits for the user to approve it again.
+ */
+function withLiveScopes(
+  decisions: ReadonlyArray<Decision>,
+  candidates: ReadonlyArray<PluginCandidate>,
+): ReadonlyArray<Decision> | undefined {
+  let changed = false;
+  const next = decisions.map((decision) => {
+    if (decision.status !== "enabled") return decision;
+    const live = candidates.find(
+      (candidate) => candidate.id === decision.id && candidate.baseUrl === decision.baseUrl,
+    );
+    if (!live) return decision;
+    const approved = decision.approvedScopes ?? decision.scopes ?? DEFAULT_SCOPES;
+    const scopes = (live.scopes ?? DEFAULT_SCOPES).filter((scope) => approved.includes(scope));
+    if (sameJson(scopes, decision.scopes ?? DEFAULT_SCOPES)) return decision;
+    changed = true;
+    return { ...decision, scopes, approvedScopes: approved };
+  });
+  return changed ? next : undefined;
+}
 
 export class PluginDiscovery extends Context.Service<
   PluginDiscovery,
@@ -200,13 +249,34 @@ const makeWith = Effect.fn("PluginDiscovery.make")(function* (manifestDirectory:
   // One writer at a time: decisions are read, changed and saved under this lock.
   const lock = yield* Semaphore.make(1);
 
+  const save = (decisions: ReadonlyArray<Decision>, id: string) =>
+    encodeDecisions({ version: 1, plugins: decisions }).pipe(
+      Effect.flatMap((contents) =>
+        writeFileStringAtomically({ filePath: decisionsPath, contents }),
+      ),
+      Effect.provideService(FileSystem.FileSystem, fs),
+      Effect.provideService(Path.Path, path),
+      Effect.tapError((cause) => Effect.logWarning("saving plugin decision failed", { cause })),
+      Effect.mapError(
+        () => new PluginDiscoveryActionError({ id: id as DiscoveredPluginId, reason: "storage" }),
+      ),
+    );
+
   const refresh = lock.withPermits(1)(
     Effect.gen(function* () {
       const [candidates, manual] = yield* Effect.all([
         scanLivePlugins(manifestDirectory),
         readManual,
       ]);
-      yield* SubscriptionRef.update(state, (current) => ({ ...current, candidates, manual }));
+      // Scopes only narrow here; widening waits for the user (see `pendingScopes`).
+      const decisions = withLiveScopes((yield* SubscriptionRef.get(state)).decisions, candidates);
+      if (decisions) yield* save(decisions, decisions[0]!.id).pipe(Effect.ignore);
+      yield* SubscriptionRef.update(state, (current) => ({
+        ...current,
+        candidates,
+        manual,
+        ...(decisions ? { decisions } : {}),
+      }));
     }),
   );
 
@@ -248,19 +318,6 @@ const makeWith = Effect.fn("PluginDiscovery.make")(function* (manifestDirectory:
       ),
   );
 
-  const save = (decisions: ReadonlyArray<Decision>, id: string) =>
-    encodeDecisions({ version: 1, plugins: decisions }).pipe(
-      Effect.flatMap((contents) =>
-        writeFileStringAtomically({ filePath: decisionsPath, contents }),
-      ),
-      Effect.provideService(FileSystem.FileSystem, fs),
-      Effect.provideService(Path.Path, path),
-      Effect.tapError((cause) => Effect.logWarning("saving plugin decision failed", { cause })),
-      Effect.mapError(
-        () => new PluginDiscoveryActionError({ id: id as DiscoveredPluginId, reason: "storage" }),
-      ),
-    );
-
   const act: PluginDiscovery["Service"]["act"] = Effect.fn("PluginDiscovery.act")(
     function* (input) {
       const fail = (reason: PluginDiscoveryActionError["reason"]) =>
@@ -287,11 +344,13 @@ const makeWith = Effect.fn("PluginDiscovery.make")(function* (manifestDirectory:
               );
               const remembered = existing?.status === "disabled" && existing.baseUrl === baseUrl;
               if (!live && !remembered) return yield* fail("not-available");
+              const scopes = live ? live.scopes : existing?.scopes;
               next = replace({
                 id: input.id,
                 name: live?.name ?? existing?.name ?? input.id,
                 status: "enabled",
                 baseUrl,
+                ...(scopes ? { scopes, approvedScopes: scopes } : {}),
               });
               break;
             }

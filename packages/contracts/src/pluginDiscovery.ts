@@ -1,4 +1,5 @@
 import * as Schema from "effect/Schema";
+import { PluginPanelScope } from "./panelPlugins.ts";
 
 const MAX_PLUGIN_ID_LENGTH = 128;
 const IDENTITY_PATTERN =
@@ -51,6 +52,8 @@ export const PluginDiscoveryItem = Schema.Struct({
   baseUrl: Schema.optional(BaseUrl),
   /** A different live endpoint for an enabled plugin; enabling it needs fresh consent. */
   discoveredBaseUrl: Schema.optional(BaseUrl),
+  /** Scopes an enabled plugin now declares beyond those the user approved; they need fresh consent. */
+  pendingScopes: Schema.optional(Schema.Array(PluginPanelScope).check(Schema.isMaxLength(2))),
   /** A compatible service currently answers at `baseUrl`. */
   live: Schema.Boolean,
 });
