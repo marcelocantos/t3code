@@ -1104,6 +1104,10 @@ export const DESKTOP_EXTRA_RESOURCES = [
     to: "resource-monitor",
   },
 ] as const;
+const UPGRADE_DISPLAY_NAME_RESOURCE = {
+  from: "apps/desktop/resources/upgrade/InfoPlist.strings",
+  to: "en.lproj/InfoPlist.strings",
+} as const;
 export const LINUX_CAPTURE_EXTRA_RESOURCES = [
   {
     from: "apps/desktop/prod-resources/hyprland-capture",
@@ -2830,6 +2834,15 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
     }
   }
 
+  if (platform === "mac" && PLUGIN_BUILD_MODE === "upgrade") {
+    // Spotlight and Finder show "T3 Code+" through a localized display name, so the bundle and
+    // product name that the state paths and the Keychain entry hang off stay "T3 Code (Beta)".
+    buildConfig.extraResources = [
+      ...(buildConfig.extraResources as ReadonlyArray<unknown>),
+      UPGRADE_DISPLAY_NAME_RESOURCE,
+    ];
+  }
+
   if (platform === "mac") {
     const path = yield* Path.Path;
     const repoRoot = yield* RepoRoot;
@@ -2840,6 +2853,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
       extendInfo: {
         // macOS 26 offers Messages/Mail codes in every text field unless opted out.
         NSAutoFillRequiresTextContentTypeForOneTimeCodeOnMac: true,
+        ...(PLUGIN_BUILD_MODE === "upgrade" ? { LSHasLocalizedDisplayName: true } : {}),
         NSLocalNetworkUsageDescription:
           "T3 Code connects to devices on your local network for remote environments and commands run by terminals and coding agents.",
         NSCalendarsUsageDescription:

@@ -60,6 +60,15 @@ describe("T3CODE_PLUGIN_BUILD packaging", () => {
       assert.equal(config.appId, "com.t3tools.t3code");
       assert.equal(productName, "T3 Code (Beta)");
       assert.isNull(config.publish);
+      // Spotlight shows the localized name; the bundle name the state paths depend on is unchanged.
+      assert.isTrue(
+        (config.mac as { extendInfo: Record<string, unknown> }).extendInfo
+          .LSHasLocalizedDisplayName,
+      );
+      assert.deepInclude(config.extraResources as ReadonlyArray<unknown>, {
+        from: "apps/desktop/resources/upgrade/InfoPlist.strings",
+        to: "en.lproj/InfoPlist.strings",
+      });
     }),
   );
 });
