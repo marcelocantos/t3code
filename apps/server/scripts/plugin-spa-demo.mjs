@@ -208,7 +208,7 @@ panels.on("connection", (socket) => {
               title: "Thread counter",
               path: "/app/",
               height: 360,
-              composer: { label: "Thread counter" },
+              composer: { label: "Thread counter", icon: "chart" },
             },
           ],
         }),

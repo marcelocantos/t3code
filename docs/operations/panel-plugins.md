@@ -421,8 +421,9 @@ parent, and an agent request. Opened from its composer button, it closes once th
 
 ### Composer entry
 
-A web panel with `"composer": { "label": "Sketch" }` also puts a button beside the composer's
-attachment button, in thread views of web, desktop and mobile. It opens the same page with the
+A web panel with `"composer": { "label": "Sketch", "icon": "diagram" }` also puts a button beside the composer's
+attachment button, in thread views of web, desktop and mobile. `icon` is optional: `pencil`, `paintbrush`,
+`diagram`, `chart`, `image`, `document`, `sparkles` or `target`. It opens the same page with the
 fragment `#t3-composer` in a modal (a sheet on mobile) about 800 × 720 px. The page has the bridge
 with `surfaceId` `"composer"`. It typically sends its result with `agent.prompt`, which T3
 confirms first, and closes itself with `surface.close`. Because the page and the panel share a

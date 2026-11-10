@@ -128,6 +128,18 @@ const NativePluginPanel = Schema.Struct({
   filters: Schema.Array(Schema.Struct({ id: Id, label: Label })).check(Schema.isMaxLength(20)),
   filter: Id,
 });
+/** Icons both clients draw, so two plugins' composer buttons can differ. */
+export const PluginComposerIcon = Schema.Literals([
+  "pencil",
+  "paintbrush",
+  "diagram",
+  "chart",
+  "image",
+  "document",
+  "sparkles",
+  "target",
+]);
+export type PluginComposerIcon = typeof PluginComposerIcon.Type;
 export const PluginPanel = Schema.Union([
   NativePluginPanel,
   Schema.Struct({
@@ -137,7 +149,9 @@ export const PluginPanel = Schema.Union([
     path: Schema.String.check(Schema.isNonEmpty(), Schema.isMaxLength(2048)),
     height: Schema.optional(Schema.Int.check(Schema.isBetween({ minimum: 200, maximum: 1200 }))),
     /** Adds a composer button that opens this page, with `#t3-composer`, in a modal. */
-    composer: Schema.optional(Schema.Struct({ label: ShortLabel })),
+    composer: Schema.optional(
+      Schema.Struct({ label: ShortLabel, icon: Schema.optional(PluginComposerIcon) }),
+    ),
   }),
 ]);
 export type PluginPanel = typeof PluginPanel.Type;

@@ -2,6 +2,7 @@ import { useAtomSet, useAtomValue } from "@effect/atom-react";
 import {
   CommandId,
   MessageId,
+  type PluginComposerIcon,
   type ScopedThreadRef,
   type SubscribePluginPanelsInput,
 } from "@t3tools/contracts";
@@ -127,6 +128,18 @@ export function ThreadPluginPanels({ threadRef }: { threadRef: ScopedThreadRef }
   );
 }
 
+/** SF Symbol names; Android maps the same names to Tabler icons. */
+const COMPOSER_SYMBOLS = {
+  pencil: "pencil",
+  paintbrush: "paintbrush",
+  diagram: "flowchart",
+  chart: "chart.bar.xaxis",
+  image: "photo",
+  document: "doc.text",
+  sparkles: "sparkles",
+  target: "target",
+} as const satisfies Record<PluginComposerIcon, string>;
+
 /** The fragment a plugin page reads to know it was opened from the composer. */
 const COMPOSER_FRAGMENT = "#t3-composer";
 
@@ -146,7 +159,14 @@ export function ThreadComposerPluginActions(props: {
   const actions = (query.data ?? []).flatMap((snapshot) =>
     snapshot.panels.flatMap((panel) =>
       panel.kind === "web" && panel.composer !== undefined
-        ? [{ pluginId: snapshot.pluginId, panel, label: panel.composer.label }]
+        ? [
+            {
+              pluginId: snapshot.pluginId,
+              panel,
+              label: panel.composer.label,
+              icon: panel.composer.icon,
+            },
+          ]
         : [],
     ),
   );
@@ -159,6 +179,7 @@ export function ThreadComposerPluginActions(props: {
           threadRef={threadRef}
           path={action.panel.path}
           label={action.label}
+          icon={action.icon}
           agentKey={pluginFrameAgentKey(action.pluginId, action.panel.id)}
           size={props.size}
         />
@@ -173,6 +194,7 @@ function ComposerPluginButton(props: {
   readonly label: string;
   readonly agentKey: string;
   readonly size: "regular" | "large";
+  readonly icon: PluginComposerIcon | undefined;
 }) {
   const openPage = useOpenPluginPage();
   const { scale } = useAndroidControlSizing();
@@ -194,7 +216,7 @@ function ComposerPluginButton(props: {
       }
     >
       <SymbolView
-        name="pencil"
+        name={props.icon === undefined ? "pencil" : COMPOSER_SYMBOLS[props.icon]}
         size={Math.round((props.size === "large" ? 26 : 20) * scale)}
         weight="regular"
         tintColorClassName="accent-icon"
