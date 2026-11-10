@@ -50,9 +50,9 @@ iOS on a physical device:
 ```bash
 T3CODE_PLUGIN_BUILD=1 APP_VARIANT=production EXPO_NO_GIT_STATUS=1 npx expo prebuild --clean --platform ios
 DERIVED="${TMPDIR:-/tmp}/t3-code-plugins-ios"
-xcodebuild -workspace ios/T3CodePlugins.xcworkspace -scheme T3CodePlugins -configuration Release \
+xcodebuild -workspace ios/T3Code.xcworkspace -scheme T3Code -configuration Release \
   -destination "id=<hardware udid>" -allowProvisioningUpdates -derivedDataPath "$DERIVED" build
-xcrun devicectl device install app --device <coredevice id> "$DERIVED"/Build/Products/Release-iphoneos/T3CodePlugins.app
+xcrun devicectl device install app --device <coredevice id> "$DERIVED"/Build/Products/Release-iphoneos/T3Code.app
 ```
 
 Keep derived data outside the repository: Swift package checkouts under it carry TypeScript that `vp run typecheck` would otherwise pick up. `xcodebuild` takes the hardware UDID and `devicectl` the CoreDevice identifier; `xcrun devicectl list devices` shows both. The first launch needs the developer profile trusted under Settings → General → VPN & Device Management.
