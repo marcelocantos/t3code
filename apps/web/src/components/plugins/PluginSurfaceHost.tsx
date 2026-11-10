@@ -13,6 +13,7 @@ import {
   createContext,
   use,
   useEffect,
+  useRef,
   useState,
   useSyncExternalStore,
   type CSSProperties,
@@ -784,10 +785,25 @@ export function PluginFrame(props: {
     iframe: null,
   }));
   const { tree } = host;
+  const iframeRef = useRef<HTMLIFrameElement>(null);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- the bridge port and what the frame opened end with the frame
   useEffect(() => () => closeFrame(endpoint, tree), [endpoint, tree]);
+  // A frame whose script starts listening after `load` (a top-level await, say) missed the init;
+  // it asks again with `t3.bridge.hello`. The message carries nothing but the request.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- listens for the frame's window message outside React
+  useEffect(() => {
+    const onMessage = (event: MessageEvent) => {
+      const iframe = iframeRef.current;
+      if (!iframe || event.source !== iframe.contentWindow) return;
+      if ((event.data as { type?: unknown } | null)?.type !== "t3.bridge.hello") return;
+      openBridge(endpoint, tree, iframe, (data) => host.handleFrameMessage(endpoint, data));
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, [endpoint, tree, host]);
   return (
     <iframe
+      ref={iframeRef}
       title={props.title}
       src={props.src}
       sandbox="allow-scripts allow-forms"

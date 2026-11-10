@@ -1,0 +1,20 @@
+<!doctype html>
+<html>
+  <body>
+    <script>
+      // Stands in for a frame whose script started listening after the host's init went out:
+      // it drops the first init, then asks for the bridge again.
+      const report = (text) => parent.postMessage({ fixtureLog: text }, "*");
+      let inits = 0;
+      window.addEventListener("message", (event) => {
+        if (event.source !== parent || event.data?.type !== "t3.bridge.init") return;
+        if (++inits === 1) {
+          parent.postMessage({ type: "t3.bridge.hello" }, "*");
+          return;
+        }
+        event.ports[0].onmessage = () => {};
+        report("bridge ready");
+      });
+    </script>
+  </body>
+</html>

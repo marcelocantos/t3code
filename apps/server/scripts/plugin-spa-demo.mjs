@@ -17,16 +17,6 @@ document.body.dataset.bridge = 'ready';
 const main = `
 const { label } = await import('./chunk.js');
 document.querySelector('#module').textContent = label;
-const context = await fetch('./api/context').then(r => r.json());
-document.querySelector('#thread').textContent = context.threadId;
-document.querySelector('#count').textContent = String(context.count);
-let isolated = false; try { void parent.document.body; } catch { isolated = true; }
-let storageBlocked = false; try { localStorage.setItem('plugin-test','x'); } catch { storageBlocked = true; }
-document.querySelector('#isolation').textContent = isolated && storageBlocked ? 'Isolated' : 'Isolation failed';
-const socketUrl = new URL('./events', location.href); socketUrl.protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-const socket = new WebSocket(socketUrl);
-socket.onmessage = event => { const data = JSON.parse(event.data); document.querySelector('#count').textContent = String(data.count); document.querySelector('#count').dataset.live = 'true'; };
-document.querySelector('#increment').onclick = async () => { const response = await fetch('./api/count', {method:'POST',headers:{'content-type':'application/json'},body:'{}'}); document.querySelector('#increment').dataset.status = String(response.status); };
 // Host bridge: T3 sends a MessagePort in t3.bridge.init; everything else goes over that port.
 let port = null;
 let nextRequest = 0;
@@ -45,6 +35,17 @@ window.addEventListener('message', event => {
   };
   document.body.dataset.bridge = 'ready';
 });
+parent.postMessage({ type: 't3.bridge.hello' }, '*');
+const context = await fetch('./api/context').then(r => r.json());
+document.querySelector('#thread').textContent = context.threadId;
+document.querySelector('#count').textContent = String(context.count);
+let isolated = false; try { void parent.document.body; } catch { isolated = true; }
+let storageBlocked = false; try { localStorage.setItem('plugin-test','x'); } catch { storageBlocked = true; }
+document.querySelector('#isolation').textContent = isolated && storageBlocked ? 'Isolated' : 'Isolation failed';
+const socketUrl = new URL('./events', location.href); socketUrl.protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+const socket = new WebSocket(socketUrl);
+socket.onmessage = event => { const data = JSON.parse(event.data); document.querySelector('#count').textContent = String(data.count); document.querySelector('#count').dataset.live = 'true'; };
+document.querySelector('#increment').onclick = async () => { const response = await fetch('./api/count', {method:'POST',headers:{'content-type':'application/json'},body:'{}'}); document.querySelector('#increment').dataset.status = String(response.status); };
 const details = document.querySelector('#details');
 const showDetails = () => {
   if (open.has('details')) return;
@@ -82,7 +83,7 @@ const server = NodeHttp.createServer((request, response) => {
   };
   const file = files[path];
   if (file && request.method === "GET") {
-    response.writeHead(200, { "content-type": file[0] }).end(file[1]);
+    response.writeHead(200, { "content-type": `${file[0]}; charset=utf-8` }).end(file[1]);
     return;
   }
   if (path === "/app/api/context" && request.method === "GET") {

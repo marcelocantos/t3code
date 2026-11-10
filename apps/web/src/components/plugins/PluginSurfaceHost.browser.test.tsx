@@ -85,3 +85,27 @@ it("lets a sandboxed panel open surfaces, read a child's result, and prompt the 
   );
   expect(host.submit).toHaveBeenCalledWith("frame:counter", "Summarize the panel.");
 });
+
+it("hands the bridge again to a frame that asks after missing it", async () => {
+  const reports: string[] = [];
+  const listener = (event: MessageEvent) => {
+    if (typeof event.data?.fixtureLog === "string") reports.push(event.data.fixtureLog);
+  };
+  window.addEventListener("message", listener);
+  using _listener = { [Symbol.dispose]: () => window.removeEventListener("message", listener) };
+  await using _screen = await render(
+    <PluginSurfaceHost>
+      <PluginFrame
+        src={`${gateway}late-panel.html`}
+        title="Late panel"
+        height={120}
+        nodeId={null}
+        ownSurfaceId={undefined}
+        gatewayUrl={`${gateway}late-panel.html`}
+        panelTitle="Late"
+        agentSource="frame:late"
+      />
+    </PluginSurfaceHost>,
+  );
+  await vi.waitFor(() => expect(reports).toContain("bridge ready"));
+});

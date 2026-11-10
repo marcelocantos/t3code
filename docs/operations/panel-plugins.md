@@ -316,7 +316,9 @@ does not accept IPv6 literal hosts in the gateway’s path-restricted CSP source
 
 A web panel cannot draw outside its iframe, so T3 offers a narrow bridge for hover cards, dialogs
 and agent requests. After each load T3 posts `{ "type": "t3.bridge.init", "version": 1 }` with a
-`MessagePort` (`event.ports[0]`); talk only over that port. Messages are JSON, at most 256 KiB, and
+`MessagePort` (`event.ports[0]`); talk only over that port. A script that starts listening late,
+for example after a top-level `await`, can post `{ "type": "t3.bridge.hello" }` to `parent` and T3 sends
+a fresh init (closing anything opened over the previous port). Messages are JSON, at most 256 KiB, and
 validated; an invalid one gets an `error` reply.
 
 | Panel → T3                                                                                                   | Meaning                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |

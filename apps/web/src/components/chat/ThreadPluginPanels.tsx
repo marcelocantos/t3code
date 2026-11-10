@@ -21,17 +21,19 @@ function Panels({ environmentId, threadId }: { environmentId: EnvironmentId; thr
   return (
     <PluginAgentContext value={agent}>
       <PluginSurfaceHost>
-        <PluginPanels
-          environmentId={environmentId}
-          target={{ scope: "thread", threadId }}
-          snapshots={query.data}
-          error={query.error}
-          onFilter={setFilters}
-          Section={ThreadDetailsSection}
-          // The details panel is on the right; cards open over the chat.
-          hoverSide="left"
-          defaultHeight={320}
-        />
+        <div data-thread-plugin-panels="">
+          <PluginPanels
+            environmentId={environmentId}
+            target={{ scope: "thread", threadId }}
+            snapshots={query.data}
+            error={query.error}
+            onFilter={setFilters}
+            Section={ThreadDetailsSection}
+            // The details panel is on the right; cards open over the chat.
+            hoverSide="left"
+            defaultHeight={320}
+          />
+        </div>
       </PluginSurfaceHost>
     </PluginAgentContext>
   );
