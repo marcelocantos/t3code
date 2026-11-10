@@ -1,5 +1,5 @@
 import { PluginWebPanel } from "../plugins/PluginWebPanel";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { createPanelPluginAtoms } from "@t3tools/client-runtime/state/panelPlugins";
 import type { EnvironmentId, ThreadId, SubscribePluginPanelsInput } from "@t3tools/contracts";
 import { connectionAtomRuntime } from "../../connection/runtime";
@@ -46,7 +46,9 @@ function Panels({ environmentId, threadId }: { environmentId: EnvironmentId; thr
                 headingId={`plugin-${plugin.pluginId}-${panel.id}`}
                 title={panel.title}
               >
-                <PluginWebPanel environmentId={environmentId} panel={panel} />
+                <SizedPanel title={panel.title}>
+                  <PluginWebPanel environmentId={environmentId} panel={panel} />
+                </SizedPanel>
               </ThreadDetailsSection>
             ) : (
               <ThreadDetailsSection
@@ -79,21 +81,23 @@ function Panels({ environmentId, threadId }: { environmentId: EnvironmentId; thr
                   ) : undefined
                 }
               >
-                <ul className="space-y-2 px-2.5 text-xs">
-                  {panel.rows.map((row) => (
-                    <li key={row.id} className="break-words">
-                      <div>{row.label}</div>
-                      {row.detail ? (
-                        <div className="mt-0.5 whitespace-pre-wrap text-muted-foreground">
-                          {row.detail}
-                        </div>
-                      ) : null}
-                    </li>
-                  ))}
-                </ul>
-                {panel.rows.length === 0 ? (
-                  <p className="px-2.5 text-xs text-muted-foreground">No items.</p>
-                ) : null}
+                <SizedPanel title={panel.title}>
+                  <ul className="space-y-2 px-2.5 text-xs">
+                    {panel.rows.map((row) => (
+                      <li key={row.id} className="break-words">
+                        <div>{row.label}</div>
+                        {row.detail ? (
+                          <div className="mt-0.5 whitespace-pre-wrap text-muted-foreground">
+                            {row.detail}
+                          </div>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                  {panel.rows.length === 0 ? (
+                    <p className="px-2.5 text-xs text-muted-foreground">No items.</p>
+                  ) : null}
+                </SizedPanel>
               </ThreadDetailsSection>
             ),
           )
@@ -101,5 +105,35 @@ function Panels({ environmentId, threadId }: { environmentId: EnvironmentId; thr
       )}
       <PluginDiscoveryPanel environmentId={environmentId} />
     </>
+  );
+}
+
+function SizedPanel({ title, children }: { title: string; children: ReactNode }) {
+  const [height, setHeight] = useState(320);
+  return (
+    <div>
+      <div
+        role="region"
+        aria-label={`${title} content`}
+        tabIndex={0}
+        className="overflow-auto overscroll-contain"
+        style={{ height, maxHeight: "60vh", minHeight: 120, overflow: "auto" }}
+      >
+        {children}
+      </div>
+      <label className="flex items-center gap-2 px-2.5 pt-2 text-xs text-muted-foreground">
+        Height
+        <input
+          type="range"
+          aria-label={`${title} panel height`}
+          min={120}
+          max={800}
+          step={20}
+          value={height}
+          onChange={(event) => setHeight(Number(event.target.value))}
+          className="min-w-0 flex-1"
+        />
+      </label>
+    </div>
   );
 }

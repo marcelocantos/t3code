@@ -47,6 +47,10 @@ vi.mock("../../state/query", () => ({
                     label: `🎯T123.456.789 ${query.input.threadId} A long target label that must wrap within a narrow sidebar without clipping`,
                     detail: "A detail line",
                   },
+                  ...Array.from({ length: 40 }, (_, index) => ({
+                    id: `target-${index}`,
+                    label: `Target ${index}: More work with a long description that wraps`,
+                  })),
                 ],
               },
             ],
@@ -74,6 +78,13 @@ it("wraps long targets in a narrow sidebar and resets filters across threads", a
   expect(row).not.toBeNull();
   expect(row!.scrollWidth).toBeLessThanOrEqual(row!.clientWidth);
   expect(row!.getBoundingClientRect().height).toBeGreaterThan(30);
+  const content = screen.container.querySelector('[aria-label="Bullseye content"]') as HTMLElement;
+  expect(content.scrollHeight).toBeGreaterThan(content.clientHeight);
+  expect(content.clientHeight).toBeLessThanOrEqual(320);
+  content.scrollTop = content.scrollHeight;
+  expect(content.scrollTop).toBeGreaterThan(0);
+  await page.getByRole("slider", { name: "Bullseye panel height" }).fill("120");
+  await vi.waitFor(() => expect(content.clientHeight).toBe(120));
   await page.getByRole("combobox", { name: "Bullseye filter" }).selectOptions("all");
   await expect.element(page.getByRole("combobox")).toHaveValue("all");
   await screen.rerender(panel("second"));
