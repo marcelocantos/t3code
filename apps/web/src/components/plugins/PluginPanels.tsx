@@ -367,15 +367,15 @@ function PluginRow(props: {
       <div className="flex shrink-0 items-center gap-0.5">
         {running === undefined ? null : (
           <Button
-            size="xs"
-            variant="outline"
+            size="icon-xs"
+            variant="ghost"
             aria-label={`Stop ${running.label}`}
+            title="Stop"
             onClick={() => {
               void agent?.stop(pluginRowAgentSource(origin.row, running.id));
             }}
           >
             <SquareIcon />
-            Stop
           </Button>
         )}
         {primary === undefined || primary === running ? null : (
@@ -438,6 +438,20 @@ function PrimaryAction({
       </Menu>
     );
   }
+  // An agent action is the row's play button; its label would crowd the row in a narrow sidebar.
+  if (action.kind === "agent") {
+    return (
+      <Button
+        size="icon-xs"
+        variant="ghost"
+        aria-label={action.label}
+        title={action.label}
+        onClick={(event) => run(action, undefined, event.currentTarget)}
+      >
+        <PlayIcon />
+      </Button>
+    );
+  }
   return (
     <Button
       size="xs"
@@ -446,7 +460,6 @@ function PrimaryAction({
       }
       onClick={(event) => run(action, undefined, event.currentTarget)}
     >
-      {action.kind === "agent" ? <PlayIcon /> : null}
       {action.label}
     </Button>
   );

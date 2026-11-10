@@ -142,10 +142,8 @@ test(
             Stream.runForEach((snapshot) => Queue.offer(offers, snapshot)),
             Effect.forkScoped,
           );
-          const initial = yield* Stream.fromQueue(offers).pipe(
-            Stream.filter((snapshot) => item(snapshot, identity("alpha"))?.state === "offered"),
-            Stream.runHead,
-          );
+          // The first snapshot already reflects a scan, so clients can tell startup offers apart.
+          const initial = yield* Stream.fromQueue(offers).pipe(Stream.runHead);
           assert.deepEqual(
             item(initial._tag === "Some" ? initial.value : undefined, identity("alpha")),
             {

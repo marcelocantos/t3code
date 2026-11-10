@@ -137,7 +137,11 @@ function PluginsSettingsBody({ environmentId }: { environmentId: EnvironmentId }
       <SettingsSection title="Plugins" id="plugins">
         {settled.length === 0 ? (
           <p className="px-4 py-3 text-sm text-muted-foreground">
-            {query.isPending ? "Looking for plugins…" : "No plugins found on this environment."}
+            {query.data === undefined
+              ? "Looking for plugins…"
+              : plugins.length > 0
+                ? "No plugins enabled yet."
+                : "No plugins found on this environment."}
           </p>
         ) : (
           <ul className="flex flex-col">

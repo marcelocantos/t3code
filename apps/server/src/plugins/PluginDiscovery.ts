@@ -75,6 +75,8 @@ interface State {
   readonly decisions: ReadonlyArray<Decision>;
   readonly candidates: ReadonlyArray<PluginCandidate>;
   readonly manual: ManualConfigs;
+  /** A scan has completed, so `candidates` reflects what is advertised rather than nothing yet. */
+  readonly scanned: boolean;
 }
 
 /** A different live endpoint an enabled plugin has moved to, unless its user already declined it. */
@@ -245,6 +247,7 @@ const makeWith = Effect.fn("PluginDiscovery.make")(function* (manifestDirectory:
     decisions: yield* readDecisions,
     candidates: [],
     manual: yield* readManual,
+    scanned: false,
   });
   // One writer at a time: decisions are read, changed and saved under this lock.
   const lock = yield* Semaphore.make(1);
@@ -275,6 +278,7 @@ const makeWith = Effect.fn("PluginDiscovery.make")(function* (manifestDirectory:
         ...current,
         candidates,
         manual,
+        scanned: true,
         ...(decisions ? { decisions } : {}),
       }));
     }),
@@ -390,7 +394,9 @@ const makeWith = Effect.fn("PluginDiscovery.make")(function* (manifestDirectory:
     (queue) =>
       Effect.gen(function* () {
         yield* retainScanner;
+        // Watchers decide what is new from the first snapshot, so it waits for a real scan.
         yield* SubscriptionRef.changes(state).pipe(
+          Stream.filter((current) => current.scanned),
           Stream.map(discoverySnapshot),
           Stream.changesWith(sameJson),
           Stream.runForEach((snapshot) => Queue.offer(queue, snapshot)),

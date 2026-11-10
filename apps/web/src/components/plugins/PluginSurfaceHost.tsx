@@ -638,7 +638,8 @@ function SurfaceNodeView({ node, blocked }: { node: PluginSurfaceNode; blocked: 
           finalFocus={false}
           aria-label={node.title}
           data-plugin-surface={node.id}
-          style={{ width }}
+          // Never wider than the room on the chosen side, so the card cannot spill off-screen.
+          style={{ width: `min(${width}px, var(--available-width))` }}
           onPointerEnter={() => {
             if (transientKey !== undefined) host.cancelHoverClose(transientKey);
           }}
@@ -647,6 +648,9 @@ function SurfaceNodeView({ node, blocked }: { node: PluginSurfaceNode; blocked: 
           }}
           onPointerDownCapture={() => host.pin(node.id)}
         >
+          {node.content.kind === "structured" ? (
+            <p className="mb-2 text-sm font-semibold text-foreground">{node.title}</p>
+          ) : null}
           {body}
           <SurfaceLayer parentId={node.id} />
         </PopoverPopup>
