@@ -1,5 +1,5 @@
 // @effect-diagnostics globalDate:off - Plugin dates are local calendar days chosen in the UI, not instants.
-import { WS_METHODS } from "@t3tools/contracts";
+import { WS_METHODS, type PluginLink } from "@t3tools/contracts";
 import { Atom } from "effect/reactivity";
 import type { EnvironmentRegistry } from "../connection/registry.ts";
 import {
@@ -41,6 +41,34 @@ export function createPanelPluginCommands<R, E>(
       tag: WS_METHODS.pluginPanelsSurface,
     }),
   };
+}
+
+/** Declared link prefixes of an environment's connected plugins, and their on-demand cards. */
+export function createPluginLinkAtoms<R, E>(runtime: Atom.AtomRuntime<EnvironmentRegistry | R, E>) {
+  return {
+    links: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
+      label: "environment-data:plugin-links",
+      tag: WS_METHODS.subscribePluginLinks,
+      idleTtlMs: 0,
+    }),
+    card: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:plugin-links:card",
+      tag: WS_METHODS.pluginLinksCard,
+    }),
+  };
+}
+
+/** The declared prefix `href` starts with; the longest wins when prefixes nest. */
+export function matchPluginLink(
+  links: ReadonlyArray<PluginLink>,
+  href: string,
+): PluginLink | undefined {
+  let best: PluginLink | undefined;
+  for (const link of links) {
+    if (href.startsWith(link.prefix) && link.prefix.length > (best?.prefix.length ?? -1))
+      best = link;
+  }
+  return best;
 }
 
 export interface PluginDateChoice {

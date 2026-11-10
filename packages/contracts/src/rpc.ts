@@ -35,6 +35,9 @@ import {
 } from "./providerSetup.ts";
 import {
   PluginActionResult,
+  PluginLinkCard,
+  PluginLinkCardInput,
+  PluginLinksState,
   PluginPanelActionInput,
   PluginPanelRequestError,
   PluginPanelsState,
@@ -637,6 +640,8 @@ export const WS_METHODS = {
   subscribeEnvironmentPluginPanels: "subscribeEnvironmentPluginPanels",
   pluginPanelsAct: "pluginPanels.act",
   pluginPanelsSurface: "pluginPanels.surface",
+  subscribePluginLinks: "subscribePluginLinks",
+  pluginLinksCard: "pluginLinks.card",
   subscribePluginDiscovery: "subscribePluginDiscovery",
   pluginDiscoveryAct: "pluginDiscovery.act",
   subscribeDiscoveredLocalServers: "subscribeDiscoveredLocalServers",
@@ -1745,6 +1750,19 @@ const WsPluginPanelsSurfaceRpc = Rpc.make(WS_METHODS.pluginPanelsSurface, {
   error: Schema.Union([PluginPanelRequestError, EnvironmentAuthorizationError]),
 });
 
+const WsSubscribePluginLinksRpc = Rpc.make(WS_METHODS.subscribePluginLinks, {
+  payload: Schema.Struct({}),
+  success: PluginLinksState,
+  error: EnvironmentAuthorizationError,
+  stream: true,
+});
+
+const WsPluginLinksCardRpc = Rpc.make(WS_METHODS.pluginLinksCard, {
+  payload: PluginLinkCardInput,
+  success: PluginLinkCard,
+  error: Schema.Union([PluginPanelRequestError, EnvironmentAuthorizationError]),
+});
+
 const WsSubscribePluginDiscoveryRpc = Rpc.make(WS_METHODS.subscribePluginDiscovery, {
   payload: Schema.Struct({}),
   success: PluginDiscoverySnapshot,
@@ -2311,6 +2329,8 @@ export const WsRpcGroup = RpcGroup.make(
   WsSubscribeEnvironmentPluginPanelsRpc,
   WsPluginPanelsActRpc,
   WsPluginPanelsSurfaceRpc,
+  WsSubscribePluginLinksRpc,
+  WsPluginLinksCardRpc,
   WsSubscribePluginDiscoveryRpc,
   WsPluginDiscoveryActRpc,
   WsSubscribeDiscoveredLocalServersRpc,

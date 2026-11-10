@@ -9,6 +9,7 @@ import {
   PluginSidecarReady,
   type PanelPluginConfig,
   type PluginActionResult,
+  type PluginLinkWebCard,
   type PluginPanelSnapshot,
   type SubscribePluginPanelsInput,
 } from "@t3tools/contracts";
@@ -39,7 +40,9 @@ type Subscription = {
   emit: (snapshot: PluginPanelSnapshot, endpoint?: string) => void;
 };
 
-export type PluginRequestOutcome = PluginActionResult | PluginPanelRequestError;
+/** `web` answers only link card requests. */
+export type PluginRequestResult = PluginActionResult & { readonly web?: PluginLinkWebCard };
+export type PluginRequestOutcome = PluginRequestResult | PluginPanelRequestError;
 
 export type PluginRequestFrame =
   | {
@@ -56,6 +59,12 @@ export type PluginRequestFrame =
       readonly rowId: string;
       readonly surfaceId: string;
       readonly itemId?: string | undefined;
+    }
+  | {
+      readonly type: "surface";
+      readonly scope: "link";
+      readonly linkId: string;
+      readonly url: string;
     };
 
 const targetFields = (target: PluginFrameTarget) =>
@@ -89,6 +98,8 @@ export class PanelPluginConnection {
   private idleTimer: ReturnType<typeof setTimeout> | undefined;
   private readinessTimer: ReturnType<typeof setTimeout> | undefined;
   private stopped = false;
+  /** Holders keep the socket open without a subscription, as link cards need. */
+  private holders = new Set<(status: PluginPanelSnapshot["status"]) => void>();
   private status: PluginPanelSnapshot["status"] = "connecting";
 
   private readonly config: PanelPluginConfig;
@@ -105,27 +116,51 @@ export class PanelPluginConnection {
     return this.socket?.readyState === WebSocket.OPEN;
   }
 
+  /** The live socket's URL; web content is served from its origin. */
+  get endpoint() {
+    return this.socket?.readyState === WebSocket.OPEN ? this.socket.url : undefined;
+  }
+
+  /** Keeps the plugin connected without subscribing to panels, reporting its status. */
+  retain(onStatus: (status: PluginPanelSnapshot["status"]) => void): () => void {
+    this.cancelIdle();
+    const holder = (status: PluginPanelSnapshot["status"]) => onStatus(status);
+    this.holders.add(holder);
+    onStatus(this.status);
+    if (!this.socket && !this.child && !this.timer) this.start();
+    return () => {
+      if (this.holders.delete(holder)) this.idleIfUnused();
+    };
+  }
+
+  private cancelIdle() {
+    clearTimeout(this.idleTimer);
+    this.idleTimer = undefined;
+  }
+
+  private idleIfUnused() {
+    if (this.subscriptions.size === 0 && this.holders.size === 0)
+      this.idleTimer = setTimeout(() => this.stop(), IDLE_GRACE_MS);
+  }
+
   /** `retarget` re-sends `subscribe` under the same id, which plugins treat as a replacement. */
   subscribe(subscription: Subscription): {
     close: () => void;
     retarget: (target: PluginFrameTarget) => void;
   } {
-    clearTimeout(this.idleTimer);
-    this.idleTimer = undefined;
+    this.cancelIdle();
     const id = NodeCrypto.randomUUID();
     this.subscriptions.set(id, subscription);
     subscription.emit({ pluginId: this.config.id, panels: [], status: this.status });
     if (this.socket?.readyState === WebSocket.OPEN) this.send(id, subscription);
-    else if (this.subscriptions.size === 1 && !this.socket && !this.child && !this.timer)
-      this.start();
+    else if (!this.socket && !this.child && !this.timer) this.start();
     return {
       close: () => {
         if (!this.subscriptions.delete(id)) return;
         if (this.socket?.readyState === WebSocket.OPEN) {
           this.socket.send(JSON.stringify({ type: "unsubscribe", subscriptionId: id }));
         }
-        if (this.subscriptions.size === 0)
-          this.idleTimer = setTimeout(() => this.stop(), IDLE_GRACE_MS);
+        this.idleIfUnused();
       },
       retarget: (target) => {
         if (!this.subscriptions.has(id)) return;
@@ -140,7 +175,8 @@ export class PanelPluginConnection {
    * The returned function abandons the request; a late result for it is then ignored.
    */
   request(
-    target: PluginFrameTarget,
+    /** Absent for link cards, which belong to no thread or environment subscription. */
+    target: PluginFrameTarget | undefined,
     frame: PluginRequestFrame,
     settle: (outcome: PluginRequestOutcome) => void,
   ): () => void {
@@ -160,7 +196,7 @@ export class PanelPluginConnection {
     }
     const requestId = NodeCrypto.randomUUID();
     this.pending.set(requestId, settle);
-    socket.send(JSON.stringify({ ...frame, requestId, ...targetFields(target) }));
+    socket.send(JSON.stringify({ ...frame, requestId, ...(target ? targetFields(target) : {}) }));
     return () => {
       this.pending.delete(requestId);
     };
@@ -206,6 +242,7 @@ export class PanelPluginConnection {
     for (const subscription of this.subscriptions.values()) {
       subscription.emit({ pluginId: this.config.id, panels: [], status });
     }
+    for (const holder of this.holders) holder(status);
   }
 
   private retry = () => {
@@ -304,6 +341,7 @@ export class PanelPluginConnection {
                 ? {
                     ...(message.surface ? { surface: message.surface } : {}),
                     ...(message.close !== undefined ? { close: message.close } : {}),
+                    ...(message.web ? { web: message.web } : {}),
                   }
                 : new PluginPanelRequestError({
                     reason: "rejected",

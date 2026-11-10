@@ -1,5 +1,5 @@
 import { expect, it } from "vite-plus/test";
-import { PluginSurfaceTree, type PluginSurfaceTreeNode } from "./pluginSurfaceTree";
+import { PluginSurfaceTree, type PluginSurfaceTreeNode } from "./pluginSurfaceTree.ts";
 
 it("closes descendants with their parent and replaces a panel's hover card", () => {
   const tree = new PluginSurfaceTree<PluginSurfaceTreeNode>();

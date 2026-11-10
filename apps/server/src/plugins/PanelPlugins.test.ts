@@ -13,7 +13,7 @@ import * as Path from "effect/Path";
 import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
-import { ThreadId, type PluginPanelSnapshot } from "@t3tools/contracts";
+import { ThreadId, type PluginLink, type PluginPanelSnapshot } from "@t3tools/contracts";
 import * as ServerConfig from "../config.ts";
 import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
 import * as OrchestrationEventStore from "../persistence/OrchestrationEventStore.ts";
@@ -21,6 +21,7 @@ import * as ProjectService from "../project/ProjectService.ts";
 import * as PanelPlugins from "./PanelPlugins.ts";
 import * as PluginDiscovery from "./PluginDiscovery.ts";
 import * as PluginGateway from "./PluginGateway.ts";
+import { PLUGIN_GATEWAY_PREFIX } from "./PluginGatewaySessions.ts";
 
 /** A plugin: probe answer on plain GET, panel snapshots on the same route's WebSocket. */
 const ALPHA = "github.com/acme/alpha";
@@ -80,7 +81,13 @@ const startPlugin = Effect.acquireRelease(
             else reply({ ...result, ok: true, close: true });
             break;
           case "surface":
-            if (message.surfaceId === "empty") reply({ ...result, ok: true });
+            if (message.scope === "link")
+              reply(
+                message.linkId === "page"
+                  ? { ...result, ok: true, web: { path: "/cards/msg.html", height: 200 } }
+                  : { ...result, ok: true, surface: { title: `card ${message.url}`, blocks: [] } },
+              );
+            else if (message.surfaceId === "empty") reply({ ...result, ok: true });
             else
               reply({
                 ...result,
@@ -388,6 +395,106 @@ it.effect("times out a silent plugin and ignores its late answer", () =>
       assert.deepStrictEqual(
         yield* panels.act({ target, pluginId: ENVIRONMENT_PLUGIN, ...row, actionId: "done" }),
         { close: true },
+      );
+    }).pipe(Effect.provide(layer));
+  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);
+
+it.live("serves link cards only for declared prefixes of plugins with the links scope", () =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const baseDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3code-panel-plugins-" });
+    const manifestDirectory = path.join(baseDir, "plugins");
+    yield* fs.makeDirectory(manifestDirectory, { recursive: true, mode: 0o700 });
+    yield* fs.makeDirectory(path.join(baseDir, "userdata"), { recursive: true });
+    const plugin = yield* startPlugin;
+    const links = [
+      { id: "message", prefix: "https://viewer.example/msg/" },
+      { id: "page", prefix: "https://viewer.example/page/" },
+    ];
+    yield* fs.writeFileString(
+      path.join(baseDir, "userdata", "panel-plugins.json"),
+      JSON.stringify([
+        {
+          id: "viewer",
+          connection: { kind: "server", baseUrl: `${plugin.origin}/plugins/viewer` },
+          scopes: ["links"],
+          links,
+        },
+        {
+          id: "unscoped",
+          connection: { kind: "server", baseUrl: `${plugin.origin}/plugins/unscoped` },
+          links: [{ id: "message", prefix: "https://viewer.example/msg/" }],
+        },
+      ]),
+    );
+    const layer = testLayer(
+      baseDir,
+      manifestDirectory,
+      { current: [] },
+      yield* Queue.unbounded<unknown>(),
+    );
+    yield* Effect.gen(function* () {
+      const panels = yield* PanelPlugins.PanelPlugins;
+      const connected = plugin.nextConnection();
+      const seen = yield* Queue.unbounded<ReadonlyArray<PluginLink>>();
+      yield* panels.subscribeLinks().pipe(
+        Stream.runForEach((value) => Queue.offer(seen, value)),
+        Effect.forkScoped,
+      );
+      // Holding the link list keeps the plugin connected, though it has no panels; its links
+      // are listed once it is.
+      const listed = yield* Stream.fromQueue(seen).pipe(
+        Stream.filter((value) => value.length > 0),
+        Stream.runHead,
+      );
+      assert.deepStrictEqual(
+        Option.getOrThrow(listed),
+        links.map((link) => ({ pluginId: "viewer", linkId: link.id, prefix: link.prefix })),
+      );
+      yield* Deferred.await(connected);
+      const card = (input: { pluginId: string; linkId: string; url: string }, allowWeb = true) =>
+        panels.linkCard(input, { allowWeb });
+
+      const url = "https://viewer.example/msg/pacs.008/123";
+      assert.deepStrictEqual(yield* card({ pluginId: "viewer", linkId: "message", url }), {
+        surface: { title: `card ${url}`, blocks: [] },
+      });
+      const sent = yield* plugin.frame((frame) => frame.message.scope === "link");
+      assert.deepStrictEqual(
+        [sent.path, sent.message.type, sent.message.linkId, sent.message.url],
+        ["/plugins/viewer", "surface", "message", url],
+      );
+      assert.equal("threadId" in sent.message || "projects" in sent.message, false);
+
+      // A URL outside the prefix never reaches the plugin.
+      const outside = yield* Effect.flip(
+        card({ pluginId: "viewer", linkId: "message", url: "https://viewer.example/other/1" }),
+      );
+      assert.equal(outside.reason, "rejected");
+      const web = yield* card({
+        pluginId: "viewer",
+        linkId: "page",
+        url: "https://viewer.example/page/1",
+      });
+      assert.equal("webUrl" in web && web.webUrl.startsWith(PLUGIN_GATEWAY_PREFIX), true);
+      assert.equal("webUrl" in web && web.webUrl.endsWith("/cards/msg.html"), true);
+      assert.equal("height" in web && web.height, 200);
+      const readOnly = yield* Effect.flip(
+        card({ pluginId: "viewer", linkId: "page", url: "https://viewer.example/page/1" }, false),
+      );
+      assert.equal(readOnly.reason, "rejected");
+      assert.equal(plugin.frames.filter((frame) => frame.message.scope === "link").length, 3);
+
+      // Declaring links without the scope gets neither a connection nor link frames.
+      const unscoped = yield* Effect.flip(
+        panels.linkCard({ pluginId: "unscoped", linkId: "message", url }, { allowWeb: true }),
+      );
+      assert.equal(unscoped.reason, "not-connected");
+      assert.equal(
+        plugin.frames.some((frame) => frame.path === "/plugins/unscoped"),
+        false,
       );
     }).pipe(Effect.provide(layer));
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),

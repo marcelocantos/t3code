@@ -5,7 +5,7 @@ import {
   pluginAnchorInWindow,
   PLUGIN_BRIDGE_MAX_MESSAGE_BYTES,
   resolvePluginWebPath,
-} from "./pluginBridge";
+} from "./pluginBridge.ts";
 
 describe("parsePluginBridgeMessage", () => {
   it("accepts each frame message the bridge defines", () => {

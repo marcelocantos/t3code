@@ -11,6 +11,9 @@ import {
   PanelPluginConfig,
   PluginPanelRequestError,
   type PluginActionResult,
+  type PluginLink,
+  type PluginLinkCard,
+  type PluginLinkCardInput,
   type PluginPanelActionInput,
   type PluginPanelScope,
   type PluginPanelSnapshot,
@@ -31,7 +34,9 @@ import {
   type PluginFrameTarget,
   type PluginProject,
   type PluginRequestFrame,
+  type PluginRequestResult,
 } from "./PanelPluginConnection.ts";
+import { PLUGIN_GATEWAY_PREFIX, pluginRelativePath } from "./PluginGatewaySessions.ts";
 
 const encodeConfig = Schema.encodeSync(Schema.fromJsonString(PanelPluginConfig));
 const CONFIGURATION_ERROR: PluginPanelSnapshot = {
@@ -45,6 +50,17 @@ const servesScope = (plugin: PanelPluginConfig, scope: PluginPanelScope) =>
   (plugin.scopes ?? ["thread"]).includes(scope);
 
 const notConnected = () => new PluginPanelRequestError({ reason: "not-connected" });
+const rejected = (detail: string) => new PluginPanelRequestError({ reason: "rejected", detail });
+
+/** Link prefixes count only for plugins the user let serve link cards. */
+const pluginLinksOf = (plugin: PanelPluginConfig): ReadonlyArray<PluginLink> =>
+  servesScope(plugin, "links")
+    ? (plugin.links ?? []).map((link) => ({
+        pluginId: plugin.id,
+        linkId: link.id,
+        prefix: link.prefix,
+      }))
+    : [];
 const isRequestError = Schema.is(PluginPanelRequestError);
 
 const sameProjects = (a: ReadonlyArray<PluginProject>, b: ReadonlyArray<PluginProject>) =>
@@ -75,6 +91,13 @@ export class PanelPlugins extends Context.Service<
     readonly surface: (
       input: PluginPanelSurfaceInput,
     ) => Effect.Effect<PluginSurface, PluginPanelRequestError>;
+    /** Link prefixes of plugins serving link cards; keeps those plugins connected while open. */
+    readonly subscribeLinks: () => Stream.Stream<ReadonlyArray<PluginLink>>;
+    /** Asks the plugin that declared `linkId` for a card, if `url` matches its prefix. */
+    readonly linkCard: (
+      input: PluginLinkCardInput,
+      options: { readonly allowWeb: boolean },
+    ) => Effect.Effect<PluginLinkCard, PluginPanelRequestError>;
   }
 >()("t3/plugins/PanelPlugins") {}
 
@@ -88,12 +111,28 @@ const make = Effect.gen(function* () {
     string,
     { connection: PanelPluginConnection; plugin: PanelPluginConfig; refs: number }
   >();
+  /** Gateway grants for link card pages, one per connection, revoked when it retires. */
+  const linkGrants = new Map<string, { root: string; token: string; revoke: () => void }>();
+  const retire = (key: string) => {
+    connections.get(key)?.connection.stop();
+    connections.delete(key);
+    linkGrants.get(key)?.revoke();
+    linkGrants.delete(key);
+  };
   yield* Effect.addFinalizer(() =>
     Effect.sync(() => {
-      for (const { connection } of connections.values()) connection.stop();
-      connections.clear();
+      for (const key of connections.keys()) retire(key);
     }),
   );
+  /** Every watcher of configured plugins agrees on one connection per configuration. */
+  const connectionFor = (plugin: PanelPluginConfig, key: string) => {
+    let entry = connections.get(key);
+    if (!entry) {
+      entry = { connection: new PanelPluginConnection(plugin), plugin, refs: 0 };
+      connections.set(key, entry);
+    }
+    return entry;
+  };
 
   const resolveThread = Effect.fn("PanelPlugins.resolveThread")(function* (threadId: ThreadId) {
     const thread = yield* threads.getThreadShell(threadId);
@@ -141,18 +180,10 @@ const make = Effect.gen(function* () {
     // A connection nobody uses and nobody configures has nothing to wait for.
     const releaseIfRetired = (key: string) => {
       const entry = connections.get(key);
-      if (entry && entry.refs === 0 && !desiredKeys.has(key)) {
-        entry.connection.stop();
-        connections.delete(key);
-      }
+      if (entry && entry.refs === 0 && !desiredKeys.has(key)) retire(key);
     };
     const attach = (plugin: PanelPluginConfig, key: string) => {
-      let entry = connections.get(key);
-      if (!entry) {
-        entry = { connection: new PanelPluginConnection(plugin), plugin, refs: 0 };
-        connections.set(key, entry);
-      }
-      const shared = entry;
+      const shared = connectionFor(plugin, key);
       shared.refs++;
       const webSession = gateway.session(gatewayThread, gatewayCwd, options.allowWeb);
       const subscription = shared.connection.subscribe({
@@ -279,6 +310,24 @@ const make = Effect.gen(function* () {
       { bufferSize: 1, strategy: "sliding" },
     );
 
+  const send = Effect.fn("PanelPlugins.send")(function* (
+    connection: PanelPluginConnection,
+    target: PluginFrameTarget | undefined,
+    frame: PluginRequestFrame,
+  ) {
+    return yield* Effect.callback<PluginRequestResult, PluginPanelRequestError>((resume) => {
+      const abandon = connection.request(target, frame, (outcome) =>
+        resume(isRequestError(outcome) ? Effect.fail(outcome) : Effect.succeed(outcome)),
+      );
+      return Effect.sync(abandon);
+    }).pipe(
+      Effect.timeoutOrElse({
+        duration: REQUEST_TIMEOUT,
+        orElse: () => Effect.fail(new PluginPanelRequestError({ reason: "timeout" })),
+      }),
+    );
+  });
+
   const request = Effect.fn("PanelPlugins.request")(function* (
     target: PluginPanelTarget,
     pluginId: string,
@@ -297,17 +346,8 @@ const make = Effect.gen(function* () {
         plugin.id === pluginId && servesScope(plugin, target.scope) && connection.connected,
     );
     if (!entry) return yield* notConnected();
-    return yield* Effect.callback<PluginActionResult, PluginPanelRequestError>((resume) => {
-      const abandon = entry.connection.request(resolved, frame, (outcome) =>
-        resume(isRequestError(outcome) ? Effect.fail(outcome) : Effect.succeed(outcome)),
-      );
-      return Effect.sync(abandon);
-    }).pipe(
-      Effect.timeoutOrElse({
-        duration: REQUEST_TIMEOUT,
-        orElse: () => Effect.fail(new PluginPanelRequestError({ reason: "timeout" })),
-      }),
-    );
+    const { web: _linksOnly, ...result } = yield* send(entry.connection, resolved, frame);
+    return result satisfies PluginActionResult;
   });
 
   const act: PanelPlugins["Service"]["act"] = (input) =>
@@ -335,7 +375,115 @@ const make = Effect.gen(function* () {
     },
   );
 
-  return PanelPlugins.of({ subscribe, subscribeEnvironment, act, surface });
+  const subscribeLinks: PanelPlugins["Service"]["subscribeLinks"] = () =>
+    Stream.callback(
+      (queue) =>
+        Effect.gen(function* () {
+          const held = new Map<string, () => void>();
+          const release = (key: string) => {
+            held.get(key)?.();
+            held.delete(key);
+            const entry = connections.get(key);
+            if (entry) entry.refs--;
+            if (entry?.refs === 0) retire(key);
+          };
+          yield* Effect.addFinalizer(() =>
+            Effect.sync(() => {
+              for (const key of held.keys()) release(key);
+            }),
+          );
+          // Only connected plugins' links get cards; the rest stay plain links until they are.
+          const connected = new Map<string, PanelPluginConfig>();
+          const publish = () =>
+            Queue.offerUnsafe(queue, [...connected.values()].flatMap(pluginLinksOf));
+          yield* discovery.configs.pipe(
+            Stream.runForEach(({ configs }) =>
+              Effect.sync(() => {
+                const desired = new Map(
+                  configs
+                    .filter((plugin) => pluginLinksOf(plugin).length > 0)
+                    .map((plugin) => [encodeConfig(plugin), plugin] as const),
+                );
+                for (const key of held.keys()) {
+                  if (desired.has(key)) continue;
+                  connected.delete(key);
+                  release(key);
+                }
+                for (const [key, plugin] of desired) {
+                  if (held.has(key)) continue;
+                  const entry = connectionFor(plugin, key);
+                  entry.refs++;
+                  held.set(
+                    key,
+                    entry.connection.retain((status) => {
+                      const was = connected.has(key);
+                      if (status === "connected") connected.set(key, plugin);
+                      else connected.delete(key);
+                      if (was !== connected.has(key)) publish();
+                    }),
+                  );
+                }
+                publish();
+              }),
+            ),
+            Effect.catchCause(() => Queue.offer(queue, [])),
+            Effect.forkScoped,
+          );
+        }),
+      { bufferSize: 1, strategy: "sliding" },
+    );
+
+  const linkCard: PanelPlugins["Service"]["linkCard"] = Effect.fn("PanelPlugins.linkCard")(
+    function* (input, options) {
+      const found = [...connections.entries()].flatMap(([key, { plugin, connection }]) => {
+        if (plugin.id !== input.pluginId || !connection.connected) return [];
+        const declared = pluginLinksOf(plugin).find((link) => link.linkId === input.linkId);
+        return declared ? [{ key, connection, declared }] : [];
+      })[0];
+      if (!found) return yield* notConnected();
+      const { key, connection, declared } = found;
+      // The plugin only ever sees links it claimed, never arbitrary chat URLs.
+      if (!input.url.startsWith(declared.prefix))
+        return yield* rejected("The link does not match the plugin's prefix.");
+      const result = yield* send(connection, undefined, {
+        type: "surface",
+        scope: "link",
+        linkId: input.linkId,
+        url: input.url,
+      });
+      if (result.surface) return { surface: result.surface };
+      const web = result.web;
+      const endpoint = connection.endpoint;
+      if (!web || !endpoint || !pluginRelativePath(web.path))
+        return yield* new PluginPanelRequestError({ reason: "invalid-response" });
+      if (!options.allowWeb)
+        return yield* rejected(
+          "Interactive plugin cards require permission to operate this environment.",
+        );
+      const base = new URL(endpoint);
+      base.protocol = base.protocol === "wss:" ? "https:" : "http:";
+      const root = new URL("/", base).href;
+      let grant = linkGrants.get(key);
+      if (grant?.root !== root) {
+        grant?.revoke();
+        grant = { root, ...gateway.grant(root) };
+        linkGrants.set(key, grant);
+      }
+      return {
+        webUrl: `${PLUGIN_GATEWAY_PREFIX}${grant.token}/${web.path.slice(1)}`,
+        ...(web.height === undefined ? {} : { height: web.height }),
+      };
+    },
+  );
+
+  return PanelPlugins.of({
+    subscribe,
+    subscribeEnvironment,
+    act,
+    surface,
+    subscribeLinks,
+    linkCard,
+  });
 });
 
 export const layer = Layer.effect(PanelPlugins, make);

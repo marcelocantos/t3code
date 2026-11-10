@@ -45,7 +45,7 @@ function useThreadAgentControls(threadRef: ScopedThreadRef): PluginAgentControls
         [threadKey]: { ...current[threadKey], [rowKey]: messageId },
       }));
       // The composer's path: queued behind a running turn, delivered by the outbox.
-      enqueueThreadOutboxMessage({
+      return enqueueThreadOutboxMessage({
         environmentId: threadRef.environmentId,
         threadId: threadRef.threadId,
         messageId,
@@ -54,14 +54,22 @@ function useThreadAgentControls(threadRef: ScopedThreadRef): PluginAgentControls
         attachments: [],
         dispatchMode: "queue",
         createdAt: new Date().toISOString(),
-      }).catch(() => Dialog.alert("Could not send the plugin's prompt"));
+      }).then(
+        () => null,
+        () => {
+          Dialog.alert("Could not send the plugin's prompt");
+          return "Could not send the message.";
+        },
+      );
     },
     stop: (runId) =>
-      void interruptTurn({
+      interruptTurn({
         environmentId: threadRef.environmentId,
         input: { threadId: threadRef.threadId, runId },
       }).then((result) => {
-        if (result._tag === "Failure") Dialog.alert("Could not stop the agent");
+        if (result._tag !== "Failure") return null;
+        Dialog.alert("Could not stop the agent");
+        return "Could not stop the run.";
       }),
   };
 }

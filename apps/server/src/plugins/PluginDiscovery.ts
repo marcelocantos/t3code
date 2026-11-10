@@ -15,7 +15,9 @@ import {
   DiscoveredPluginId,
   PanelPluginConfig,
   PluginDiscoveryActionError,
-  PluginPanelScope,
+  PluginLinkPatterns,
+  PluginPanelScopes,
+  type PluginPanelScope,
   type PluginDiscoveryActionInput,
   type PluginDiscoveryItem,
   type PluginDiscoverySnapshot,
@@ -44,9 +46,11 @@ const Decision = Schema.Struct({
   /** Endpoint of an enabled plugin whose change of address the user declined. */
   dismissedBaseUrl: Schema.optional(BaseUrl),
   /** Scopes the endpoint's probe last declared, kept so they survive restarts and outages. */
-  scopes: Schema.optional(Schema.Array(PluginPanelScope).check(Schema.isMaxLength(2))),
+  scopes: Schema.optional(PluginPanelScopes),
   /** Scopes the user approved by enabling; a probe can narrow `scopes` below these, never widen. */
-  approvedScopes: Schema.optional(Schema.Array(PluginPanelScope).check(Schema.isMaxLength(2))),
+  approvedScopes: Schema.optional(PluginPanelScopes),
+  /** Link prefixes the endpoint's probe last declared; the `links` scope gates them, not consent. */
+  links: Schema.optional(PluginLinkPatterns),
 });
 type Decision = typeof Decision.Type;
 const DecisionFile = Schema.Struct({
@@ -146,6 +150,7 @@ function effectiveConfigs(state: State): EffectivePluginConfigs {
       id: decision.id,
       connection: { kind: "server", baseUrl: decision.baseUrl },
       ...(decision.scopes ? { scopes: decision.scopes } : {}),
+      ...(decision.links ? { links: decision.links } : {}),
     });
   }
   return { configs: [...state.manual.configs, ...discovered], error: state.manual.error };
@@ -188,9 +193,16 @@ function withLiveScopes(
     if (!live) return decision;
     const approved = decision.approvedScopes ?? decision.scopes ?? DEFAULT_SCOPES;
     const scopes = (live.scopes ?? DEFAULT_SCOPES).filter((scope) => approved.includes(scope));
-    if (sameJson(scopes, decision.scopes ?? DEFAULT_SCOPES)) return decision;
+    if (sameJson(scopes, decision.scopes ?? DEFAULT_SCOPES) && sameJson(live.links, decision.links))
+      return decision;
     changed = true;
-    return { ...decision, scopes, approvedScopes: approved };
+    const { links: _previous, ...rest } = decision;
+    return {
+      ...rest,
+      scopes,
+      approvedScopes: approved,
+      ...(live.links ? { links: live.links } : {}),
+    };
   });
   return changed ? next : undefined;
 }
@@ -349,12 +361,14 @@ const makeWith = Effect.fn("PluginDiscovery.make")(function* (manifestDirectory:
               const remembered = existing?.status === "disabled" && existing.baseUrl === baseUrl;
               if (!live && !remembered) return yield* fail("not-available");
               const scopes = live ? live.scopes : existing?.scopes;
+              const links = live ? live.links : existing?.links;
               next = replace({
                 id: input.id,
                 name: live?.name ?? existing?.name ?? input.id,
                 status: "enabled",
                 baseUrl,
                 ...(scopes ? { scopes, approvedScopes: scopes } : {}),
+                ...(links ? { links } : {}),
               });
               break;
             }

@@ -2,6 +2,7 @@ import {
   createEnvironmentPanelPluginAtoms,
   createPanelPluginAtoms,
   createPanelPluginCommands,
+  createPluginLinkAtoms,
 } from "@t3tools/client-runtime/state/panelPlugins";
 import { createPluginDiscoveryAtoms } from "@t3tools/client-runtime/state/pluginDiscovery";
 import { useSyncExternalStore } from "react";
@@ -11,6 +12,7 @@ export const threadPluginPanels = createPanelPluginAtoms(connectionAtomRuntime);
 export const environmentPluginPanels = createEnvironmentPanelPluginAtoms(connectionAtomRuntime);
 export const pluginPanelCommands = createPanelPluginCommands(connectionAtomRuntime);
 export const pluginDiscovery = createPluginDiscoveryAtoms(connectionAtomRuntime);
+export const pluginLinks = createPluginLinkAtoms(connectionAtomRuntime);
 
 /**
  * A small JSON value in local storage. Storage can be missing or refuse writes (private windows,

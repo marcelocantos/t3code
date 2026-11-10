@@ -217,6 +217,8 @@ const RPC_AGGREGATES = {
   [WS_METHODS.subscribeEnvironmentPluginPanels]: "plugins",
   [WS_METHODS.pluginPanelsAct]: "plugins",
   [WS_METHODS.pluginPanelsSurface]: "plugins",
+  [WS_METHODS.subscribePluginLinks]: "plugins",
+  [WS_METHODS.pluginLinksCard]: "plugins",
   [WS_METHODS.subscribePluginDiscovery]: "plugins",
   [WS_METHODS.pluginDiscoveryAct]: "plugins",
   [WS_METHODS.subscribeDiscoveredLocalServers]: "preview",

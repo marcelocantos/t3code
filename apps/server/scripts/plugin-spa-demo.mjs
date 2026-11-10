@@ -63,8 +63,52 @@ document.querySelector('#pick').onclick = () => open.has('picker') || request({ 
   size: { width: 320, height: 160 }, content: { kind: 'web', path: 'dialog.html' } });
 document.querySelector('#ask').onclick = () => request({ type: 'agent.prompt', prompt: 'Summarize what the thread counter panel shows.' });
 `;
+// Link cards: `message` links get a structured card, `page` links a web card page. Configure with
+// "scopes": ["thread", "links"] and "links": [{ "id": "message", "prefix": LINK_PREFIXES.message }, …].
+const LINK_PREFIXES = {
+  message: "https://example.invalid/msg/",
+  page: "https://example.invalid/page/",
+};
+const linkKey = (url, prefix) =>
+  (url.slice(prefix.length).match(/^[A-Za-z0-9._-]{1,64}/) ?? ["unknown"])[0];
+const escapeHtml = (text) =>
+  text.replace(/[&<>"']/g, (character) => `&#${character.charCodeAt(0)};`);
+const cardPage = (key) =>
+  `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0;padding:12px;font:13px system-ui;color:#ddd;background:#17191c}h1{font-size:15px;margin:0 0 8px}dt{color:#999}dd{margin:0 0 6px}</style></head><body><h1>Page ${escapeHtml(key)}</h1><dl><dt>Served by</dt><dd>plugin-spa-demo through the T3 gateway</dd><dt>Rendered</dt><dd>${new Date().toISOString()}</dd></dl></body></html>`;
+const linkResult = (message) => {
+  const prefix = LINK_PREFIXES[message.linkId];
+  if (typeof message.url !== "string" || !prefix || !message.url.startsWith(prefix))
+    return { ok: false, error: "Unknown link" };
+  const key = linkKey(message.url, prefix);
+  if (message.linkId === "page")
+    return { ok: true, web: { path: `/cards/page/${encodeURIComponent(key)}`, height: 140 } };
+  return {
+    ok: true,
+    surface: {
+      title: `Message ${key}`,
+      blocks: [
+        {
+          type: "fields",
+          items: [
+            { label: "Type", value: "pacs.008" },
+            { label: "Status", value: "Settled", tone: "success" },
+            { label: "Amount", value: "AUD 1,250.00" },
+          ],
+        },
+        { type: "text", text: "A structured card from the demo plugin.", tone: "muted" },
+      ],
+    },
+  };
+};
+
 const server = NodeHttp.createServer((request, response) => {
   const path = new URL(request.url, "http://plugin.local").pathname;
+  // Link card pages belong to no thread, so they come without thread headers.
+  if (path.startsWith("/cards/page/") && request.method === "GET") {
+    const key = decodeURIComponent(path.slice("/cards/page/".length));
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8" }).end(cardPage(key));
+    return;
+  }
   const threadId = request.headers["x-t3-thread-id"];
   if (!threadId) {
     response.writeHead(403).end();
@@ -129,6 +173,12 @@ panels.on("connection", (socket) => {
     try {
       const message = JSON.parse(raw.toString());
       if (message.type === "unsubscribe") return;
+      if (message.type === "surface" && message.scope === "link") {
+        socket.send(
+          JSON.stringify({ type: "result", requestId: message.requestId, ...linkResult(message) }),
+        );
+        return;
+      }
       if (
         message.type !== "subscribe" ||
         message.protocol !== 1 ||

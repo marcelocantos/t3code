@@ -21,6 +21,7 @@ import { Menu } from "../../components/ui/Menu";
 import { useNowMinuteMs } from "../../lib/clock";
 import { cn } from "../../lib/cn";
 import { mobilePreferencesAtom, updateMobilePreferencesAtom } from "../../state/preferences";
+import { PluginBridgeHost } from "./PluginBridge";
 import { PluginWebPanel } from "./PluginWebPanel";
 import {
   DateActionMenu,
@@ -42,12 +43,15 @@ type AgentRunState = ReturnType<typeof pluginAgentRunState>;
 /** Thread panels submit agent prompts into their thread; environment panels have none. */
 export interface PluginAgentControls {
   readonly stateOf: (rowKey: string) => AgentRunState;
-  readonly start: (rowKey: string, prompt: string) => void;
-  readonly stop: (runId: RunId) => void;
+  /** Resolve to an error message, or null on success. */
+  readonly start: (rowKey: string, prompt: string) => Promise<string | null>;
+  readonly stop: (runId: RunId) => Promise<string | null>;
 }
 
 export const pluginRowKey = (pluginId: string, panelId: string, rowId: string) =>
   `${pluginId}/${panelId}/${rowId}`;
+/** The agent key of a web panel's own requests, apart from any row's. */
+const pluginFrameAgentKey = (pluginId: string, panelId: string) => `${pluginId}/${panelId}#frame`;
 
 const WEB_PANEL_DEFAULT_HEIGHT = 420;
 
@@ -87,7 +91,12 @@ export function PluginPanels(props: {
     readonly root: PluginSurfaceEntry;
   } | null>(null);
   return (
-    <>
+    // Keyed so a thread change closes every surface the previous panels opened.
+    <PluginBridgeHost
+      key={`${props.environmentId}:${JSON.stringify(props.target)}`}
+      environmentId={props.environmentId}
+      agent={props.agent}
+    >
       {props.snapshots.map((plugin) =>
         plugin.status !== "connected" ? (
           <Text key={plugin.pluginId} className="text-sm text-foreground-muted">
@@ -117,6 +126,7 @@ export function PluginPanels(props: {
                     environmentId={props.environmentId}
                     panel={panel}
                     height={height}
+                    agentKey={pluginFrameAgentKey(plugin.pluginId, panel.id)}
                   />
                 ) : (
                   <ListPanelBody
@@ -144,7 +154,7 @@ export function PluginPanels(props: {
           onClose={() => setSheet(null)}
         />
       ) : null}
-    </>
+    </PluginBridgeHost>
   );
 }
 
@@ -282,7 +292,7 @@ function PanelRow(props: {
   const choose = async (action: PluginLeafAction, value?: string | null) => {
     switch (action.kind) {
       case "agent":
-        if (agentActions) agent.start(rowKey, action.prompt);
+        if (agentActions) void agent.start(rowKey, action.prompt);
         return;
       case "surface":
         await openSurface(action.surfaceId);
@@ -346,7 +356,7 @@ function PanelRow(props: {
           variant="danger"
           accessibilityLabel={`Stop ${row.label}`}
           disabled={run.kind !== "active"}
-          onPress={run.kind === "active" ? () => agent?.stop(run.runId) : undefined}
+          onPress={run.kind === "active" ? () => void agent?.stop(run.runId) : undefined}
         />
       ) : null}
       {primary && requests.canOperate && !(primary.kind === "agent" && run.kind !== "idle") ? (

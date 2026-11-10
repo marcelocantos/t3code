@@ -63,7 +63,7 @@ export interface PluginSurfaceEntry {
   readonly surface: PluginSurface;
 }
 
-type SurfaceAction = Extract<PluginSurfaceBlock, { type: "actions" }>["items"][number];
+export type SurfaceAction = Extract<PluginSurfaceBlock, { type: "actions" }>["items"][number];
 type FormBlock = Extract<PluginSurfaceBlock, { type: "form" }>;
 
 /**
@@ -166,7 +166,7 @@ export function PluginSurfaceSheet(props: {
   );
 }
 
-function SurfaceBlock(props: {
+export function SurfaceBlock(props: {
   readonly block: PluginSurfaceBlock;
   readonly nowMs: number;
   readonly busy: boolean;

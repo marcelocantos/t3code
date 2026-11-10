@@ -9,11 +9,23 @@ export const PluginCalendarDate = Schema.String.check(Schema.isPattern(/^\d{4}-\
 const Tone = Schema.Literals(["default", "muted", "info", "success", "warning", "danger"]);
 
 /**
- * Where a plugin's panels appear. `thread` panels sit in a thread's details and are scoped to its
- * workspace. `environment` panels sit in the left sidebar and see every project of the environment.
+ * What a plugin serves. `thread` panels sit in a thread's details and are scoped to its workspace.
+ * `environment` panels sit in the left sidebar and see every project of the environment. `links`
+ * shows the plugin's cards for chat links matching its declared prefixes.
  */
-export const PluginPanelScope = Schema.Literals(["thread", "environment"]);
+export const PluginPanelScope = Schema.Literals(["thread", "environment", "links"]);
 export type PluginPanelScope = typeof PluginPanelScope.Type;
+export const PluginPanelScopes = Schema.Array(PluginPanelScope).check(Schema.isMaxLength(3));
+
+/** An absolute http(s) URL prefix with a path, so `https://a.example` cannot match `a.example.evil`. */
+export const PluginLinkPrefix = Schema.String.check(
+  Schema.isMaxLength(2048),
+  Schema.isPattern(/^https?:\/\/[^\s/?#@]+\/\S*$/),
+);
+/** Chat links starting with `prefix` get a hover card from the plugin that declared it. */
+export const PluginLinkPattern = Schema.Struct({ id: Id, prefix: PluginLinkPrefix });
+export type PluginLinkPattern = typeof PluginLinkPattern.Type;
+export const PluginLinkPatterns = Schema.Array(PluginLinkPattern).check(Schema.isMaxLength(16));
 
 export const PanelPluginConfig = Schema.Struct({
   id: Id,
@@ -26,7 +38,9 @@ export const PanelPluginConfig = Schema.Struct({
     }),
   ]),
   /** Scopes the plugin serves. Absent means `["thread"]`, so older plugins never see new frames. */
-  scopes: Schema.optional(Schema.Array(PluginPanelScope).check(Schema.isMaxLength(2))),
+  scopes: Schema.optional(PluginPanelScopes),
+  /** Link prefixes the plugin shows cards for; used only with the `links` scope. */
+  links: Schema.optional(PluginLinkPatterns),
 });
 export type PanelPluginConfig = typeof PanelPluginConfig.Type;
 
@@ -270,7 +284,33 @@ export class PluginPanelRequestError extends Schema.TaggedError<PluginPanelReque
   }
 }
 
+/** A declared link prefix of an enabled plugin, as clients match chat links against it. */
+export const PluginLink = Schema.Struct({ pluginId: Id, linkId: Id, prefix: PluginLinkPrefix });
+export type PluginLink = typeof PluginLink.Type;
+export const PluginLinksState = Schema.Array(PluginLink).check(Schema.isMaxLength(320));
+
+export const PluginLinkCardInput = Schema.Struct({
+  pluginId: Id,
+  linkId: Id,
+  url: Schema.String.check(Schema.isNonEmpty(), Schema.isMaxLength(8192)),
+});
+export type PluginLinkCardInput = typeof PluginLinkCardInput.Type;
+
+const LinkCardHeight = Schema.Int.check(Schema.isBetween({ minimum: 80, maximum: 800 }));
+/** `webUrl` is a gateway path on the environment's HTTP origin, served in a sandboxed frame. */
+export const PluginLinkCard = Schema.Union([
+  Schema.Struct({ surface: PluginSurface }),
+  Schema.Struct({ webUrl: Schema.String, height: Schema.optional(LinkCardHeight) }),
+]);
+export type PluginLinkCard = typeof PluginLinkCard.Type;
+
 // ── Plugin wire protocol (T3 server ↔ plugin) ──────────────────────────────────────────────────
+
+export const PluginLinkWebCard = Schema.Struct({
+  path: Schema.String.check(Schema.isNonEmpty(), Schema.isMaxLength(2048)),
+  height: Schema.optional(LinkCardHeight),
+});
+export type PluginLinkWebCard = typeof PluginLinkWebCard.Type;
 
 export const PluginPanelMessage = Schema.Struct({
   type: Schema.Literal("panels"),
@@ -284,6 +324,8 @@ export const PluginResultMessage = Schema.Union([
     ok: Schema.Literal(true),
     surface: Schema.optional(PluginSurface),
     close: Schema.optional(Schema.Boolean),
+    /** Link cards only: a page on the plugin's own origin, shown through the gateway. */
+    web: Schema.optional(PluginLinkWebCard),
   }),
   Schema.Struct({
     type: Schema.Literal("result"),

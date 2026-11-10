@@ -1,4 +1,4 @@
-import type { PluginSurfaceCloseReason } from "./pluginBridge";
+import type { PluginSurfaceCloseReason } from "./pluginBridge.ts";
 
 export interface PluginSurfaceTreeNode {
   readonly id: string;
@@ -62,7 +62,8 @@ export class PluginSurfaceTree<Node extends PluginSurfaceTreeNode> {
         }
       }
     }
-    const closing = this.nodes.filter((node) => doomed.has(node.id)).toReversed();
+    // `filter` copies; Hermes lacks `toReversed`.
+    const closing = this.nodes.filter((node) => doomed.has(node.id)).reverse();
     this.set(this.nodes.filter((node) => !doomed.has(node.id)));
     for (const node of closing) {
       if (node.id === id) node.onClosed?.(reason, result);

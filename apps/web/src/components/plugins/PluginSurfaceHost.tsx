@@ -6,6 +6,8 @@ import type {
   EnvironmentId,
   PluginActionValue,
   PluginLeafAction,
+  PluginLink,
+  PluginLinkCard,
   PluginPanelTarget,
   PluginSurface,
 } from "@t3tools/contracts";
@@ -20,6 +22,7 @@ import {
   type ReactNode,
 } from "react";
 import { requestConfirmDialog } from "../../confirmDialog";
+import { readPreparedConnection } from "../../state/session";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { Dialog, DialogHeader, DialogPanel, DialogPopup, DialogTitle } from "../ui/dialog";
 import { Popover, PopoverPopup } from "../ui/popover";
@@ -36,14 +39,20 @@ import {
   type PluginBridgeOutbound,
   type PluginBridgePresentation,
   type PluginBridgeRect,
-} from "./pluginBridge";
-import { pluginPanelCommands } from "./pluginState";
-import { PluginSurfaceTree, type PluginSurfaceTreeNode } from "./pluginSurfaceTree";
+} from "@t3tools/client-runtime/state/pluginBridge";
+import { pluginLinks, pluginPanelCommands } from "./pluginState";
+import {
+  PluginSurfaceTree,
+  type PluginSurfaceTreeNode,
+} from "@t3tools/client-runtime/state/pluginSurfaceTree";
 import { PluginSurfaceView, type PluginSurfaceAction } from "./PluginSurfaceView";
 
 const HOVER_CLOSE_MS = 200;
 const DEFAULT_POPOVER_WIDTH = 320;
 const DEFAULT_WEB_SIZE = { width: 360, height: 240 };
+const LINK_CARD_CACHE_LIMIT = 200;
+/** Link cards fetched this page session, by environment, plugin, link and URL. */
+const linkCardCache = new Map<string, PluginLinkCard>();
 /** DialogPopup's own max width; wider plugin surfaces lift it. */
 const DIALOG_DEFAULT_MAX_WIDTH = 512;
 
@@ -109,7 +118,9 @@ type SurfaceRoute =
       readonly kind: "frame";
       readonly frame: PluginFrameEndpoint;
       readonly bridgeSurfaceId: string;
-    };
+    }
+  /** A chat link's card: read-only, since no panel row stands behind it. */
+  | { readonly kind: "link" };
 
 export interface PluginSurfaceNode extends PluginSurfaceTreeNode {
   readonly presentation: PluginBridgePresentation;
@@ -144,6 +155,8 @@ function failureMessage(result: AtomCommandResult<unknown, unknown>) {
   const error = squashAtomCommandFailure(result as never);
   return error instanceof Error ? error.message : "The plugin request failed.";
 }
+
+const LINK_CARD_ACTIONS = "Link cards are read-only; open the link to act on it.";
 
 function reportFailure(title: string, description: string) {
   toastManager.add(stackedThreadToast({ type: "error", title, description }));
@@ -188,6 +201,7 @@ function useHostApi(
 ) {
   const act = useAtomCommand(pluginPanelCommands.act, { reportFailure: false });
   const fetchSurface = useAtomCommand(pluginPanelCommands.surface, { reportFailure: false });
+  const fetchLinkCard = useAtomCommand(pluginLinks.card, { reportFailure: false });
   const agent = use(PluginAgentContext);
 
   const openPluginSurface = async (input: {
@@ -239,6 +253,68 @@ function useHostApi(
     );
   };
 
+  const linkCardContent = (
+    environmentId: EnvironmentId,
+    link: PluginLink,
+    card: PluginLinkCard,
+  ): Pick<PluginSurfaceNode, "content"> & Partial<Pick<PluginSurfaceNode, "size" | "title">> => {
+    if ("surface" in card)
+      return { content: { kind: "structured", surface: card.surface }, title: card.surface.title };
+    const base = readPreparedConnection(environmentId)?.httpBaseUrl;
+    if (base === undefined)
+      return { content: { kind: "error", message: "The environment is not connected." } };
+    const url = new URL(card.webUrl, base).href;
+    return {
+      content: { kind: "web", url, bridgeSurfaceId: `link:${link.linkId}`, gatewayUrl: url },
+      size: { width: DEFAULT_WEB_SIZE.width, height: card.height ?? DEFAULT_WEB_SIZE.height },
+    };
+  };
+
+  const openLinkCard = async (input: {
+    readonly environmentId: EnvironmentId;
+    readonly link: PluginLink;
+    readonly url: string;
+    readonly anchor: Element;
+    readonly transientKey: string;
+  }) => {
+    const { environmentId, link, url } = input;
+    const cacheKey = JSON.stringify([environmentId, link.pluginId, link.linkId, url]);
+    const cached = linkCardCache.get(cacheKey);
+    const id = tree.newId();
+    const opened = tree.open({
+      id,
+      parentId: null,
+      transientKey: input.transientKey,
+      presentation: "popover",
+      title: url,
+      anchor: input.anchor,
+      side: "bottom",
+      align: "start",
+      size: undefined,
+      content: { kind: "loading" },
+      route: { kind: "link" },
+      panelTitle: url,
+      agentSource: JSON.stringify(["link", link.pluginId, link.linkId]),
+      ...(cached === undefined ? {} : linkCardContent(environmentId, link, cached)),
+    });
+    if (!opened || cached !== undefined) return;
+    const result = await fetchLinkCard({
+      environmentId,
+      input: { pluginId: link.pluginId, linkId: link.linkId, url },
+    });
+    if (result._tag !== "Success") {
+      tree.update(id, { content: { kind: "error", message: failureMessage(result) } });
+      return;
+    }
+    linkCardCache.delete(cacheKey);
+    linkCardCache.set(cacheKey, result.value);
+    for (const oldest of linkCardCache.keys()) {
+      if (linkCardCache.size <= LINK_CARD_CACHE_LIMIT) break;
+      linkCardCache.delete(oldest);
+    }
+    tree.update(id, linkCardContent(environmentId, link, result.value));
+  };
+
   /** Sends an action to wherever its surface routes, then applies the plugin's result. */
   const send = async (
     origin: ActionOrigin,
@@ -248,6 +324,10 @@ function useHostApi(
   ) => {
     const node = "node" in origin ? origin.node : null;
     const route = node?.route;
+    if (route?.kind === "link") {
+      reportFailure(action.label, LINK_CARD_ACTIONS);
+      return;
+    }
     if (route?.kind === "frame") {
       post(route.frame, {
         type: "surface.action",
@@ -311,6 +391,10 @@ function useHostApi(
     anchor: Element | null,
   ) => {
     const node = "node" in origin ? origin.node : null;
+    if (node?.route.kind === "link") {
+      reportFailure(action.label, LINK_CARD_ACTIONS);
+      return;
+    }
     if (action.kind === "agent") {
       if (agent === null || node !== null) return;
       const row = (origin as PluginRowOrigin).row;
@@ -546,6 +630,19 @@ function useHostApi(
         agentSource: input.agentSource,
       });
     },
+    /** Hover card for a chat link matching a plugin's declared prefix. */
+    showLinkCard(input: {
+      readonly environmentId: EnvironmentId;
+      readonly link: PluginLink;
+      readonly url: string;
+      readonly anchor: Element;
+      readonly transientKey: string;
+    }) {
+      cancelHoverClose(input.transientKey);
+      const current = tree.nodes.find((node) => node.transientKey === input.transientKey);
+      if (current?.anchor === input.anchor) return;
+      void openLinkCard(input);
+    },
     /** A click in a hover card keeps it open after the pointer leaves. */
     pin(id: string) {
       const node = tree.get(id);
@@ -566,6 +663,7 @@ function useHostApi(
       item: { readonly id: string; readonly surfaceId: string },
       anchor: Element,
     ) {
+      if (node.route.kind === "link") return;
       if (node.route.kind === "frame") {
         post(node.route.frame, {
           type: "surface.action",

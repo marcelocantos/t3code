@@ -8,7 +8,10 @@ const host = vi.hoisted(() => ({
   act: vi.fn(),
 }));
 
-vi.mock("./pluginState", () => ({ pluginPanelCommands: { act: {}, surface: {} } }));
+vi.mock("./pluginState", () => ({
+  pluginPanelCommands: { act: {}, surface: {} },
+  pluginLinks: { card: {} },
+}));
 vi.mock("../../state/use-atom-command", () => ({ useAtomCommand: () => host.act }));
 vi.mock("../../confirmDialog", () => ({ requestConfirmDialog: host.confirm }));
 

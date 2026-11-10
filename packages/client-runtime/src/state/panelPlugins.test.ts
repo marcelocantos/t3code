@@ -1,6 +1,6 @@
 // @effect-diagnostics globalDate:off - Fixtures are local calendar days.
 import { describe, expect, it } from "vite-plus/test";
-import { pluginDateChoices, toCalendarDate } from "./panelPlugins.ts";
+import { matchPluginLink, pluginDateChoices, toCalendarDate } from "./panelPlugins.ts";
 
 describe("pluginDateChoices", () => {
   it.each([
@@ -20,5 +20,25 @@ describe("pluginDateChoices", () => {
 
   it("formats local dates without a UTC shift", () => {
     expect(toCalendarDate(new Date(2026, 0, 1, 0, 0))).toBe("2026-01-01");
+  });
+});
+
+describe("matchPluginLink", () => {
+  const links = [
+    { pluginId: "viewer", linkId: "message", prefix: "https://viewer.example/msg/" },
+    { pluginId: "viewer", linkId: "pacs", prefix: "https://viewer.example/msg/pacs/" },
+    { pluginId: "staff", linkId: "person", prefix: "https://intranet.example/people/" },
+  ];
+  it.each([
+    ["https://viewer.example/msg/camt.053/1", "message"],
+    // Nested prefixes: the more specific declaration wins.
+    ["https://viewer.example/msg/pacs/008", "pacs"],
+    ["https://intranet.example/people/jdoe", "person"],
+    // Prefix match is literal: another host, scheme or path is no match.
+    ["https://viewer.example.evil/msg/1", undefined],
+    ["http://viewer.example/msg/1", undefined],
+    ["https://viewer.example/msgs/1", undefined],
+  ])("matches %s", (href, linkId) => {
+    expect(matchPluginLink(links, href)?.linkId).toBe(linkId);
   });
 });

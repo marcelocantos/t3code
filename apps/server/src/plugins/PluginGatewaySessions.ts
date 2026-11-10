@@ -97,6 +97,25 @@ export class PluginGatewaySessions {
     };
   }
 
+  /** A grant outside any panel snapshot, such as a link card page; it lives until `revoke`. */
+  grant(upstreamRoot: string) {
+    const token = crypto.randomUUID();
+    this.grants.set(token, {
+      upstreamRoot,
+      threadId: undefined,
+      cwd: undefined,
+      abort: new AbortController(),
+      active: 0,
+    });
+    return {
+      token,
+      revoke: () => {
+        this.grants.get(token)?.abort.abort();
+        this.grants.delete(token);
+      },
+    };
+  }
+
   close() {
     for (const grant of this.grants.values()) grant.abort.abort();
     this.grants.clear();

@@ -248,6 +248,31 @@ describe("probing advertised services", () => {
     }).pipe(Effect.scoped),
   );
 
+  it.live("keeps only well-formed link prefixes from the probe", () =>
+    Effect.gen(function* () {
+      const message = { id: "message", prefix: "https://viewer.example/msg/" };
+      const service = yield* upstream((response) =>
+        json(response, {
+          ...example,
+          scopes: ["links"],
+          // No path, so it would also match `viewer.example.evil`; and not http(s).
+          links: [
+            message,
+            { id: "bare", prefix: "https://viewer.example" },
+            { id: "x", prefix: "file:///x/" },
+          ],
+        }),
+      );
+      const directory = yield* scopedDirectory;
+      NodeFS.writeFileSync(
+        NodePath.join(directory, instanceFile("1")),
+        manifest(`http://127.0.0.1:${service.port}/plugins/example`),
+      );
+      const [live] = yield* scanLivePlugins(directory);
+      expect([live?.scopes, live?.links]).toEqual([["links"], [message]]);
+    }).pipe(Effect.scoped),
+  );
+
   it.live("drops services that are stale, impostors, redirects or not JSON", () =>
     Effect.gen(function* () {
       const service = yield* upstream((response, url) => {
@@ -257,7 +282,7 @@ describe("probing advertised services", () => {
         if (url === "/html") return json(response, example, "text/html");
         if (url === "/redirect") return void response.writeHead(302, { location: "/ok" }).end();
         if (url === "/missing") return void response.writeHead(404).end();
-        if (url === "/huge") return json(response, { ...example, pad: "x".repeat(5000) });
+        if (url === "/huge") return json(response, { ...example, pad: "x".repeat(64 * 1024) });
         return json(response, example);
       });
       // A port nothing listens on: the daemon that advertised it is gone.

@@ -70,7 +70,7 @@ share a file. T3 ignores a file whose name does not decode to the manifest's `id
 
 **Probe.** Before offering a plugin, T3 sends a plain `GET` to `baseUrl` with `Accept: application/json`
 and no `Upgrade` header, cookies, thread or workspace. The plugin must answer `200` with a JSON content
-type and a body of at most 1 KiB:
+type and a body of at most 48 KiB:
 
 ```json
 { "protocol": 1, "id": "github.com/example/example", "name": "Example" }
@@ -271,6 +271,44 @@ enough in row ids to find your data. A row's `navigate.projectIds` lets T3 open 
 those projects, ask the user to choose when several exist, or offer a new thread. Environment web
 panels receive neither `x-t3-thread-id` nor `x-t3-workspace`.
 
+## Link cards
+
+A plugin can show a card when the user hovers or focuses a chat link it recognizes, for example a
+staff profile or a message viewer. It needs no panels. Declare the `links` scope and up to 16 link
+prefixes in the probe answer or the `panel-plugins.json` entry:
+
+```json
+{
+  "scopes": ["links"],
+  "links": [{ "id": "message", "prefix": "https://viewer.example/msg/" }]
+}
+```
+
+A prefix is an absolute `http` or `https` URL with a path (at most 2,048 characters); a malformed
+one is ignored. A link whose URL starts with a prefix gets the card, the longest prefix winning;
+clicking it still opens the link. Adding `links` to an enabled plugin's scopes asks the user again,
+like `environment`; changing the prefixes does not. T3 keeps a plugin with link prefixes connected
+while a client is open, and lists its prefixes to clients only while it is connected.
+
+On hover T3 sends a request with no thread or projects, after checking the URL against the prefix:
+
+```json
+{
+  "type": "surface",
+  "requestId": "r3",
+  "scope": "link",
+  "linkId": "message",
+  "url": "https://viewer.example/msg/42"
+}
+```
+
+Answer with a structured `surface`, or with `"web": { "path": "/cards/msg/42", "height"?: 160 }`, a
+page on the plugin's own origin that T3 shows in a sandboxed frame through the gateway (heights
+80–800 px). Card pages receive neither `x-t3-thread-id` nor `x-t3-workspace`, the path cannot carry
+a query, and assets should be relative or inline. Web cards need `orchestration:operate`; structured
+cards need only `orchestration:read`. Cards are read-only: actions in them are not run. Clients
+cache a URL's card for the page session.
+
 ## Embedded web applications
 
 A plugin may also send a web panel alongside native lists:
@@ -343,5 +381,8 @@ parent, and an agent request.
 
 The runnable example `apps/server/scripts/plugin-spa-demo.mjs` (server package script
 `plugin:spa-demo`) serves a thread counter. Configure it as a sidecar using the example above.
+Add `"scopes": ["thread", "links"]` and `"links": [{ "id": "message", "prefix": "https://example.invalid/msg/" }, { "id": "page", "prefix": "https://example.invalid/page/" }]`
+to see a structured link card and a web link card on chat links such as
+`https://example.invalid/msg/42`.
 It exercises a stylesheet, module entrypoint, dynamic import, a JSON API, a POST mutation and
 live WebSocket updates. Its “Isolated” indicator checks parent DOM and local-storage denial.

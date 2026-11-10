@@ -555,6 +555,10 @@
       "types": "./src/state/panelPlugins.ts",
       "default": "./src/state/panelPlugins.ts"
     },
+    "./state/pluginBridge": {
+      "types": "./src/state/pluginBridge.ts",
+      "default": "./src/state/pluginBridge.ts"
+    },
     "./state/pluginDiscovery": {
       "types": "./src/state/pluginDiscovery.ts",
       "default": "./src/state/pluginDiscovery.ts"
@@ -562,6 +566,10 @@
     "./state/pluginNavigation": {
       "types": "./src/state/pluginNavigation.ts",
       "default": "./src/state/pluginNavigation.ts"
+    },
+    "./state/pluginSurfaceTree": {
+      "types": "./src/state/pluginSurfaceTree.ts",
+      "default": "./src/state/pluginSurfaceTree.ts"
     }
   },
   "scripts": {

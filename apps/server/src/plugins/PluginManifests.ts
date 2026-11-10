@@ -2,7 +2,12 @@
 import * as NodeFS from "node:fs";
 import * as NodeHttp from "node:http";
 import * as NodePath from "node:path";
-import { PluginIdentity, PluginPanelScope } from "@t3tools/contracts";
+import {
+  PluginIdentity,
+  PluginLinkPattern,
+  PluginPanelScope,
+  type PluginLinkPattern as PluginLinkPatternType,
+} from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import { readThemeFileGuarded } from "../environmentTheme.ts";
@@ -15,7 +20,9 @@ import { readThemeFileGuarded } from "../environmentTheme.ts";
  */
 const MAX_MANIFEST_FILES = 32;
 const MAX_MANIFEST_BYTES = 4 * 1024;
-const MAX_PROBE_BYTES = 1024;
+// Room for 16 link prefixes of up to 2 KiB each.
+const MAX_PROBE_BYTES = 48 * 1024;
+const MAX_LINKS = 16;
 const PROBE_TIMEOUT_MS = 2_000;
 const PROBE_CONCURRENCY = 4;
 const MANIFEST_SUFFIX = ".json";
@@ -38,9 +45,12 @@ const ProbeResponse = Schema.Struct({
   name: Name,
   // Strings, not literals: a scope this T3 doesn't know must not make the plugin incompatible.
   scopes: Schema.optional(Schema.Array(Schema.String).check(Schema.isMaxLength(8))),
+  // Checked one by one, so one malformed prefix drops only itself.
+  links: Schema.optional(Schema.Array(Schema.Unknown).check(Schema.isMaxLength(MAX_LINKS))),
 });
 const isPluginIdentity = Schema.is(PluginIdentity);
 const isPluginPanelScope = Schema.is(PluginPanelScope);
+const isPluginLinkPattern = Schema.is(PluginLinkPattern);
 const decodeManifest = Schema.decodeUnknownOption(Schema.fromJsonString(Manifest));
 const decodeProbe = Schema.decodeUnknownOption(Schema.fromJsonString(ProbeResponse));
 
@@ -52,6 +62,8 @@ export interface PluginCandidate {
   readonly mtimeMs: number;
   /** Scopes the probe answer declared; absent means thread panels only. */
   readonly scopes?: ReadonlyArray<PluginPanelScope>;
+  /** Link prefixes the probe declared, effective only with the `links` scope. */
+  readonly links?: ReadonlyArray<PluginLinkPatternType>;
 }
 
 /**
@@ -199,7 +211,13 @@ function probePlugin(candidate: PluginCandidate): Promise<PluginCandidate | unde
             }
             const declared = body.value.scopes;
             const scopes = declared && [...new Set(declared.filter(isPluginPanelScope))];
-            settle(scopes ? { ...candidate, scopes } : candidate);
+            const links = body.value.links?.filter(isPluginLinkPattern);
+            const linkIds = new Set(links?.map((link) => link.id));
+            settle({
+              ...candidate,
+              ...(scopes ? { scopes } : {}),
+              ...(links && links.length > 0 && linkIds.size === links.length ? { links } : {}),
+            });
           });
           response.on("error", () => settle(undefined));
         },

@@ -25,7 +25,7 @@ export interface PluginRowScope {
 
 type DateAction = Extract<PluginLeafAction, { kind: "date" }>;
 
-const confirmAsync = (title: string, message: string, confirmText: string) =>
+export const confirmAsync = (title: string, message: string, confirmText: string) =>
   new Promise<boolean>((resolve) =>
     Dialog.confirm({
       title,

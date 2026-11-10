@@ -54,6 +54,8 @@ export function describePluginDiscoveryItem(item: PluginDiscoveryItem): string {
     case "enabled":
       if (item.discoveredBaseUrl === undefined && item.pendingScopes?.includes("environment"))
         return `${item.name} now also asks to show a sidebar panel that sees all your projects. Allow it?`;
+      if (item.discoveredBaseUrl === undefined && item.pendingScopes?.includes("links"))
+        return `${item.name} now also asks to show cards for links in chat. Allow it?`;
       return item.discoveredBaseUrl === undefined
         ? item.live
           ? "Enabled"

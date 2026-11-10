@@ -18,9 +18,12 @@ import * as PluginDiscovery from "./PluginDiscovery.ts";
 interface Service {
   readonly baseUrl: string;
   readonly stop: Effect.Effect<void>;
-  /** Change the scopes the probe declares from now on. */
-  readonly declare: (scopes: ReadonlyArray<string>) => void;
+  /** Change the scopes (and link prefixes) the probe declares from now on. */
+  readonly declare: (scopes: ReadonlyArray<string>, links?: ReadonlyArray<unknown>) => void;
 }
+
+/** Link prefixes a test service may declare. */
+const links = [{ id: "message", prefix: "https://viewer.example/msg/" }];
 
 /** Identity of the fictional project `acme/<name>` that runs a test plugin. */
 const identity = (name: string) => `github.com/acme/${name}`;
@@ -34,10 +37,13 @@ const startService = (
 ) =>
   Effect.promise(async (): Promise<Service> => {
     let declared = scopes;
+    let linked: ReadonlyArray<unknown> | undefined;
     const server = NodeHttp.createServer((_request, response) =>
       response
         .writeHead(200, { "content-type": "application/json" })
-        .end(JSON.stringify({ protocol: 1, id: identity(id), name, scopes: declared })),
+        .end(
+          JSON.stringify({ protocol: 1, id: identity(id), name, scopes: declared, links: linked }),
+        ),
     );
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
     const address = server.address();
@@ -45,8 +51,9 @@ const startService = (
     return {
       baseUrl: `http://127.0.0.1:${address.port}${path}`,
       stop: Effect.promise(() => new Promise<void>((resolve) => server.close(() => resolve()))),
-      declare: (next) => {
+      declare: (next, nextLinks) => {
         declared = next;
+        linked = nextLinks;
       },
     };
   });
@@ -271,14 +278,18 @@ test(
           );
           assert.deepEqual(approved._tag === "Some" ? scopesOf(approved.value) : [], ["thread"]);
 
-          // The plugin starts asking for every project; nothing widens until the user allows it.
-          service.declare(["thread", "environment"]);
+          // The plugin starts asking for every project and for link cards; nothing widens until
+          // the user allows it.
+          service.declare(["thread", "environment", "links"], links);
           yield* advertise("1", "github.com/acme/alpha", "Alpha", service.baseUrl);
           const pending = yield* until(
             discovery,
             (snapshot) => item(snapshot, identity("alpha"))?.pendingScopes !== undefined,
           );
-          assert.deepEqual(item(pending, identity("alpha"))?.pendingScopes, ["environment"]);
+          assert.deepEqual(item(pending, identity("alpha"))?.pendingScopes, [
+            "environment",
+            "links",
+          ]);
           assert.deepEqual(
             (yield* firstConfigs(discovery)).pipe(Option.map(scopesOf), Option.getOrUndefined),
             ["thread"],
@@ -290,16 +301,25 @@ test(
             (snapshot) => item(snapshot, identity("alpha"))?.pendingScopes === undefined,
           );
           assert.equal(item(allowed, identity("alpha"))?.state, "enabled");
+          const widened = yield* firstConfigs(discovery);
+          assert.deepEqual(widened.pipe(Option.map(scopesOf), Option.getOrUndefined), [
+            "thread",
+            "environment",
+            "links",
+          ]);
           assert.deepEqual(
-            (yield* firstConfigs(discovery)).pipe(Option.map(scopesOf), Option.getOrUndefined),
-            ["thread", "environment"],
+            widened.pipe(
+              Option.map((value) => value.configs.find((c) => c.id === identity("alpha"))?.links),
+              Option.getOrUndefined,
+            ),
+            links,
           );
 
           // Dropping a scope needs no consent.
           service.declare(["environment"]);
           yield* advertise("1", "github.com/acme/alpha", "Alpha", service.baseUrl);
           const narrowed = yield* Stream.fromQueue(configs).pipe(
-            Stream.filter((value) => scopesOf(value)?.length === 1),
+            Stream.filter((value) => scopesOf(value)?.join() === "environment"),
             Stream.runHead,
           );
           assert.deepEqual(narrowed._tag === "Some" ? scopesOf(narrowed.value) : [], [
