@@ -1,3 +1,4 @@
+import { PLUGIN_GATEWAY_PREFIX } from "./plugins/PluginGatewaySessions.ts";
 import * as Mime from "effect/http/Mime";
 import {
   AuthOrchestrationOperateScope,
@@ -258,7 +259,7 @@ export const layerBrowserApiCors = Layer.unwrap(
     const config = yield* ServerConfig.ServerConfig;
     const devOrigin = config.devUrl?.origin;
     // Credentialed dev requests need explicit Vite/Electron origins; packaged desktop uses the default wildcard.
-    return HttpRouter.cors({
+    const cors = HttpMiddleware.cors({
       ...(devOrigin
         ? {
             allowedOrigins: [devOrigin, ...DESKTOP_RENDERER_ORIGINS, ...config.devAllowedOrigins],
@@ -269,6 +270,13 @@ export const layerBrowserApiCors = Layer.unwrap(
       allowedHeaders: browserApiCorsAllowedHeaders,
       maxAge: 600,
     });
+    return HttpRouter.middleware(
+      (effect) =>
+        Effect.flatMap(HttpServerRequest.HttpServerRequest, (request) =>
+          request.url.startsWith(PLUGIN_GATEWAY_PREFIX) ? effect : cors(effect),
+        ),
+      { global: true },
+    );
   }),
 );
 
@@ -395,6 +403,7 @@ const layerUntracedRequests = Layer.succeed(HttpMiddleware.TracerDisabledWhen)((
   // Signed URLs carry bearer tokens in the path, so they never reach a trace.
   return (
     UNTRACED_REQUEST_PATHS.has(path) ||
+    path.startsWith(PLUGIN_GATEWAY_PREFIX) ||
     path.startsWith(`${WEBHOOK_ROUTE_PREFIX}/`) ||
     path.startsWith(`${ASSET_ROUTE_PREFIX}/`) ||
     path.startsWith(`${ATTACHMENT_UPLOAD_ROUTE_PREFIX}/`)

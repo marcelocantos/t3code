@@ -546,6 +546,10 @@
     "./provider-instance-ids": {
       "types": "./src/providerInstanceIds.ts",
       "default": "./src/providerInstanceIds.ts"
+    },
+    "./state/panelPlugins": {
+      "types": "./src/state/panelPlugins.ts",
+      "default": "./src/state/panelPlugins.ts"
     }
   },
   "scripts": {

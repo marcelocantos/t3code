@@ -1,3 +1,5 @@
+import { parseScopedThreadKey } from "@t3tools/client-runtime/environment";
+import { ThreadPluginPanels } from "./ThreadPluginPanels";
 import { useActiveNewTask } from "../../state/active-new-task";
 import { ThreadUndoNotice } from "../home/ThreadUndoNotice";
 import { useAndroidControlSizing } from "../../components/ui/useAndroidControlSizing";
@@ -110,6 +112,13 @@ export function ThreadNavigationSidebar(props: ThreadNavigationSidebarProps) {
 }
 
 function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
+  const selectedRef = props.selectedThreadKey
+    ? parseScopedThreadKey(props.selectedThreadKey)
+    : null;
+  const pluginFooter =
+    props.visible && selectedRef ? (
+      <ThreadPluginPanels key={props.selectedThreadKey} threadRef={selectedRef} />
+    ) : null;
   const floatingTabsEnabled = useAndroidFloatingTabs();
   const { themeVariables: materialTheme } = useAppearancePreferences();
   const drawerColor = materialTheme["--color-drawer"];
@@ -608,6 +617,7 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
                 showsVerticalScrollIndicator={false}
                 style={styles.threadList}
                 ListEmptyComponent={listEmpty}
+                ListFooterComponent={pluginFooter}
               />
             </GestureDetector>
           </SwipeableScrollGateProvider>
@@ -661,6 +671,7 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
                 showsVerticalScrollIndicator={false}
                 style={styles.threadList}
                 ListEmptyComponent={listEmpty}
+                ListFooterComponent={pluginFooter}
               />
             </GestureDetector>
           </SwipeableScrollGateProvider>

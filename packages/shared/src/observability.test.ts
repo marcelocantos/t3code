@@ -398,11 +398,13 @@ describe("observability", () => {
               },
             }),
           });
-          const url = "/ws?wsTicket=ticket-secret&dpop=proof-secret&clientSurface=web";
+          const url =
+            "/api/plugin-panels/plugin-secret/ws?wsTicket=ticket-secret&dpop=proof-secret&clientSurface=web";
 
           yield* Effect.annotateCurrentSpan({
             "url.full": `http://127.0.0.1:3773${url}`,
-            "url.query": url.slice(4),
+            "url.query": url.slice(url.indexOf("?") + 1),
+            "url.path": "/api/plugin-panels/plugin-secret/ws",
           }).pipe(
             Effect.withSpan("GET", { kind: "server" }),
             Effect.provideService(Tracer.Tracer, tracer),
@@ -430,8 +432,10 @@ describe("observability", () => {
           for (const text of [written, ...exported]) {
             assert.notInclude(text, "ticket-secret");
             assert.notInclude(text, "proof-secret");
+            assert.notInclude(text, "plugin-secret");
           }
           assert.include(written, "wsTicket=<redacted>&dpop=<redacted>&clientSurface=web");
+          assert.include(written, "/api/plugin-panels/<redacted>/ws");
           assert.include(exported.join("\n"), "effect.cause");
         }),
       ),

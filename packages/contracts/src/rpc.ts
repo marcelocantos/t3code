@@ -33,6 +33,7 @@ import {
   ChatGptHandoffInput,
   ChatGptHandoffState,
 } from "./providerSetup.ts";
+import { PluginPanelsState, SubscribePluginPanelsInput } from "./panelPlugins.ts";
 import * as Schema from "effect/Schema";
 import * as Rpc from "effect/rpc/Rpc";
 import * as RpcGroup from "effect/rpc/RpcGroup";
@@ -618,6 +619,7 @@ export const WS_METHODS = {
   worktreeSetupCancel: "worktreeSetup.cancel",
   subscribeTerminalMetadata: "subscribeTerminalMetadata",
   subscribePreviewEvents: "subscribePreviewEvents",
+  subscribePluginPanels: "subscribePluginPanels",
   subscribeDiscoveredLocalServers: "subscribeDiscoveredLocalServers",
   subscribeDeviceState: "subscribeDeviceState",
   subscribeServerConfig: "subscribeServerConfig",
@@ -1695,6 +1697,13 @@ const WsPreviewStopLocalServerRpc = Rpc.make(WS_METHODS.previewStopLocalServer, 
   error: Schema.Union([PreviewStopLocalServerError, EnvironmentAuthorizationError]),
 });
 
+const WsSubscribePluginPanelsRpc = Rpc.make(WS_METHODS.subscribePluginPanels, {
+  payload: SubscribePluginPanelsInput,
+  success: PluginPanelsState,
+  error: EnvironmentAuthorizationError,
+  stream: true,
+});
+
 const WsSubscribeDiscoveredLocalServersRpc = Rpc.make(WS_METHODS.subscribeDiscoveredLocalServers, {
   payload: Schema.Struct({
     configuredUrls: Schema.optional(ConfiguredLocalServerUrls),
@@ -2244,6 +2253,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsPreviewReportStatusRpc,
   WsSubscribePreviewEventsRpc,
   WsPreviewStopLocalServerRpc,
+  WsSubscribePluginPanelsRpc,
   WsSubscribeDiscoveredLocalServersRpc,
   WsDeviceConfigureRpc,
   WsDeviceListRpc,

@@ -339,6 +339,8 @@ export default defineConfig(() => {
       port,
       strictPort: true,
       allowedHosts,
+      // Proxied APIs validate preflights, including opaque-origin plugin frames.
+      cors: { preflightContinue: true },
       // Warm the module graph before first request to avoid serial import transforms over tailnet.
       // Bundled dev ignores this; warmBundledDevPlugin handles it there.
       warmup: {
@@ -353,7 +355,9 @@ export default defineConfig(() => {
                 {
                   target: devProxyTarget,
                   changeOrigin: !DEV_PROXIED_ORIGIN_PRESERVING_PREFIXES.has(prefix),
-                  ...(prefix === "/ws" || prefix === "/api" ? { ws: true } : {}),
+                  ...(prefix === "/ws" || prefix === "/api" || prefix === "/api/plugin-panels"
+                    ? { ws: true }
+                    : {}),
                 },
               ]),
             ),
