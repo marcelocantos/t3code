@@ -19,7 +19,7 @@ import { threadEnvironment } from "../../state/threads";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { useQuietThreadStructure } from "../../state/use-thread-detail";
 import { useThreadOutboxMessages } from "../../state/use-thread-outbox";
-import { threadPluginPanels } from "../plugins/pluginAtoms";
+import { pluginErrorMessage, threadPluginPanels } from "../plugins/pluginAtoms";
 import { PluginPanels, type PluginAgentControls } from "../plugins/PluginPanels";
 import { pluginAgentRunState } from "../plugins/pluginRowMenu";
 
@@ -87,7 +87,7 @@ export function ThreadPluginPanels({ threadRef }: { threadRef: ScopedThreadRef }
     <View className="gap-3 px-4 py-2">
       {query.error ? (
         <Text className="text-sm text-foreground-muted">
-          Plugin panels unavailable: {query.error}
+          Plugin panels unavailable: {pluginErrorMessage(query.failure)}
         </Text>
       ) : null}
       <PluginPanels

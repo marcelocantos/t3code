@@ -1,7 +1,12 @@
 import { MessageId, RunId, type PluginAction } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { parsePluginCalendarDate, pluginAgentRunState, pluginRowMenu } from "./pluginRowMenu";
+import {
+  growPluginRowWindow,
+  parsePluginCalendarDate,
+  pluginAgentRunState,
+  pluginRowMenu,
+} from "./pluginRowMenu";
 
 const actions: ReadonlyArray<PluginAction> = [
   { kind: "agent", id: "work", label: "Work on it", prompt: "Do the thing" },
@@ -125,5 +130,17 @@ describe("pluginAgentRunState", () => {
         runs: [{ id: runId, userMessageId: MessageId.make("other"), status: "running" }],
       }),
     ).toEqual({ kind: "idle" });
+  });
+});
+
+describe("growPluginRowWindow", () => {
+  // Every mounted row hosts native controls; a panel of hundreds once exhausted Android's heap.
+  it.each([
+    [20, 500, 40],
+    [480, 500, 500],
+    [500, 500, 500],
+    [20, 7, 7],
+  ])("grows a window of %i rows over %i to %i", (limit, total, next) => {
+    expect(growPluginRowWindow(limit, total)).toBe(next);
   });
 });

@@ -146,6 +146,20 @@ export function pluginAgentRunState(input: {
 
 export const PLUGIN_PANEL_HEIGHT = { default: 320, min: 160, max: 960, step: 80 } as const;
 
+/** Rows mounted per list panel. Each row hosts native controls, which on Android are Compose views. */
+export const PLUGIN_ROW_WINDOW = {
+  initial: 20,
+  step: 20,
+  /** Grow while the end of the mounted rows is within this many viewports. */
+  lookaheadViewports: 2,
+  scrollThrottleMs: 100,
+} as const;
+
+/** The next number of rows to mount once scrolling nears the end of the mounted ones. */
+export function growPluginRowWindow(limit: number, total: number): number {
+  return Math.min(total, Math.max(PLUGIN_ROW_WINDOW.initial, limit + PLUGIN_ROW_WINDOW.step));
+}
+
 /** A stored panel height, snapped into the range the stepper offers. */
 export function pluginPanelHeight(stored: number | undefined, fallback: number): number {
   const value = typeof stored === "number" && Number.isFinite(stored) ? stored : fallback;

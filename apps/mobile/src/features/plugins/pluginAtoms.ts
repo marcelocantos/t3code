@@ -41,8 +41,17 @@ export const pluginDecisionCountAtom = Atom.family((environmentIds: string) =>
 );
 
 export function pluginFailureMessage(cause: Cause.Cause<unknown>): string {
-  const error = Cause.squash(cause);
-  return error instanceof Error && error.message.trim().length > 0
-    ? error.message
-    : "The plugin request failed.";
+  return pluginErrorMessage(Cause.squash(cause));
+}
+
+/** Tagged failures (RPC, transport, permission) often carry no message; name them by tag. */
+export function pluginErrorMessage(error: unknown): string {
+  const message =
+    typeof error === "object" && error !== null && "message" in error
+      ? String(error.message).trim()
+      : "";
+  const tag =
+    typeof error === "object" && error !== null && "_tag" in error ? String(error._tag) : "";
+  if (tag && message) return `${tag}: ${message}`;
+  return message || tag || "The plugin request failed.";
 }

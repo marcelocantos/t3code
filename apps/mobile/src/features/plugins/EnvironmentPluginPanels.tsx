@@ -23,7 +23,7 @@ import * as Dialog from "../../components/ui/Dialog";
 import { Sheet } from "../../components/ui/Sheet";
 import { cn } from "../../lib/cn";
 import { useEnvironmentQuery } from "../../state/query";
-import { environmentPluginPanels } from "./pluginAtoms";
+import { environmentPluginPanels, pluginErrorMessage } from "./pluginAtoms";
 import { PluginPanels } from "./PluginPanels";
 
 const ACTIVITY_LABEL: Record<PluginNavigationActivity, string> = {
@@ -110,7 +110,7 @@ function EnvironmentPanels(props: NavigationProps & { readonly environmentId: En
     <>
       {query.error ? (
         <Text className="text-sm text-foreground-muted">
-          Plugin panels unavailable: {query.error}
+          Plugin panels unavailable: {pluginErrorMessage(query.failure)}
         </Text>
       ) : null}
       <PluginPanels

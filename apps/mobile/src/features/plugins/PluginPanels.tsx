@@ -31,6 +31,8 @@ import {
 } from "./PluginSurfaceSheet";
 import {
   PLUGIN_PANEL_HEIGHT,
+  PLUGIN_ROW_WINDOW,
+  growPluginRowWindow,
   pluginPanelHeight,
   pluginRowMenu,
   type pluginAgentRunState,
@@ -204,6 +206,7 @@ function ListPanelBody(props: {
   const { panel } = props;
   // Date shortcuts in the row menus follow the clock across midnight.
   const nowMs = useNowMinuteMs();
+  const [rowLimit, setRowLimit] = useState<number>(PLUGIN_ROW_WINDOW.initial);
   return (
     <>
       {panel.filters.length > 0 ? (
@@ -232,8 +235,19 @@ function ListPanelBody(props: {
           ))}
         </View>
       ) : null}
-      <ScrollView nestedScrollEnabled style={{ maxHeight: props.height }}>
-        {panel.rows.map((row, index) => (
+      <ScrollView
+        nestedScrollEnabled
+        style={{ maxHeight: props.height }}
+        scrollEventThrottle={PLUGIN_ROW_WINDOW.scrollThrottleMs}
+        onScroll={({ nativeEvent }) => {
+          const { contentOffset, contentSize, layoutMeasurement } = nativeEvent;
+          const lookahead = PLUGIN_ROW_WINDOW.lookaheadViewports * layoutMeasurement.height;
+          if (contentOffset.y + lookahead >= contentSize.height) {
+            setRowLimit((limit) => growPluginRowWindow(limit, panel.rows.length));
+          }
+        }}
+      >
+        {panel.rows.slice(0, rowLimit).map((row, index) => (
           <PanelRow
             key={row.id}
             separated={index > 0}
