@@ -30,12 +30,20 @@ jobs:
           set -euo pipefail
           git init .
           git remote add origin "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git"
-          git fetch --no-tags --depth=1 origin "$CHECKOUT_REF"
+          git fetch --no-tags --depth=64 origin "$CHECKOUT_REF"
           git sparse-checkout set --no-cone '/*' '!/.repos/'
           git checkout --detach FETCH_HEAD
 
       - name: Setup dependencies
         uses: ./.github/actions/setup-ci-deps
+
+      - name: Check changed code
+        if: github.event_name == 'pull_request'
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --depth=64 origin main:refs/remotes/origin/main
+          node apps/web/node_modules/playwright/cli.js install --only-shell chromium
+          vp run check:changed
 
       - name: Verify architecture and release version
         env:
