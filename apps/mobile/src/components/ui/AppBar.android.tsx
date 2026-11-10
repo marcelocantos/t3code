@@ -111,7 +111,8 @@ function AppBarView(props: AppBarProps & { readonly searchState?: SearchState })
       />
     ) : null;
 
-  if (inWorkspace) {
+  // A sheet draws its own bar; publishing it to the workspace bar would replace the screen title.
+  if (inWorkspace && !props.sheet) {
     const menu = props.menus?.[0];
     const icon = typeof menu?.icon === "string" ? menu.icon : menu?.icon.android;
     return (

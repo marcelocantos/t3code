@@ -373,6 +373,7 @@ validated; an invalid one gets an `error` reply.
 | `surface.action { surfaceId, actionId, value? }`                          | A button, form or list item in a structured surface this frame opened.                                     |
 | `agent.result { requestId, ok, error? }`, `error { requestId?, message }` | Outcomes.                                                                                                  |
 
+On mobile every presentation is a sheet and anchors are ignored; the protocol is otherwise the same.
 Surfaces with web content are sandboxed frames like the panel and get their own bridge, whose init
 message also carries their `surfaceId`. Surface ids are chosen by the frame and unique within it.
 Closing a surface closes its children, and everything closes when the panel unmounts or the thread

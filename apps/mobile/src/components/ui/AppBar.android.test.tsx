@@ -2,6 +2,8 @@ import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vite-plus/test";
 
+const workspace = vi.hoisted(() => ({ present: false }));
+
 vi.mock("react-native", () => ({
   View: (props: { readonly children?: ReactNode }) => <div>{props.children}</div>,
   Keyboard: { dismiss: () => {} },
@@ -17,7 +19,7 @@ vi.mock("./AndroidScreenHeader.android", () => ({
   AndroidScreenHeader: (props: { readonly title: string }) => <h1>{props.title}</h1>,
 }));
 vi.mock("./WorkspaceAppBar.android", () => ({
-  useHasWorkspaceAppBar: () => false,
+  useHasWorkspaceAppBar: () => workspace.present,
   WorkspaceAppBar: () => null,
 }));
 vi.mock("./Menu", () => ({ Menu: (props: { readonly children?: ReactNode }) => props.children }));
@@ -46,6 +48,7 @@ afterEach(() => {
 });
 
 it("renders a sheet bar without search outside a navigation container", () => {
+  workspace.present = false;
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const container = document.createElement("div");
   document.body.append(container);
@@ -55,4 +58,17 @@ it("renders a sheet bar without search outside a navigation container", () => {
   act(() => root.render(<AppBar sheet title="Arrange threads" />));
 
   expect(container.textContent).toBe("Arrange threads");
+});
+
+it("keeps a sheet's title in the sheet when the sheet opens inside the workspace", () => {
+  workspace.present = true;
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  roots.push(root);
+
+  act(() => root.render(<AppBar sheet title="Counter details" />));
+
+  expect(container.textContent).toBe("Counter details");
 });
