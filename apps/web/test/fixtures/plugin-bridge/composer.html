@@ -1,0 +1,22 @@
+<!doctype html>
+<html>
+  <body>
+    <button>Send sketch</button>
+    <script>
+      // A composer page: it knows its mode from the fragment, prompts the thread, then closes.
+      const report = (text) => parent.postMessage({ fixtureLog: text }, "*");
+      window.addEventListener("message", (event) => {
+        if (event.source !== parent || event.data?.type !== "t3.bridge.init") return;
+        const port = event.ports[0];
+        const surfaceId = event.data.surfaceId;
+        report(`opened ${location.hash}`);
+        port.onmessage = ({ data }) => {
+          if (data.type === "agent.result" && data.ok)
+            port.postMessage({ type: "surface.close", surfaceId });
+        };
+        document.querySelector("button").onclick = () =>
+          port.postMessage({ type: "agent.prompt", requestId: "1", prompt: "See my sketch." });
+      });
+    </script>
+  </body>
+</html>

@@ -7,20 +7,28 @@ import {
 } from "@t3tools/contracts";
 import { Atom } from "effect/reactivity";
 import { useState } from "react";
-import { View } from "react-native";
+import { Pressable, View } from "react-native";
 
+import { SymbolView } from "../../components/ui/AppSymbol";
 import * as Dialog from "../../components/ui/Dialog";
+import { useAndroidControlSizing } from "../../components/ui/useAndroidControlSizing";
 import { AppText as Text } from "../../components/ui/AppText";
 import { scopedThreadKey } from "../../lib/scopedEntities";
 import { uuidv4 } from "../../lib/uuid";
 import { useEnvironmentQuery } from "../../state/query";
+import { usePreparedConnection } from "../../state/session";
 import { enqueueThreadOutboxMessage } from "../../state/thread-outbox";
 import { threadEnvironment } from "../../state/threads";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { useQuietThreadStructure } from "../../state/use-thread-detail";
 import { useThreadOutboxMessages } from "../../state/use-thread-outbox";
 import { pluginErrorMessage, threadPluginPanels } from "../plugins/pluginAtoms";
-import { PluginPanels, type PluginAgentControls } from "../plugins/PluginPanels";
+import { PluginBridgeHost, useOpenPluginPage } from "../plugins/PluginBridge";
+import {
+  PluginPanels,
+  pluginFrameAgentKey,
+  type PluginAgentControls,
+} from "../plugins/PluginPanels";
 import { pluginAgentRunState } from "../plugins/pluginRowMenu";
 
 /** The message each row's agent action last sent, by thread key and row key, for this session. */
@@ -116,5 +124,82 @@ export function ThreadPluginPanels({ threadRef }: { threadRef: ScopedThreadRef }
         }
       />
     </View>
+  );
+}
+
+/** The fragment a plugin page reads to know it was opened from the composer. */
+const COMPOSER_FRAGMENT = "#t3-composer";
+
+/** Composer buttons for web panels that declare `composer`; each opens its page in a sheet. */
+export function ThreadComposerPluginActions(props: {
+  readonly threadRef: ScopedThreadRef;
+  readonly size: "regular" | "large";
+}) {
+  const { threadRef } = props;
+  const agent = useThreadAgentControls(threadRef);
+  const query = useEnvironmentQuery(
+    threadPluginPanels({
+      environmentId: threadRef.environmentId,
+      input: { threadId: threadRef.threadId, filters: [] },
+    }),
+  );
+  const actions = (query.data ?? []).flatMap((snapshot) =>
+    snapshot.panels.flatMap((panel) =>
+      panel.kind === "web" && panel.composer !== undefined
+        ? [{ pluginId: snapshot.pluginId, panel, label: panel.composer.label }]
+        : [],
+    ),
+  );
+  if (actions.length === 0) return null;
+  return (
+    <PluginBridgeHost environmentId={threadRef.environmentId} agent={agent}>
+      {actions.map((action) => (
+        <ComposerPluginButton
+          key={`${action.pluginId}:${action.panel.id}`}
+          threadRef={threadRef}
+          path={action.panel.path}
+          label={action.label}
+          agentKey={pluginFrameAgentKey(action.pluginId, action.panel.id)}
+          size={props.size}
+        />
+      ))}
+    </PluginBridgeHost>
+  );
+}
+
+function ComposerPluginButton(props: {
+  readonly threadRef: ScopedThreadRef;
+  readonly path: string;
+  readonly label: string;
+  readonly agentKey: string;
+  readonly size: "regular" | "large";
+}) {
+  const openPage = useOpenPluginPage();
+  const { scale } = useAndroidControlSizing();
+  const connection = usePreparedConnection(props.threadRef.environmentId);
+  if (connection._tag === "None") return null;
+  const gatewayUrl = new URL(props.path, connection.value.httpBaseUrl).href;
+  return (
+    <Pressable
+      accessibilityLabel={props.label}
+      accessibilityRole="button"
+      className="size-[44px] shrink-0 items-center justify-center rounded-full active:opacity-70"
+      onPress={() =>
+        openPage({
+          url: `${gatewayUrl}${COMPOSER_FRAGMENT}`,
+          gatewayUrl,
+          title: props.label,
+          agentKey: props.agentKey,
+        })
+      }
+    >
+      <SymbolView
+        name="pencil"
+        size={Math.round((props.size === "large" ? 26 : 20) * scale)}
+        weight="regular"
+        tintColorClassName="accent-icon"
+        type="monochrome"
+      />
+    </Pressable>
   );
 }

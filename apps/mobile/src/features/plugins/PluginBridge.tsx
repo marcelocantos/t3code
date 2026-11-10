@@ -36,6 +36,7 @@ import { SurfaceBlock, type SurfaceAction } from "./PluginSurfaceSheet";
 import { confirmAsync, usePluginRequests } from "./usePluginRequests";
 
 const DEFAULT_WEB_SIZE = { width: 360, height: 320 };
+const PAGE_SIZE = { width: 800, height: 720 };
 
 interface PluginBridgeHostValue {
   readonly environmentId: EnvironmentId;
@@ -100,6 +101,34 @@ export function PluginBridgeHost(props: {
       <PluginBridgeSheet />
     </PluginBridgeHostContext>
   );
+}
+
+/** Opens a plugin page in the bridge's sheet, such as a composer canvas; it may close itself. */
+export function useOpenPluginPage() {
+  const { tree } = usePluginBridgeHost();
+  return (input: {
+    readonly url: string;
+    readonly gatewayUrl: string;
+    readonly title: string;
+    readonly agentKey: string;
+  }) => {
+    tree.open({
+      id: tree.newId(),
+      parentId: null,
+      presentation: "modal",
+      title: input.title,
+      size: PAGE_SIZE,
+      content: { kind: "web", url: input.url },
+      opener: createPluginBridgeFrame({
+        nodeId: null,
+        ownSurfaceId: undefined,
+        gatewayUrl: input.gatewayUrl,
+        panelTitle: input.title,
+        agentKey: input.agentKey,
+      }),
+      bridgeSurfaceId: "composer",
+    });
+  };
 }
 
 /**

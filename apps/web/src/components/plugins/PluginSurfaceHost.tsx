@@ -50,6 +50,7 @@ import { PluginSurfaceView, type PluginSurfaceAction } from "./PluginSurfaceView
 const HOVER_CLOSE_MS = 200;
 const DEFAULT_POPOVER_WIDTH = 320;
 const DEFAULT_WEB_SIZE = { width: 360, height: 240 };
+const WEB_MODAL_SIZE = { width: 800, height: 720 };
 const LINK_CARD_CACHE_LIMIT = 200;
 /** Link cards fetched this page session, by environment, plugin, link and URL. */
 const linkCardCache = new Map<string, PluginLinkCard>();
@@ -642,6 +643,37 @@ function useHostApi(
       const current = tree.nodes.find((node) => node.transientKey === input.transientKey);
       if (current?.anchor === input.anchor) return;
       void openLinkCard(input);
+    },
+    /** A plugin page in a modal, such as a composer canvas; its bridge talks to this thread. */
+    openWebModal(input: {
+      readonly url: string;
+      readonly title: string;
+      readonly agentSource: string;
+    }) {
+      const gatewayUrl = new URL(input.url);
+      gatewayUrl.hash = "";
+      tree.open({
+        id: tree.newId(),
+        parentId: null,
+        presentation: "modal",
+        title: input.title,
+        anchor: null,
+        side: "bottom",
+        align: "center",
+        size: clampPluginSurfaceSize(WEB_MODAL_SIZE, {
+          width: window.innerWidth,
+          height: window.innerHeight,
+        }),
+        content: {
+          kind: "web",
+          url: input.url,
+          bridgeSurfaceId: "composer",
+          gatewayUrl: gatewayUrl.href,
+        },
+        route: { kind: "link" },
+        panelTitle: input.title,
+        agentSource: input.agentSource,
+      });
     },
     /** A click in a hover card keeps it open after the pointer leaves. */
     pin(id: string) {

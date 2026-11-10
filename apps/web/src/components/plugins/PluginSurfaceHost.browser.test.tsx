@@ -16,7 +16,12 @@ vi.mock("../../state/use-atom-command", () => ({ useAtomCommand: () => host.act 
 vi.mock("../../confirmDialog", () => ({ requestConfirmDialog: host.confirm }));
 
 import panelUrl from "../../../test/fixtures/plugin-bridge/panel.html?url";
-import { PluginAgentContext, PluginFrame, PluginSurfaceHost } from "./PluginSurfaceHost";
+import {
+  PluginAgentContext,
+  PluginFrame,
+  PluginSurfaceHost,
+  usePluginSurfaceHost,
+} from "./PluginSurfaceHost";
 
 // Served by the test server; the frames speak the bridge from inside a real sandbox.
 const gateway = new URL("./", new URL(panelUrl, window.location.origin)).href;
@@ -111,4 +116,51 @@ it("hands the bridge again to a frame that asks after missing it", async () => {
     </PluginSurfaceHost>,
   );
   await vi.waitFor(() => expect(reports).toContain("bridge ready"));
+});
+
+it("opens a composer page in a modal that prompts the thread and closes itself", async () => {
+  host.confirm.mockClear();
+  host.submit.mockClear();
+  const reports: string[] = [];
+  const listener = (event: MessageEvent) => {
+    if (typeof event.data?.fixtureLog === "string") reports.push(event.data.fixtureLog);
+  };
+  window.addEventListener("message", listener);
+  using _listener = { [Symbol.dispose]: () => window.removeEventListener("message", listener) };
+  function Opener() {
+    const surfaces = usePluginSurfaceHost();
+    return (
+      <button
+        type="button"
+        onClick={() =>
+          surfaces.openWebModal({
+            url: `${gateway}composer.html#t3-composer`,
+            title: "Sketch",
+            agentSource: "frame:sketch",
+          })
+        }
+      >
+        Sketch
+      </button>
+    );
+  }
+  await using screen = await render(
+    <PluginAgentContext
+      value={{ runningSources: new Set(), submit: host.submit, stop: async () => null }}
+    >
+      <PluginSurfaceHost>
+        <Opener />
+      </PluginSurfaceHost>
+    </PluginAgentContext>,
+  );
+  await screen.getByRole("button", { name: "Sketch" }).click();
+  const modal = page.getByRole("dialog", { name: "Sketch" });
+  await expect.element(modal).toBeVisible();
+  await vi.waitFor(() => expect(reports).toContain("opened #t3-composer"));
+  await page
+    .frameLocator(page.getByTitle("Sketch", { exact: true }))
+    .getByRole("button", { name: "Send sketch" })
+    .click();
+  await expect.element(modal).not.toBeInTheDocument();
+  expect(host.submit).toHaveBeenCalledWith("frame:sketch", "See my sketch.");
 });

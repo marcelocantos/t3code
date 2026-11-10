@@ -53,7 +53,8 @@ export interface PluginAgentControls {
 export const pluginRowKey = (pluginId: string, panelId: string, rowId: string) =>
   `${pluginId}/${panelId}/${rowId}`;
 /** The agent key of a web panel's own requests, apart from any row's. */
-const pluginFrameAgentKey = (pluginId: string, panelId: string) => `${pluginId}/${panelId}#frame`;
+export const pluginFrameAgentKey = (pluginId: string, panelId: string) =>
+  `${pluginId}/${panelId}#frame`;
 
 const WEB_PANEL_DEFAULT_HEIGHT = 420;
 

@@ -25,7 +25,10 @@ const request = message => port?.postMessage({ requestId: String(++nextRequest),
 window.addEventListener('message', event => {
   if (event.source !== parent || event.data?.type !== 't3.bridge.init' || !event.ports[0]) return;
   port = event.ports[0];
+  const ownSurfaceId = event.data.surfaceId;
   port.onmessage = ({ data }) => {
+    // Opened from the composer: a sent prompt finishes the page's job.
+    if (data.type === 'agent.result' && data.ok && location.hash === '#t3-composer') port.postMessage({ type: 'surface.close', surfaceId: ownSurfaceId });
     if (data.type === 'surface.opened') open.add(data.surfaceId);
     if (data.type === 'surface.closed') open.delete(data.surfaceId);
     if (data.type === 'surface.closed' && data.surfaceId === 'picker' && data.result) document.querySelector('#picked').textContent = data.result.colour;
@@ -190,7 +193,14 @@ panels.on("connection", (socket) => {
           type: "panels",
           subscriptionId: message.subscriptionId,
           panels: [
-            { kind: "web", id: "counter", title: "Thread counter", path: "/app/", height: 360 },
+            {
+              kind: "web",
+              id: "counter",
+              title: "Thread counter",
+              path: "/app/",
+              height: 360,
+              composer: { label: "Thread counter" },
+            },
           ],
         }),
       );

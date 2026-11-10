@@ -136,6 +136,8 @@ export const PluginPanel = Schema.Union([
     title: Label,
     path: Schema.String.check(Schema.isNonEmpty(), Schema.isMaxLength(2048)),
     height: Schema.optional(Schema.Int.check(Schema.isBetween({ minimum: 200, maximum: 1200 }))),
+    /** Adds a composer button that opens this page, with `#t3-composer`, in a modal. */
+    composer: Schema.optional(Schema.Struct({ label: ShortLabel })),
   }),
 ]);
 export type PluginPanel = typeof PluginPanel.Type;

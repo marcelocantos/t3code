@@ -412,7 +412,16 @@ Surfaces with web content are sandboxed frames like the panel and get their own 
 message also carries their `surfaceId`. Surface ids are chosen by the frame and unique within it.
 Closing a surface closes its children, and everything closes when the panel unmounts or the thread
 changes. The demo plugin opens a structured hover card, a web dialog that returns a result to its
-parent, and an agent request.
+parent, and an agent request. Opened from its composer button, it closes once the request is sent.
+
+### Composer entry
+
+A web panel with `"composer": { "label": "Sketch" }` also puts a button beside the composer's
+attachment button, in thread views of web, desktop and mobile. It opens the same page with the
+fragment `#t3-composer` in a modal (a sheet on mobile) about 800 × 720 px. The page has the bridge
+with `surfaceId` `"composer"`. It typically sends its result with `agent.prompt`, which T3
+confirms first, and closes itself with `surface.close`. Because the page and the panel share a
+backend, the panel can show the same state as a thumbnail.
 
 The runnable example `apps/server/scripts/plugin-spa-demo.mjs` (server package script
 `plugin:spa-demo`) serves a thread counter. Configure it as a sidecar using the example above.
