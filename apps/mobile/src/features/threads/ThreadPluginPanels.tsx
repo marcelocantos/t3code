@@ -1,4 +1,5 @@
 import { PluginWebPanel } from "../plugins/PluginWebPanel";
+import { PluginDiscoveryCard } from "./PluginDiscoveryCard";
 import { useState } from "react";
 import { Pressable, View } from "react-native";
 import { createPanelPluginAtoms } from "@t3tools/client-runtime/state/panelPlugins";
@@ -96,6 +97,7 @@ export function ThreadPluginPanels({ threadRef }: { threadRef: ScopedThreadRef }
           )
         ),
       )}
+      <PluginDiscoveryCard environmentId={threadRef.environmentId} />
     </View>
   );
 }

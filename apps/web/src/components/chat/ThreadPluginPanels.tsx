@@ -4,6 +4,7 @@ import { createPanelPluginAtoms } from "@t3tools/client-runtime/state/panelPlugi
 import type { EnvironmentId, ThreadId, SubscribePluginPanelsInput } from "@t3tools/contracts";
 import { connectionAtomRuntime } from "../../connection/runtime";
 import { useEnvironmentQuery } from "../../state/query";
+import { PluginDiscoveryPanel } from "./PluginDiscoveryPanel";
 import { ThreadDetailsSection } from "./ThreadDetailsSection";
 
 const pluginPanels = createPanelPluginAtoms(connectionAtomRuntime);
@@ -98,6 +99,7 @@ function Panels({ environmentId, threadId }: { environmentId: EnvironmentId; thr
           )
         ),
       )}
+      <PluginDiscoveryPanel environmentId={environmentId} />
     </>
   );
 }

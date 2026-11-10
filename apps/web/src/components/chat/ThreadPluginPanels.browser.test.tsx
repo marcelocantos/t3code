@@ -6,33 +6,52 @@ import { render } from "../../../test/render";
 vi.mock("@t3tools/client-runtime/state/panelPlugins", () => ({
   createPanelPluginAtoms: () => (input: unknown) => input,
 }));
+vi.mock("@t3tools/client-runtime/state/pluginDiscovery", () => ({
+  createPluginDiscoveryAtoms: () => ({
+    state: () => ({ discovery: true }),
+    act: { permissionAtom: () => ({ permission: true }) },
+  }),
+  describePluginDiscoveryItem: () => "",
+  pluginDiscoveryChoices: () => [],
+  pluginNeedsDecision: () => false,
+}));
+vi.mock("@effect/atom-react", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@effect/atom-react")>()),
+  useAtomValue: () => true,
+}));
+vi.mock("../../state/use-atom-command", () => ({ useAtomCommand: () => vi.fn() }));
 vi.mock("../../state/query", () => ({
-  useEnvironmentQuery: (query: { input: { threadId: string; filters: { filter: string }[] } }) => ({
+  useEnvironmentQuery: (query: {
+    discovery?: true;
+    input: { threadId: string; filters: { filter: string }[] };
+  }) => ({
     error: null,
-    data: [
-      {
-        pluginId: "bullseye",
-        status: "connected",
-        panels: [
+    data: query.discovery
+      ? { plugins: [] }
+      : [
           {
-            id: "targets",
-            title: "Bullseye",
-            filter: query.input.filters[0]?.filter ?? "frontier",
-            filters: [
-              { id: "frontier", label: "Frontier" },
-              { id: "all", label: "All" },
-            ],
-            rows: [
+            pluginId: "bullseye",
+            status: "connected",
+            panels: [
               {
-                id: "T123.456.789",
-                label: `🎯T123.456.789 ${query.input.threadId} A long target label that must wrap within a narrow sidebar without clipping`,
-                detail: "A detail line",
+                id: "targets",
+                title: "Bullseye",
+                filter: query.input.filters[0]?.filter ?? "frontier",
+                filters: [
+                  { id: "frontier", label: "Frontier" },
+                  { id: "all", label: "All" },
+                ],
+                rows: [
+                  {
+                    id: "T123.456.789",
+                    label: `🎯T123.456.789 ${query.input.threadId} A long target label that must wrap within a narrow sidebar without clipping`,
+                    detail: "A detail line",
+                  },
+                ],
               },
             ],
           },
         ],
-      },
-    ],
   }),
 }));
 

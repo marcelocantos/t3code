@@ -550,6 +550,10 @@
     "./state/panelPlugins": {
       "types": "./src/state/panelPlugins.ts",
       "default": "./src/state/panelPlugins.ts"
+    },
+    "./state/pluginDiscovery": {
+      "types": "./src/state/pluginDiscovery.ts",
+      "default": "./src/state/pluginDiscovery.ts"
     }
   },
   "scripts": {

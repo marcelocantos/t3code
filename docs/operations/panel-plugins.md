@@ -8,25 +8,73 @@ The fork runs alongside the official app. Its data lives in `~/.t3-plugins/userd
 
 Use this fork's desktop app or bundled web client for panels; official T3 clients do not include the panel renderers. Both desktop apps register the upstream `t3code` link scheme, so external sign-in/deep links can open either app. Direct environment connections avoid that ambiguity.
 
-Bullseye serves its own panel from its existing daemon. Enable it with `bullseye serve --t3-plugin` (or set `BULLSEYE_T3_PLUGIN=1` in the daemon's environment and restart it). This requires a Bullseye version with the T3 plugin endpoint; older versions such as 0.58.0 do not expose it.
-
-Create `~/.t3-plugins/userdata/panel-plugins.json` with the following configuration (create the directory first if the app has not run):
-
-```json
-[
-  {
-    "id": "bullseye",
-    "connection": {
-      "kind": "server",
-      "baseUrl": "http://127.0.0.1:18743/plugins/t3"
-    }
-  }
-]
-```
-
-Open a thread and expand its sidebar to see Bullseye's frontier. Bullseye owns the panel and its live updates; T3 only connects to its endpoint. T3 does not bundle or launch a Bullseye adapter. The URL is resolved by the T3 environment hosting the thread, so the loopback address refers to that machine.
+A plugin that advertises itself (see [Discovery](#discovery)) appears in thread details with an **Enable** button; nothing needs configuring by hand. The URL it advertises is resolved by the T3 environment hosting the thread, so a loopback address refers to that machine. T3 does not bundle or launch any plugin: each one is a service its own project runs.
 
 Maintainers build this variant with `T3CODE_PLUGIN_BUILD=1` set for both `vp run build:desktop` and `vp run dist:desktop:artifact --platform mac --target dmg --arch arm64 --skip-build`. Omitting the switch preserves upstream packaging and profiles.
+
+## Discovery
+
+A plugin running on the same machine as a T3 environment can advertise itself instead of being
+configured by hand. Discovery runs on the environment that hosts the thread, so web, desktop and
+mobile clients, local or remote, see the same offers through their existing connection and permissions.
+
+**Advertise.** Write one JSON file into `$XDG_DATA_HOME/t3code/plugins/` (`~/.local/share/t3code/plugins/`
+when `XDG_DATA_HOME` is unset or not an absolute path). Use a file name of letters, digits, `.`, `_` and
+`-` ending in `.json`, a distinct one per running instance (for example the port), and write it
+atomically: create a temporary file in the same directory beginning with `.`, then rename it. Keep the
+directory private to the user (mode `0700`; T3 ignores a directory other users can write), remove the
+file when the service stops, and replace it only if it still holds what you wrote. Files left by a
+crashed service are harmless: they fail the probe below and are ignored.
+
+```json
+{
+  "protocol": 1,
+  "id": "example",
+  "name": "Example",
+  "connection": { "kind": "server", "baseUrl": "http://127.0.0.1:49152/plugins/t3" }
+}
+```
+
+- `id` is the plugin's stable identity: 1 to 64 characters of `a-z`, `0-9` and `-`, starting with a
+  letter or digit. It becomes the plugin id in panels, and a user's decision is remembered under it.
+- `name` is the display name, at most 128 characters.
+- `connection.kind` must be `"server"`. A discovered file can never name a command: T3 does not start
+  discovered programs. Managed sidecars remain a hand-written configuration.
+- `baseUrl` is the plugin's panel endpoint described below. Discovered endpoints must be `http` on
+  `127.0.0.1`, `localhost` or `[::1]` with an explicit port, no credentials, query or fragment.
+- Files are limited to 4 KiB, T3 reads at most 32 files per directory, and unknown properties are
+  ignored. Symbolic links and anything that is not a regular file are skipped.
+
+**Probe.** Before offering a plugin, T3 sends a plain `GET` to `baseUrl` with `Accept: application/json`
+and no `Upgrade` header, cookies, thread or workspace. The plugin must answer `200` with a JSON content
+type and a body of at most 1 KiB:
+
+```json
+{ "protocol": 1, "id": "example", "name": "Example" }
+```
+
+`id` and `name` must equal the manifest's. Redirects, other statuses and unreachable endpoints mean
+the advertisement is stale and it is ignored. The same route's WebSocket upgrade is the
+[protocol](#protocol-version-1) connection and is unaffected.
+
+**Consent.** T3 re-checks advertisements when the directory changes and every ten seconds while a
+client has thread details open. A compatible plugin is offered with **Enable** and **Dismiss**.
+Nothing connects, and no workspace or thread reaches the plugin, until the user enables it. Enabling
+saves the endpoint the user saw to `plugin-discovery.json` beside `settings.json` and shows the panel
+in already-open threads without a restart. The choice requires the `settings:write` permission;
+viewing offers requires only `orchestration:read`.
+
+- **Dismiss** is remembered per plugin id across restarts and endpoint changes; the plugin is not
+  offered again until the user chooses **Ask again**.
+- **Disable** removes the panel but remembers the endpoint, so **Enable** works again even while the
+  plugin is not running. **Forget** returns it to the undecided state.
+- If an enabled plugin advertises a different endpoint (for example it restarted on another port), T3
+  keeps using the endpoint the user approved and offers **Switch** or **Keep current**. A changed
+  endpoint is never trusted silently.
+- When several instances advertise one id, the newest advertisement is offered; each live endpoint
+  can still be enabled by its own address.
+- A plugin in `panel-plugins.json` takes precedence over a discovered one with the same id, and T3
+  never rewrites that file.
 
 ## Configure other installations
 
@@ -37,7 +85,7 @@ plugin directly. Web and desktop show sections in thread details; mobile shows t
 the thread list in the sidebar for the selected thread.
 
 Configure the environment's `panel-plugins.json` beside `settings.json` in its userdata
-folder. Configuration is read when a sidebar subscribes: close and reopen it after edits.
+folder. Configuration is read when a sidebar subscribes and when a discovery decision changes: close and reopen the sidebar after editing the file.
 This file is environment-owned because sidecar commands execute with the server's privileges.
 Repository `t3.json` does not install or execute plugins.
 
@@ -60,7 +108,7 @@ an independently running service uses the server connection below instead.
 To connect to an existing plugin server, replace `connection` with:
 
 ```json
-{ "kind": "server", "baseUrl": "https://plugins.example.test/bullseye" }
+{ "kind": "server", "baseUrl": "https://plugins.example.test/panels" }
 ```
 
 The base URL identifies the WebSocket endpoint itself: the path and query are preserved,
@@ -97,7 +145,7 @@ T3 sends:
 }
 ```
 
-A filter selection adds `{ "pluginId": "bullseye", "panelId": "targets", "filter": "all" }`
+A filter selection adds `{ "pluginId": "example", "panelId": "targets", "filter": "all" }`
 to `filters`. Unsubscription sends `{ "type": "unsubscribe", "subscriptionId": "opaque-id" }`.
 The plugin responds with a complete replacement snapshot for that subscription:
 
@@ -108,8 +156,8 @@ The plugin responds with a complete replacement snapshot for that subscription:
   "panels": [
     {
       "id": "targets",
-      "title": "Bullseye",
-      "rows": [{ "id": "T1", "label": "🎯T1 A desired state", "detail": "Optional detail" }],
+      "title": "Example",
+      "rows": [{ "id": "row-1", "label": "A row", "detail": "Optional detail" }],
       "filters": [
         { "id": "frontier", "label": "Frontier" },
         { "id": "all", "label": "All" }

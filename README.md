@@ -1,6 +1,6 @@
 # T3 Code
 
-This fork supports external sidebar plugins, including live panels served by Bullseye. Install the macOS Apple Silicon **T3 Code Plugins** release alongside the official app using the [installation guide](docs/operations/panel-plugins.md#install-the-macos-plugin-build).
+This fork supports external sidebar plugins that advertise themselves for one-click enabling. Install the macOS Apple Silicon **T3 Code Plugins** release alongside the official app using the [installation guide](docs/operations/panel-plugins.md#install-the-macos-plugin-build); plugin authors start with [Discovery](docs/operations/panel-plugins.md#discovery).
 
 T3 Code is an "agent harness control surface". It enables control of the agents on your machine with a best-in-class mobile app ([iOS](https://apps.apple.com/us/app/t3-code-remote-claude-more/id6787819824), [Android](https://play.google.com/store/apps/details?id=com.t3tools.t3code)), [web app](https://app.t3.codes) and [Electron-based desktop app](https://t3.codes).
 
