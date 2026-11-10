@@ -113,8 +113,30 @@ it("wraps long targets in a narrow sidebar and resets filters across threads", a
   expect(content.clientHeight).toBeLessThanOrEqual(320);
   content.scrollTop = content.scrollHeight;
   expect(content.scrollTop).toBeGreaterThan(0);
-  await page.getByRole("slider", { name: "Bullseye panel height" }).fill("120");
+  // Dragging the bottom border resizes the panel; the arrow keys step it when focused.
+  const border = screen.container.querySelector('[aria-label="Resize Bullseye"]') as HTMLElement;
+  const startHeight = content.getBoundingClientRect().height;
+  const borderY = border.getBoundingClientRect().top;
+  const pointer = (type: string, clientY: number) =>
+    border.dispatchEvent(
+      new PointerEvent(type, {
+        pointerId: 7,
+        button: 0,
+        buttons: type === "pointerup" ? 0 : 1,
+        clientY,
+        pointerType: "mouse",
+        bubbles: true,
+      }),
+    );
+  pointer("pointerdown", borderY);
+  pointer("pointermove", borderY - 1000);
+  pointer("pointerup", borderY - 1000);
   await vi.waitFor(() => expect(content.clientHeight).toBe(120));
+  expect(startHeight).toBeGreaterThan(120);
+  border.focus();
+  await userEvent.keyboard("{ArrowDown}");
+  await vi.waitFor(() => expect(content.clientHeight).toBe(140));
+  expect(screen.container.querySelector('input[type="range"]')).toBeNull();
   await page.getByRole("combobox", { name: "Bullseye filter" }).selectOptions("all");
   await expect.element(page.getByRole("combobox")).toHaveValue("all");
   await screen.rerender(panel("second"));
@@ -125,7 +147,7 @@ it("wraps long targets in a narrow sidebar and resets filters across threads", a
     expect(
       (screen.container.querySelector('[aria-label="Bullseye content"]') as HTMLElement)
         .clientHeight,
-    ).toBe(120),
+    ).toBe(140),
   );
 });
 
