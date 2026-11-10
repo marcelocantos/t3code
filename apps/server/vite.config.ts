@@ -93,11 +93,7 @@ export default mergeConfig(
         ? ["src/bin.ts"]
         : packExecutable
           ? ["src/binMain.ts"]
-          : {
-              bin: "src/bin.ts",
-              "claude-history-worker": "src/claude-history-worker.ts",
-              "bullseye-panel": "scripts/bullseye-panel.mjs",
-            },
+          : ["src/bin.ts", "src/claude-history-worker.ts"],
       outDir: packBootstrap ? "dist-exe" : packExecutable ? cliAssetDir : "dist",
       sourcemap: !packExecutable,
       clean: true,

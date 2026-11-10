@@ -34,7 +34,6 @@
     "record:muse-replay": "node scripts/record-muse-msp-replay-fixture.ts",
     "generate": "graphqlgen",
     "generate:expo-schema": "node scripts/fetch-expo-schema.ts",
-    "plugin:bullseye": "node scripts/bullseye-panel.mjs",
     "plugin:spa-demo": "node scripts/plugin-spa-demo.mjs"
   },
   "dependencies": {

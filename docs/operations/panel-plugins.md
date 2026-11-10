@@ -8,26 +8,23 @@ The fork runs alongside the official app. Its data lives in `~/.t3-plugins/userd
 
 Use this fork's desktop app or bundled web client for panels; official T3 clients do not include the panel renderers. Both desktop apps register the upstream `t3code` link scheme, so external sign-in/deep links can open either app. Direct environment connections avoid that ambiguity.
 
-Keep your existing Bullseye installation. Create `~/.t3-plugins/userdata/panel-plugins.json` with the following configuration (create the directory first if the app has not run):
+Bullseye serves its own panel from its existing daemon. Enable it with `bullseye serve --t3-plugin` (or set `BULLSEYE_T3_PLUGIN=1` in the daemon's environment and restart it). This requires a Bullseye version with the T3 plugin endpoint; older versions such as 0.58.0 do not expose it.
+
+Create `~/.t3-plugins/userdata/panel-plugins.json` with the following configuration (create the directory first if the app has not run):
 
 ```json
 [
   {
     "id": "bullseye",
     "connection": {
-      "kind": "sidecar",
-      "command": "/usr/bin/env",
-      "args": [
-        "ELECTRON_RUN_AS_NODE=1",
-        "/Applications/T3 Code Plugins.app/Contents/MacOS/T3 Code Plugins",
-        "/Applications/T3 Code Plugins.app/Contents/Resources/app.asar/apps/server/dist/bullseye-panel.mjs"
-      ]
+      "kind": "server",
+      "baseUrl": "http://127.0.0.1:18743/plugins/t3"
     }
   }
 ]
 ```
 
-Open a thread and expand its sidebar to see Bullseye's frontier. The adapter uses the app's bundled runtime, so no Node installation, npm dependencies, or source checkout is needed. `bullseye` must be available on the app's PATH; a normal Homebrew installation is supported. Adjust the app paths above if you install it somewhere other than Applications.
+Open a thread and expand its sidebar to see Bullseye's frontier. Bullseye owns the panel and its live updates; T3 only connects to its endpoint. T3 does not bundle or launch a Bullseye adapter. The URL is resolved by the T3 environment hosting the thread, so the loopback address refers to that machine.
 
 Maintainers build this variant with `T3CODE_PLUGIN_BUILD=1` set for both `vp run build:desktop` and `vp run dist:desktop:artifact --platform mac --target dmg --arch arm64 --skip-build`. Omitting the switch preserves upstream packaging and profiles.
 
@@ -47,20 +44,18 @@ Repository `t3.json` does not install or execute plugins.
 ```json
 [
   {
-    "id": "bullseye",
+    "id": "example",
     "connection": {
       "kind": "sidecar",
       "command": "node",
-      "args": ["/path/to/t3code/apps/server/scripts/bullseye-panel.mjs"]
+      "args": ["/path/to/t3code/apps/server/scripts/plugin-spa-demo.mjs"]
     }
   }
 ]
 ```
 
-The example adapter requires `bullseye` on PATH. It queries the thread's workspace through
-Bullseye's CLI, preserving its external-ledger discovery and frontier computation. Frontier
-is the default; Active and All are available. It refreshes every two seconds while subscribed
-and sends only changed results. The source example above needs the checkout's dependencies; the packaged installation above does not.
+This source example needs the checkout's dependencies. It demonstrates managed sidecars;
+an independently running service uses the server connection below instead.
 
 To connect to an existing plugin server, replace `connection` with:
 
@@ -176,6 +171,6 @@ only trusted plugins. Use a DNS name or IPv4 address for the T3 browser connecti
 does not accept IPv6 literal hosts in the gateway’s path-restricted CSP sources.
 
 The runnable example `apps/server/scripts/plugin-spa-demo.mjs` (server package script
-`plugin:spa-demo`) serves a thread counter. Configure it as a sidecar like the Bullseye example.
+`plugin:spa-demo`) serves a thread counter. Configure it as a sidecar using the example above.
 It exercises a stylesheet, module entrypoint, dynamic import, a JSON API, a POST mutation and
 live WebSocket updates. Its “Isolated” indicator checks parent DOM and local-storage denial.
