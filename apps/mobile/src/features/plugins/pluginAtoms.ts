@@ -2,6 +2,7 @@ import {
   createEnvironmentPanelPluginAtoms,
   createPanelPluginAtoms,
   createPanelPluginCommands,
+  createPluginLinkAtoms,
 } from "@t3tools/client-runtime/state/panelPlugins";
 import {
   createPluginDiscoveryAtoms,
@@ -17,6 +18,7 @@ export const threadPluginPanels = createPanelPluginAtoms(connectionAtomRuntime);
 export const environmentPluginPanels = createEnvironmentPanelPluginAtoms(connectionAtomRuntime);
 export const pluginPanelCommands = createPanelPluginCommands(connectionAtomRuntime);
 export const pluginDiscovery = createPluginDiscoveryAtoms(connectionAtomRuntime);
+export const pluginLinks = createPluginLinkAtoms(connectionAtomRuntime);
 
 /** Plugins waiting on a decision across environments, keyed by space-separated environment ids. */
 export const pluginDecisionCountAtom = Atom.family((environmentIds: string) =>

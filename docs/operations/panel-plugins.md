@@ -274,7 +274,7 @@ panels receive neither `x-t3-thread-id` nor `x-t3-workspace`.
 ## Link cards
 
 A plugin can show a card when the user hovers or focuses a chat link it recognizes, for example a
-staff profile or a message viewer. It needs no panels. Declare the `links` scope and up to 16 link
+staff profile or a message viewer. On mobile, tapping the link shows the card with an Open link button. It needs no panels. Declare the `links` scope and up to 16 link
 prefixes in the probe answer or the `panel-plugins.json` entry:
 
 ```json

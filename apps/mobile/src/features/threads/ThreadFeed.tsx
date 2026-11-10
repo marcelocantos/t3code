@@ -54,6 +54,7 @@ import {
   type ChatImageAttachment,
   type EnvironmentId,
   type MessageId,
+  type PluginLink,
   type OrchestrationV2ProjectedTurnItem,
   type RunId,
   type ScheduledTaskId,
@@ -160,6 +161,7 @@ import {
   type NativeMarkdownTextStyle,
   type SelectableMarkdownSkill,
 } from "../../native/SelectableMarkdownText";
+import { PluginLinkCardSheet, usePluginLinkMatcher } from "../plugins/PluginLinkCard";
 
 import { AppText as Text } from "../../components/ui/AppText";
 import { VideoPreviewModal, type VideoPreviewSource } from "../../components/ui/VideoPreviewModal";
@@ -2715,6 +2717,11 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
   const { copiedRowId, expandedWorkGroups, expandedWorkRows, expandedTurnIds, revealedMessageId } =
     interactionState;
   const markdownLinkRequest = useRef<AbortController | null>(null);
+  const matchPluginLinkHref = usePluginLinkMatcher(props.environmentId);
+  const [pluginLinkCard, setPluginLinkCard] = useState<{
+    readonly link: PluginLink;
+    readonly url: string;
+  } | null>(null);
   const onInlinePlaybackStart = () => {
     markdownLinkRequest.current?.abort();
   };
@@ -2811,7 +2818,12 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
     // A v1 link names no environment, so it falls back to this message's.
     return scopeThreadRef(props.environmentId, link.threadId);
   };
-  const onMarkdownLinkPress = (href: string, imageEmbed = false) => {
+  const onMarkdownLinkPress = (href: string, imageEmbed = false, skipPluginCard = false) => {
+    const pluginLink = imageEmbed || skipPluginCard ? undefined : matchPluginLinkHref(href);
+    if (pluginLink) {
+      setPluginLinkCard({ link: pluginLink, url: href });
+      return;
+    }
     markdownLinkRequest.current?.abort();
     const request = new AbortController();
     markdownLinkRequest.current = request;
@@ -3761,6 +3773,18 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
         ) : null}
         <VideoPreviewModal source={expandedVideo} onRequestClose={closeVideoPreview} />
         <FilePreviewModal source={expandedFile} onRequestClose={closeFilePreview} />
+        {pluginLinkCard ? (
+          <PluginLinkCardSheet
+            environmentId={props.environmentId}
+            link={pluginLinkCard.link}
+            url={pluginLinkCard.url}
+            onClose={() => setPluginLinkCard(null)}
+            onOpenLink={() => {
+              setPluginLinkCard(null);
+              onMarkdownLinkPress(pluginLinkCard.url, false, true);
+            }}
+          />
+        ) : null}
       </View>
     </PresentationSource>
   );
