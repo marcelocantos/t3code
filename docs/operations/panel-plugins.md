@@ -1,5 +1,38 @@
 # Sidebar panel plugins
 
+## Install the macOS plugin build
+
+Download the Apple Silicon DMG from [this fork's releases](https://github.com/marcelocantos/t3code/releases), open it, and drag **T3 Code Plugins.app** to Applications. This unsigned build may require approval in **System Settings → Privacy & Security → Open Anyway** after the first launch attempt.
+
+The fork runs alongside the official app. Its data lives in `~/.t3-plugins/userdata` and its browser profile in `~/Library/Application Support/t3code-plugins`. It starts with a separate workspace list; add your existing project directories. Automatic updates are disabled for this build; install subsequent releases from the same release page. Do not set `T3CODE_HOME` to the official app's data directory.
+
+Use this fork's desktop app or bundled web client for panels; official T3 clients do not include the panel renderers. Both desktop apps register the upstream `t3code` link scheme, so external sign-in/deep links can open either app. Direct environment connections avoid that ambiguity.
+
+Keep your existing Bullseye installation. Create `~/.t3-plugins/userdata/panel-plugins.json` with the following configuration (create the directory first if the app has not run):
+
+```json
+[
+  {
+    "id": "bullseye",
+    "connection": {
+      "kind": "sidecar",
+      "command": "/usr/bin/env",
+      "args": [
+        "ELECTRON_RUN_AS_NODE=1",
+        "/Applications/T3 Code Plugins.app/Contents/MacOS/T3 Code Plugins",
+        "/Applications/T3 Code Plugins.app/Contents/Resources/app.asar/apps/server/dist/bullseye-panel.mjs"
+      ]
+    }
+  }
+]
+```
+
+Open a thread and expand its sidebar to see Bullseye's frontier. The adapter uses the app's bundled runtime, so no Node installation, npm dependencies, or source checkout is needed. `bullseye` must be available on the app's PATH; a normal Homebrew installation is supported. Adjust the app paths above if you install it somewhere other than Applications.
+
+Maintainers build this variant with `T3CODE_PLUGIN_BUILD=1` set for both `vp run build:desktop` and `vp run dist:desktop:artifact --platform mac --target dmg --arch arm64 --skip-build`. Omitting the switch preserves upstream packaging and profiles.
+
+## Configure other installations
+
 A plugin runs outside T3 Code and supplies live, thread-scoped sidebar sections over a
 WebSocket. T3 connects from the environment hosting the thread and relays snapshots over its
 authenticated client connection. A remote browser or phone never connects to a localhost
@@ -27,7 +60,7 @@ Repository `t3.json` does not install or execute plugins.
 The example adapter requires `bullseye` on PATH. It queries the thread's workspace through
 Bullseye's CLI, preserving its external-ledger discovery and frontier computation. Frontier
 is the default; Active and All are available. It refreshes every two seconds while subscribed
-and sends only changed results. Run it from a T3 source installation with dependencies installed.
+and sends only changed results. The source example above needs the checkout's dependencies; the packaged installation above does not.
 
 To connect to an existing plugin server, replace `connection` with:
 

@@ -1,0 +1,85 @@
+name: Plugin desktop release
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  macos:
+    if: github.repository == 'marcelocantos/t3code'
+    runs-on: macos-15
+    timeout-minutes: 60
+    permissions:
+      contents: write
+    env:
+      T3CODE_PLUGIN_BUILD: "1"
+      T3CODE_TELEMETRY_ENABLED: "false"
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+    steps:
+      - name: Checkout
+        shell: bash
+        env:
+          CHECKOUT_REF: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          git init .
+          git remote add origin "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git"
+          git fetch --no-tags --depth=1 origin "$CHECKOUT_REF"
+          git sparse-checkout set --no-cone '/*' '!/.repos/'
+          git checkout --detach FETCH_HEAD
+
+      - name: Setup dependencies
+        uses: ./.github/actions/setup-ci-deps
+
+      - name: Verify architecture and release version
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = arm64
+          if [[ -n "$RELEASE_TAG" ]]; then
+            test "$RELEASE_TAG" = "v$(node -p "require('./apps/desktop/package.json').version")"
+          fi
+
+      - name: Build app
+        run: vp run build:desktop
+
+      - name: Package app
+        run: vp run dist:desktop:artifact --platform mac --target dmg --arch arm64 --skip-build
+
+      - name: Launch packaged app
+        shell: bash
+        run: |
+          set -euo pipefail
+          mount="$RUNNER_TEMP/plugin-launch-dmg"
+          hdiutil attach -nobrowse -readonly -mountpoint "$mount" release/*.dmg
+          trap 'hdiutil detach "$mount" -force' EXIT
+          node scripts/smoke-desktop-app.ts \
+            --executable "$mount/T3 Code Plugins.app/Contents/MacOS/T3 Code Plugins" \
+            --artifacts-dir "$RUNNER_TEMP/plugin-launch-check"
+
+      - name: Checksums
+        working-directory: release
+        run: shasum -a 256 ./*.dmg > SHA256SUMS
+
+      - name: Save installer
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: t3-code-plugins-macos-arm64
+          path: |
+            release/*.dmg
+            release/SHA256SUMS
+          if-no-files-found: error
+
+      - name: Upload release assets
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: gh release upload "$RELEASE_TAG" release/*.dmg release/SHA256SUMS --repo "$GITHUB_REPOSITORY"
