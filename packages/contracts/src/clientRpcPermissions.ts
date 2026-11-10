@@ -61,6 +61,11 @@ export const CLIENT_GUARDED_RPC_SCOPES = {
   [WS_METHODS.vcsSwitchRef]: AuthSourceControlWriteScope,
   [WS_METHODS.vcsInit]: AuthSourceControlWriteScope,
 
+  // Enabling makes this environment's server connect to a local service on the user's behalf.
+  [WS_METHODS.pluginDiscoveryAct]: AuthSettingsWriteScope,
+  // Plugin actions can change the plugin's own data, such as a Bullseye ledger.
+  [WS_METHODS.pluginPanelsAct]: AuthOrchestrationOperateScope,
+
   // Starts an agent session on this environment that can read its logs and database.
   [WS_METHODS.serverPrepareTriage]: AuthOrchestrationOperateScope,
   [WS_METHODS.scheduledTasksUpsert]: AuthOrchestrationOperateScope,

@@ -33,7 +33,24 @@ import {
   ChatGptHandoffInput,
   ChatGptHandoffState,
 } from "./providerSetup.ts";
-import { PluginPanelsState, SubscribePluginPanelsInput } from "./panelPlugins.ts";
+import {
+  PluginActionResult,
+  PluginLinkCard,
+  PluginLinkCardInput,
+  PluginLinksState,
+  PluginPanelActionInput,
+  PluginPanelRequestError,
+  PluginPanelsState,
+  PluginPanelSurfaceInput,
+  PluginSurface,
+  SubscribeEnvironmentPluginPanelsInput,
+  SubscribePluginPanelsInput,
+} from "./panelPlugins.ts";
+import {
+  PluginDiscoveryActionError,
+  PluginDiscoveryActionInput,
+  PluginDiscoverySnapshot,
+} from "./pluginDiscovery.ts";
 import * as Schema from "effect/Schema";
 import * as Rpc from "effect/rpc/Rpc";
 import * as RpcGroup from "effect/rpc/RpcGroup";
@@ -620,6 +637,13 @@ export const WS_METHODS = {
   subscribeTerminalMetadata: "subscribeTerminalMetadata",
   subscribePreviewEvents: "subscribePreviewEvents",
   subscribePluginPanels: "subscribePluginPanels",
+  subscribeEnvironmentPluginPanels: "subscribeEnvironmentPluginPanels",
+  pluginPanelsAct: "pluginPanels.act",
+  pluginPanelsSurface: "pluginPanels.surface",
+  subscribePluginLinks: "subscribePluginLinks",
+  pluginLinksCard: "pluginLinks.card",
+  subscribePluginDiscovery: "subscribePluginDiscovery",
+  pluginDiscoveryAct: "pluginDiscovery.act",
   subscribeDiscoveredLocalServers: "subscribeDiscoveredLocalServers",
   subscribeDeviceState: "subscribeDeviceState",
   subscribeServerConfig: "subscribeServerConfig",
@@ -1704,6 +1728,54 @@ const WsSubscribePluginPanelsRpc = Rpc.make(WS_METHODS.subscribePluginPanels, {
   stream: true,
 });
 
+const WsSubscribeEnvironmentPluginPanelsRpc = Rpc.make(
+  WS_METHODS.subscribeEnvironmentPluginPanels,
+  {
+    payload: SubscribeEnvironmentPluginPanelsInput,
+    success: PluginPanelsState,
+    error: EnvironmentAuthorizationError,
+    stream: true,
+  },
+);
+
+const WsPluginPanelsActRpc = Rpc.make(WS_METHODS.pluginPanelsAct, {
+  payload: PluginPanelActionInput,
+  success: PluginActionResult,
+  error: Schema.Union([PluginPanelRequestError, EnvironmentAuthorizationError]),
+});
+
+const WsPluginPanelsSurfaceRpc = Rpc.make(WS_METHODS.pluginPanelsSurface, {
+  payload: PluginPanelSurfaceInput,
+  success: PluginSurface,
+  error: Schema.Union([PluginPanelRequestError, EnvironmentAuthorizationError]),
+});
+
+const WsSubscribePluginLinksRpc = Rpc.make(WS_METHODS.subscribePluginLinks, {
+  payload: Schema.Struct({}),
+  success: PluginLinksState,
+  error: EnvironmentAuthorizationError,
+  stream: true,
+});
+
+const WsPluginLinksCardRpc = Rpc.make(WS_METHODS.pluginLinksCard, {
+  payload: PluginLinkCardInput,
+  success: PluginLinkCard,
+  error: Schema.Union([PluginPanelRequestError, EnvironmentAuthorizationError]),
+});
+
+const WsSubscribePluginDiscoveryRpc = Rpc.make(WS_METHODS.subscribePluginDiscovery, {
+  payload: Schema.Struct({}),
+  success: PluginDiscoverySnapshot,
+  error: EnvironmentAuthorizationError,
+  stream: true,
+});
+
+const WsPluginDiscoveryActRpc = Rpc.make(WS_METHODS.pluginDiscoveryAct, {
+  payload: PluginDiscoveryActionInput,
+  success: Schema.Void,
+  error: Schema.Union([PluginDiscoveryActionError, EnvironmentAuthorizationError]),
+});
+
 const WsSubscribeDiscoveredLocalServersRpc = Rpc.make(WS_METHODS.subscribeDiscoveredLocalServers, {
   payload: Schema.Struct({
     configuredUrls: Schema.optional(ConfiguredLocalServerUrls),
@@ -2254,6 +2326,13 @@ export const WsRpcGroup = RpcGroup.make(
   WsSubscribePreviewEventsRpc,
   WsPreviewStopLocalServerRpc,
   WsSubscribePluginPanelsRpc,
+  WsSubscribeEnvironmentPluginPanelsRpc,
+  WsPluginPanelsActRpc,
+  WsPluginPanelsSurfaceRpc,
+  WsSubscribePluginLinksRpc,
+  WsPluginLinksCardRpc,
+  WsSubscribePluginDiscoveryRpc,
+  WsPluginDiscoveryActRpc,
   WsSubscribeDiscoveredLocalServersRpc,
   WsDeviceConfigureRpc,
   WsDeviceListRpc,

@@ -206,6 +206,7 @@ import {
   markdownImageCopy,
 } from "./chat/ChatMarkdownMedia";
 import { MarkdownExternalLinkContent } from "./chat/MarkdownExternalLink";
+import { PluginLinkHover } from "./plugins/PluginLinkHover";
 import { MarkdownFileLink } from "./chat/MarkdownFileLink";
 import { canUseMarkdownFileShellActions } from "./chat/MarkdownFileLink.logic";
 import { rehypeChipPunctuation } from "./chat/markdownChipPunctuation";
@@ -1307,10 +1308,12 @@ const CHAT_MARKDOWN_COMPONENTS = {
         );
       }
       return (
-        <Tooltip>
-          <TooltipTrigger render={link} />
-          <TooltipPopup side="top">{href}</TooltipPopup>
-        </Tooltip>
+        <PluginLinkHover environmentId={environmentId} href={href} link={link}>
+          <Tooltip>
+            <TooltipTrigger render={link} />
+            <TooltipPopup side="top">{href}</TooltipPopup>
+          </Tooltip>
+        </PluginLinkHover>
       );
     }
 

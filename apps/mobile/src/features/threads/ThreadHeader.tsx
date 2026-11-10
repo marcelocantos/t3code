@@ -1,6 +1,9 @@
 import { AppBar } from "../../components/ui/AppBar";
 import type { AppBarAction, AppBarMenu } from "../../components/ui/AppBar.types";
-import { useAdaptiveWorkspaceLayout } from "../layout/AdaptiveWorkspaceLayout";
+import {
+  useAdaptiveWorkspaceLayout,
+  useWorkspacePaneState,
+} from "../layout/AdaptiveWorkspaceLayout";
 import type { ThreadInspectorMode } from "./thread-inspector-navigation";
 import { useWorkspaceBackNavigation } from "../layout/workspace/useAndroidWorkspaceNavigation";
 import {
@@ -18,14 +21,28 @@ export function ThreadHeader(props: {
   readonly hasThreadCwd: boolean;
   readonly inspectorMode: ThreadInspectorMode | null;
   readonly onOpenFilesInspector: () => void;
+  /** Absent while no plugin offers this thread a panel. */
+  readonly onOpenPluginsInspector?: () => void;
 }) {
   const goBack = useWorkspaceBackNavigation("threads");
-  const { panes, toggleAuxiliaryPane, composerKeyboardActive, startNewTask } =
-    useAdaptiveWorkspaceLayout();
+  const { toggleAuxiliaryPane, startNewTask } = useAdaptiveWorkspaceLayout();
+  const { panes } = useWorkspacePaneState();
   const gitMenu = useThreadGitMenuDefinition(props.gitControls);
   const terminalMenu = threadTerminalMenu(props.gitControls);
   const filesVisible = props.inspectorMode === "files" && panes.auxiliaryPaneVisible;
-  const actions: AppBarAction[] = props.hasThreadCwd
+  const pluginsVisible = props.inspectorMode === "plugins" && panes.auxiliaryPaneVisible;
+  const pluginsAction: AppBarAction[] = props.onOpenPluginsInspector
+    ? [
+        {
+          accessibilityLabel: pluginsVisible ? "Close plugins" : "Open plugins",
+          icon: "square.grid.2x2",
+          selected: pluginsVisible,
+          separateBackground: false,
+          onPress: pluginsVisible ? toggleAuxiliaryPane : props.onOpenPluginsInspector,
+        },
+      ]
+    : [];
+  const filesAction: AppBarAction[] = props.hasThreadCwd
     ? [
         {
           accessibilityLabel: filesVisible ? "Close files" : "Open files",
@@ -37,6 +54,7 @@ export function ThreadHeader(props: {
         },
       ]
     : [];
+  const actions = [...pluginsAction, ...filesAction];
   const menus = [gitMenu, terminalMenu].filter((menu): menu is AppBarMenu => menu !== null);
 
   return (
@@ -57,7 +75,6 @@ export function ThreadHeader(props: {
       actions={actions}
       menus={menus}
       hideBottomBorder
-      compact={composerKeyboardActive}
     />
   );
 }

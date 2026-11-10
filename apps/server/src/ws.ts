@@ -204,6 +204,7 @@ import {
 import { parseBase64DataUrl } from "./imageMime.ts";
 import { deletePendingAttachment, issueAttachmentUploadUrl } from "./assets/AttachmentUpload.ts";
 import * as PanelPlugins from "./plugins/PanelPlugins.ts";
+import * as PluginDiscovery from "./plugins/PluginDiscovery.ts";
 import * as PortScanner from "./preview/PortScanner.ts";
 import * as WorkspaceEntries from "./workspace/WorkspaceEntries.ts";
 import * as KnownWorkspaces from "./workspace/KnownWorkspaces.ts";
@@ -1499,6 +1500,7 @@ export const layerWsRpc = (
       const terminalManager = yield* TerminalManager.TerminalManager;
       const previewManager = yield* PreviewManager.PreviewManager;
       const panelPlugins = yield* PanelPlugins.PanelPlugins;
+      const pluginDiscovery = yield* PluginDiscovery.PluginDiscovery;
       const portDiscovery = yield* PortScanner.PortDiscovery;
       const providerRegistry = yield* ProviderRegistry.ProviderRegistry;
       const providerInstances = yield* ProviderInstanceRegistry.ProviderInstanceRegistry;
@@ -3281,6 +3283,19 @@ export const layerWsRpc = (
           panelPlugins.subscribe(input, {
             allowWeb: currentSession.scopes.includes(AuthOrchestrationOperateScope),
           }),
+        [WS_METHODS.subscribeEnvironmentPluginPanels]: (input) =>
+          panelPlugins.subscribeEnvironment(input, {
+            allowWeb: currentSession.scopes.includes(AuthOrchestrationOperateScope),
+          }),
+        [WS_METHODS.pluginPanelsAct]: (input) => panelPlugins.act(input),
+        [WS_METHODS.pluginPanelsSurface]: (input) => panelPlugins.surface(input),
+        [WS_METHODS.subscribePluginLinks]: () => panelPlugins.subscribeLinks(),
+        [WS_METHODS.pluginLinksCard]: (input) =>
+          panelPlugins.linkCard(input, {
+            allowWeb: currentSession.scopes.includes(AuthOrchestrationOperateScope),
+          }),
+        [WS_METHODS.subscribePluginDiscovery]: () => pluginDiscovery.snapshots,
+        [WS_METHODS.pluginDiscoveryAct]: (input) => pluginDiscovery.act(input),
         [WS_METHODS.subscribeDiscoveredLocalServers]: (input) =>
           Stream.callback<DiscoveredLocalServerList>((queue) =>
             Effect.gen(function* () {

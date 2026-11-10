@@ -33,6 +33,8 @@ import { useSettingsEnvironmentMenu } from "./components/SettingsEnvironmentFilt
 import { useSettingsEnvironmentFilter } from "./settings-environment-filter";
 import { filterSettingsSections } from "./settings-search";
 import { usePaneRole } from "../../components/ui/Pane";
+import { useAtomValue } from "@effect/atom-react";
+import { pluginDecisionCountAtom } from "../plugins/pluginAtoms";
 
 export function SettingsRouteScreen() {
   const list = useSettingsListPlacement();
@@ -214,6 +216,9 @@ function SettingsList(props: { readonly connections: readonly SettingsListRow[] 
 function useSettingsIndexSections(): SettingsListSection[] {
   const { selectedTargets, projectGroups, selectedProjectKey } = useSettingsEnvironmentFilter();
   const noServerTargets = selectedTargets.length === 0;
+  const pluginDecisions = useAtomValue(
+    pluginDecisionCountAtom(selectedTargets.map((target) => target.environmentId).join(" ")),
+  );
   const selectedProject = projectGroups.find((group) => group.key === selectedProjectKey);
   const scopedProjectMembers =
     selectedProject?.members
@@ -256,6 +261,10 @@ function useSettingsIndexSections(): SettingsListSection[] {
         serverPage("SettingsProviderAccounts", "person.crop.circle", "Providers"),
         serverPage("SettingsThreads", "text.bubble", "Threads"),
         page("SettingsScheduledTasks", "clock", "Scheduled tasks"),
+        page("SettingsPlugins", "cube", "Plugins", {
+          disabled: noServerTargets,
+          ...(pluginDecisions > 0 ? { value: `${pluginDecisions} new` } : {}),
+        }),
       ],
     },
     {

@@ -10,6 +10,7 @@ import * as Schema from "effect/Schema";
 import * as ElectronApp from "../electron/ElectronApp.ts";
 import * as DesktopAssets from "./DesktopAssets.ts";
 import * as DesktopEnvironment from "./DesktopEnvironment.ts";
+import { isUpgradePluginBuild } from "./PluginBuild.ts";
 import * as DesktopUserData from "./DesktopUserData.ts";
 
 const COMMIT_HASH_PATTERN = /^[0-9a-f]{7,40}$/i;
@@ -99,6 +100,7 @@ export const make = Effect.gen(function* () {
       applicationName: environment.displayName,
       applicationVersion: environment.appVersion,
       version: Option.getOrElse(commitHash, () => "unknown"),
+      ...(isUpgradePluginBuild ? { credits: "Plugin panels build" } : {}),
     });
 
     if (environment.platform === "win32") {

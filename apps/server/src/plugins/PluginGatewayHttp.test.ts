@@ -122,6 +122,9 @@ it.live("forwards only capability-scoped HTTP, preserves JSON, and revokes acces
         "sandbox allow-scripts allow-forms;",
       );
       expect(response.headers.get("content-security-policy")).not.toContain("allow-same-origin");
+      expect(response.headers.get("content-security-policy")).toContain(
+        "script-src 'unsafe-inline' 'wasm-unsafe-eval' ",
+      );
       expect(response.headers.get("referrer-policy")).toBe("no-referrer");
       expect((await handler(new Request(`${url}redirect`))).status).toBe(502);
       expect(received.some((item) => item.path === "/escape")).toBe(false);

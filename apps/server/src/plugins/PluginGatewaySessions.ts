@@ -20,8 +20,9 @@ export function pluginRelativePath(path: string): boolean {
 
 export interface PluginGatewayGrant {
   readonly upstreamRoot: string;
-  readonly threadId: string;
-  readonly cwd: string;
+  /** Absent for environment panels, which belong to no single thread or workspace. */
+  readonly threadId: string | undefined;
+  readonly cwd: string | undefined;
   readonly abort: AbortController;
   active: number;
 }
@@ -34,7 +35,7 @@ export class PluginGatewaySessions {
     return this.grants.get(token);
   }
 
-  session(threadId: string, cwd: string, allowWeb = false) {
+  session(threadId: string | undefined, cwd: string | undefined, allowWeb = false) {
     const panels = new Map<string, { key: string; token: string }>();
     const revoke = (id: string) => {
       const previous = panels.get(id);
@@ -92,6 +93,25 @@ export class PluginGatewaySessions {
             return { ...panel, path: `${PLUGIN_GATEWAY_PREFIX}${entry.token}/` };
           }),
         };
+      },
+    };
+  }
+
+  /** A grant outside any panel snapshot, such as a link card page; it lives until `revoke`. */
+  grant(upstreamRoot: string) {
+    const token = crypto.randomUUID();
+    this.grants.set(token, {
+      upstreamRoot,
+      threadId: undefined,
+      cwd: undefined,
+      abort: new AbortController(),
+      active: 0,
+    });
+    return {
+      token,
+      revoke: () => {
+        this.grants.get(token)?.abort.abort();
+        this.grants.delete(token);
       },
     };
   }

@@ -59,8 +59,8 @@ it.live("runs a SPA's modules, API and socket in an isolated, revocable thread p
     );
     const ready = Promise.withResolvers<string>();
     connection.subscribe({
-      input: { threadId: ThreadId.make("spa-thread"), filters: [] },
-      cwd: "/workspace/spa",
+      target: { scope: "thread", threadId: ThreadId.make("spa-thread"), cwd: "/workspace/spa" },
+      filters: [],
       emit: (snapshot, endpoint) => {
         const rewritten = session.rewrite(snapshot, endpoint);
         const panel = rewritten.panels[0];
