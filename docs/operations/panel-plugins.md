@@ -26,6 +26,39 @@ The updater is switched off by the build itself, not only by the absence of a pu
 
 Back up `~/.t3` and `~/Library/Application Support/t3code-v2` before the first launch. Chromium and the SQLite database are not safe to share between two running versions, so quit the old app first. This repository does not take or verify backups.
 
+### Mobile
+
+`T3CODE_PLUGIN_BUILD=1` gives the mobile app the matching identity: `com.marcelocantos.t3code.plugins`, **T3 Code Plugins**, scheme `t3code-plugins`, signed by the maintainer's Personal Team. It installs beside the store app and never checks the upstream OTA feed. A Personal Team cannot sign extension targets, App Groups, push or associated domains, so the build has no widgets, share extension or push notifications, and `app.t3.codes` links keep opening the official app. `upgrade` is rejected on mobile because the official identifiers only sign inside T3's team.
+
+Both builds bundle the JavaScript, so no Metro server is needed. Run them from `apps/mobile`.
+
+Android release APK:
+
+```bash
+export ANDROID_HOME=$HOME/Library/Android/sdk
+T3CODE_PLUGIN_BUILD=1 APP_VARIANT=production EXPO_NO_GIT_STATUS=1 npx expo prebuild --clean --platform android
+(cd android && ./gradlew assembleRelease)
+"$ANDROID_HOME"/build-tools/37.0.0/apksigner sign --ks ~/.local/state/t3-fork-android.keystore \
+  --out t3-code-plugins.apk android/app/build/outputs/apk/release/app-release.apk
+adb -s <serial> install -r t3-code-plugins.apk
+```
+
+Gradle signs the release with the template's debug key. Re-sign with a keystore kept outside the repository so later installs upgrade in place instead of failing on a signature change.
+
+iOS on a physical device:
+
+```bash
+T3CODE_PLUGIN_BUILD=1 APP_VARIANT=production EXPO_NO_GIT_STATUS=1 npx expo prebuild --clean --platform ios
+DERIVED="${TMPDIR:-/tmp}/t3-code-plugins-ios"
+xcodebuild -workspace ios/T3CodePlugins.xcworkspace -scheme T3CodePlugins -configuration Release \
+  -destination "id=<hardware udid>" -allowProvisioningUpdates -derivedDataPath "$DERIVED" build
+xcrun devicectl device install app --device <coredevice id> "$DERIVED"/Build/Products/Release-iphoneos/T3CodePlugins.app
+```
+
+Keep derived data outside the repository: Swift package checkouts under it carry TypeScript that `vp run typecheck` would otherwise pick up. `xcodebuild` takes the hardware UDID and `devicectl` the CoreDevice identifier; `xcrun devicectl list devices` shows both. The first launch needs the developer profile trusted under Settings → General → VPN & Device Management.
+
+Both builds read the public relay and Clerk values from the environment, like the release workflow does from `.env.example`: set `T3CODE_RELAY_URL`, `T3CODE_CLERK_PUBLISHABLE_KEY` and `T3CODE_CLERK_JWT_TEMPLATE` for the prebuild, or T3 Connect sign-in has nothing to talk to. Sign in with an email code: T3's Clerk instance only accepts the official apps' OAuth callback URLs, so Google, Apple, GitHub and Microsoft sign-in fail with a redirect URL error in the fork. Direct pairing from the desktop's Settings → Sharing & access also works once that environment has Network access on.
+
 ## Discovery
 
 A plugin running on the same machine as a T3 environment can advertise itself instead of being

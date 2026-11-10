@@ -1,6 +1,7 @@
 import type { ExpoConfig } from "expo/config";
 
 import { BRAND_ASSET_PATHS } from "../../scripts/lib/brand-assets.ts";
+import { parsePluginBuildMode } from "../../scripts/lib/plugin-build-mode.ts";
 import { loadRepoEnv } from "../../scripts/lib/public-config.ts";
 
 type AppVariant = "development" | "preview" | "production";
@@ -11,7 +12,22 @@ Object.assign(process.env, repoEnv);
 process.env.EXPO_NO_TYPESCRIPT_SETUP = "1";
 
 const APP_VARIANT = resolveAppVariant(repoEnv.APP_VARIANT);
+// The official identifiers cannot be signed outside T3's team, so mobile has no in-place upgrade.
+const pluginBuildMode = parsePluginBuildMode(repoEnv.T3CODE_PLUGIN_BUILD);
+if (pluginBuildMode === "upgrade") {
+  throw new Error('T3CODE_PLUGIN_BUILD="upgrade" has no mobile build; use "1".');
+}
+const isPluginBuild = pluginBuildMode === "parallel";
+// Installed beside the official app, signed by the fork maintainer's Personal Team (docs/operations/panel-plugins.md).
+const PLUGIN_BUILD_IDENTITY = {
+  appName: "T3 Code Plugins",
+  scheme: "t3code-plugins",
+  appId: "com.marcelocantos.t3code.plugins",
+  appleTeamId: "WG8QTTL954",
+} as const;
 const isIosPersonalTeamBuild = repoEnv.T3CODE_IOS_PERSONAL_TEAM === "1";
+// Personal Teams cannot sign extension targets, App Groups, push or Sign in with Apple.
+const isIosReducedCapabilityBuild = isIosPersonalTeamBuild || isPluginBuild;
 const runtimeVersionPolicy =
   process.env.MOBILE_VERSION_POLICY ??
   (APP_VARIANT === "development" ? "appVersion" : "fingerprint");
@@ -120,9 +136,11 @@ function resolveAppVariant(value: string | undefined): AppVariant {
 const variant = VARIANT_CONFIG[APP_VARIANT];
 // Copied thread links open the app. app.t3.codes/.well-known lists every variant's identifiers.
 const HOSTED_APP_HOST = "app.t3.codes";
-const iosBundleIdentifier = isIosPersonalTeamBuild
-  ? personalTeamBundleIdentifier!
-  : variant.iosBundleIdentifier;
+const iosBundleIdentifier = isPluginBuild
+  ? PLUGIN_BUILD_IDENTITY.appId
+  : isIosPersonalTeamBuild
+    ? personalTeamBundleIdentifier!
+    : variant.iosBundleIdentifier;
 
 const dmSansFonts = {
   regular: "@expo-google-fonts/dm-sans/400Regular/DMSans_400Regular.ttf",
@@ -210,8 +228,7 @@ const sharingPlugin: NonNullable<ExpoConfig["plugins"]>[number] = [
   "expo-sharing",
   {
     ios: {
-      // Personal Teams cannot sign App Groups or extension targets; keep local builds usable.
-      enabled: !isIosPersonalTeamBuild,
+      enabled: !isIosReducedCapabilityBuild,
       extensionBundleIdentifier: `${iosBundleIdentifier}.sharing`,
       appGroupId: `group.${iosBundleIdentifier}`,
       activationRule: {
@@ -233,10 +250,10 @@ const sharingPlugin: NonNullable<ExpoConfig["plugins"]>[number] = [
 // Match iOS PostScript names on Android so RN and the native composer share fonts before runtime loading.
 
 const config: ExpoConfig = {
-  name: variant.appName,
+  name: isPluginBuild ? PLUGIN_BUILD_IDENTITY.appName : variant.appName,
   slug: "t3-code",
   platforms: ["ios", "android"],
-  scheme: variant.scheme,
+  scheme: isPluginBuild ? PLUGIN_BUILD_IDENTITY.scheme : variant.scheme,
   version: repoEnv.T3CODE_MOBILE_VERSION ?? "2.2.0",
   runtimeVersion: {
     // Skip costly fingerprinting on dev launches; preview and production OTAs require matching native projects.
@@ -246,7 +263,8 @@ const config: ExpoConfig = {
   icon: variant.assets.appIcon,
   userInterfaceStyle: "automatic",
   updates: {
-    enabled: repoEnv.T3CODE_MOBILE_UPDATES_ENABLED !== "0",
+    // The plugin build must never pick up upstream's OTA bundle, which lacks the panel renderers.
+    enabled: repoEnv.T3CODE_MOBILE_UPDATES_ENABLED !== "0" && !isPluginBuild,
     url: "https://u.expo.dev/d763fcb8-d37c-41ea-a773-b54a0ab4a454",
     checkAutomatically: "ON_LOAD",
     fallbackToCacheTimeout: 0,
@@ -257,12 +275,17 @@ const config: ExpoConfig = {
     requireFullScreen: process.env.T3_SHOWCASE_CAPTURE_BUILD === "1",
     bundleIdentifier: iosBundleIdentifier,
     // Avoid Personal Team fallback: it cannot sign App Groups, Apple sign-in or push entitlements.
-    appleTeamId: "ARK85ZXQ4Z",
-    associatedDomains: [
-      `applinks:${variant.relyingParty}`,
-      `webcredentials:${variant.relyingParty}`,
-      `applinks:${HOSTED_APP_HOST}`,
-    ],
+    appleTeamId: isPluginBuild ? PLUGIN_BUILD_IDENTITY.appleTeamId : "ARK85ZXQ4Z",
+    // T3's hosts list only T3's app ids, and Personal Teams cannot provision associated domains.
+    ...(isPluginBuild
+      ? {}
+      : {
+          associatedDomains: [
+            `applinks:${variant.relyingParty}`,
+            `webcredentials:${variant.relyingParty}`,
+            `applinks:${HOSTED_APP_HOST}`,
+          ],
+        }),
     entitlements: {
       "keychain-access-groups": [`$(AppIdentifierPrefix)${variant.iosBundleIdentifier}`],
     },
@@ -296,7 +319,7 @@ const config: ExpoConfig = {
   },
   android: {
     icon: variant.assets.appIcon,
-    package: variant.androidPackage,
+    package: isPluginBuild ? PLUGIN_BUILD_IDENTITY.appId : variant.androidPackage,
     ...(repoEnv.T3CODE_ANDROID_GOOGLE_SERVICES_FILE
       ? { googleServicesFile: repoEnv.T3CODE_ANDROID_GOOGLE_SERVICES_FILE }
       : {}),
@@ -325,6 +348,8 @@ const config: ExpoConfig = {
     favicon: variant.assets.appIcon,
   },
   plugins: [
+    // Mods run in reverse order; first here so it strips entitlements after expo-notifications adds push.
+    ...(isIosReducedCapabilityBuild ? ["./plugins/withoutIosPersonalTeamCapabilities.cjs"] : []),
     "expo-asset",
     [
       "expo-font",
@@ -352,7 +377,7 @@ const config: ExpoConfig = {
     ],
     "expo-secure-store",
     "expo-sqlite",
-    ...(isIosPersonalTeamBuild
+    ...(isIosReducedCapabilityBuild
       ? [sharingPlugin]
       : ["./plugins/withShareExtensionDisplayName.cjs", sharingPlugin]),
     [
@@ -363,8 +388,8 @@ const config: ExpoConfig = {
         mode: APP_VARIANT === "development" ? "development" : "production",
       },
     ],
-    // Gate Clerk here: withoutIosPersonalTeamCapabilities runs too early to strip its entitlement.
-    ["@clerk/expo", { theme: "./clerk-theme.json", appleSignIn: !isIosPersonalTeamBuild }],
+    // Reduced-capability builds have no Sign in with Apple entitlement, so Clerk must not offer it.
+    ["@clerk/expo", { theme: "./clerk-theme.json", appleSignIn: !isIosReducedCapabilityBuild }],
     "expo-web-browser",
     [
       "expo-quick-actions",
@@ -450,7 +475,7 @@ const config: ExpoConfig = {
     // Compile out the unused pedometer to avoid an iOS motion purpose string.
     ["expo-sensors", { motionPermission: false }],
     // Mods run in reverse order; expo-widgets must create and wipe the target before assets are added.
-    ...(!isIosPersonalTeamBuild ? ["./plugins/withWidgetLogoAsset.cjs", widgetsPlugin] : []),
+    ...(!isIosReducedCapabilityBuild ? ["./plugins/withWidgetLogoAsset.cjs", widgetsPlugin] : []),
     "./plugins/withAndroidNetworkSecurityConfig.cjs",
     "./plugins/withAndroidGradleHeap.cjs",
     "./plugins/withAndroidInputBackground.cjs",
@@ -460,14 +485,13 @@ const config: ExpoConfig = {
     // MainActivity mods run in reverse order; extend the tablet-orientation override.
     "./plugins/withAndroidWindowDisplayMetrics.cjs",
     "./plugins/withAndroidTabletOrientation.cjs",
-    ...(isIosPersonalTeamBuild ? ["./plugins/withoutIosPersonalTeamCapabilities.cjs"] : []),
   ],
   extra: {
     appVariant: APP_VARIANT,
     secretsFeatureEnabled: ["1", "true"].includes(
       process.env.T3CODE_FEATURE_SECRETS?.trim().toLowerCase() ?? "",
     ),
-    iosPersonalTeamBuild: isIosPersonalTeamBuild,
+    iosPersonalTeamBuild: isIosReducedCapabilityBuild,
     relay: {
       url: repoEnv.T3CODE_RELAY_URL ?? null,
     },
