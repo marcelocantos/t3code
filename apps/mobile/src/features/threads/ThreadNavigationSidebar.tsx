@@ -1,5 +1,3 @@
-import { parseScopedThreadKey } from "@t3tools/client-runtime/environment";
-import { ThreadPluginPanels } from "./ThreadPluginPanels";
 import { EnvironmentPluginPanels } from "../plugins/EnvironmentPluginPanels";
 import { useActiveNewTask } from "../../state/active-new-task";
 import { ThreadUndoNotice } from "../home/ThreadUndoNotice";
@@ -113,9 +111,6 @@ export function ThreadNavigationSidebar(props: ThreadNavigationSidebarProps) {
 }
 
 function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
-  const selectedRef = props.selectedThreadKey
-    ? parseScopedThreadKey(props.selectedThreadKey)
-    : null;
   const floatingTabsEnabled = useAndroidFloatingTabs();
   const { themeVariables: materialTheme } = useAppearancePreferences();
   const drawerColor = materialTheme["--color-drawer"];
@@ -172,19 +167,15 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
           )
         ? [options.selectedEnvironmentId]
         : [];
+  // A thread's own panels open from its header; the sidebar keeps the environment-wide ones.
   const pluginFooter = props.visible ? (
-    <>
-      <EnvironmentPluginPanels
-        environmentIds={searchEnvironmentIds}
-        threads={threads}
-        projects={projects}
-        onSelectThread={props.onSelectThread}
-        onNewThreadInProject={props.onNewThreadInProject}
-      />
-      {selectedRef ? (
-        <ThreadPluginPanels key={props.selectedThreadKey} threadRef={selectedRef} />
-      ) : null}
-    </>
+    <EnvironmentPluginPanels
+      environmentIds={searchEnvironmentIds}
+      threads={threads}
+      projects={projects}
+      onSelectThread={props.onSelectThread}
+      onNewThreadInProject={props.onNewThreadInProject}
+    />
   ) : null;
   // A legacy per-environment scratch key resolves here on every render; the stored
   // value is only rewritten when the user picks a filter.

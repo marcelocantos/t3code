@@ -109,6 +109,7 @@ import {
   threadRouteOpensDraft,
 } from "./thread-route-hydration";
 import { ThreadHeader } from "./ThreadHeader";
+import { ThreadPluginPanels, useThreadHasPluginPanels } from "./ThreadPluginPanels";
 import { resumeThread } from "./resume-thread";
 import {
   useAndroidWorkspaceBack,
@@ -467,6 +468,10 @@ function ThreadRouteContent(
   // The chosen mode survives thread switches; "route" only applies while the route
   // supplies an inspector, which is also the default whenever it does.
   const [chosenInspectorMode, setChosenInspectorMode] = useState<ThreadInspectorMode | null>(null);
+  const pluginThreadRef = selectedThread
+    ? scopeThreadRef(selectedThread.environmentId, selectedThread.id)
+    : null;
+  const hasPluginPanels = useThreadHasPluginPanels(pluginThreadRef);
   const previewTarget = props.inspectorPresentation ? undefined : params.inspector;
   const inspectorMode = (() => {
     if (previewTarget) return "preview";
@@ -561,6 +566,11 @@ function ThreadRouteContent(
     setChosenInspectorMode(props.renderInspector === undefined ? "files" : "route");
     showInspector();
   };
+  const handleOpenPluginsInspector = () => {
+    navigation.setParams({ inspector: undefined });
+    setChosenInspectorMode("plugins");
+    showInspector();
+  };
   const handleSelectInspectorFile = (path: string) => {
     if (selectedThread === null) {
       return;
@@ -595,6 +605,15 @@ function ThreadRouteContent(
           />
         )}
       </InspectorSheetContext.Consumer>
+    ) : null;
+  const renderPluginsInspector = () =>
+    pluginThreadRef ? (
+      <ScrollView>
+        <ThreadPluginPanels
+          key={scopedThreadKey(pluginThreadRef.environmentId, pluginThreadRef.threadId)}
+          threadRef={pluginThreadRef}
+        />
+      </ScrollView>
     ) : null;
   const renderPreviewInspector = () =>
     previewTarget ? (
@@ -632,6 +651,7 @@ function ThreadRouteContent(
               : []),
             { key: "files", render: renderFilesInspector, prewarm: true },
             { key: "git", render: renderGitInspector, prewarm: true },
+            { key: "plugins", render: renderPluginsInspector },
             ...(props.renderInspector ? [{ key: "route", render: props.renderInspector }] : []),
           ],
         };
@@ -962,6 +982,7 @@ function ThreadRouteContent(
                 hasThreadCwd={selectedThreadCwd !== null}
                 inspectorMode={inspectorMode}
                 onOpenFilesInspector={handleOpenFilesInspector}
+                onOpenPluginsInspector={hasPluginPanels ? handleOpenPluginsInspector : undefined}
                 onReturnToThread={props.onReturnToThread}
               />
             )

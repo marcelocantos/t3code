@@ -21,6 +21,8 @@ export function ThreadHeader(props: {
   readonly hasThreadCwd: boolean;
   readonly inspectorMode: ThreadInspectorMode | null;
   readonly onOpenFilesInspector: () => void;
+  /** Absent while no plugin offers this thread a panel. */
+  readonly onOpenPluginsInspector?: () => void;
 }) {
   const goBack = useWorkspaceBackNavigation("threads");
   const { toggleAuxiliaryPane, startNewTask } = useAdaptiveWorkspaceLayout();
@@ -28,7 +30,19 @@ export function ThreadHeader(props: {
   const gitMenu = useThreadGitMenuDefinition(props.gitControls);
   const terminalMenu = threadTerminalMenu(props.gitControls);
   const filesVisible = props.inspectorMode === "files" && panes.auxiliaryPaneVisible;
-  const actions: AppBarAction[] = props.hasThreadCwd
+  const pluginsVisible = props.inspectorMode === "plugins" && panes.auxiliaryPaneVisible;
+  const pluginsAction: AppBarAction[] = props.onOpenPluginsInspector
+    ? [
+        {
+          accessibilityLabel: pluginsVisible ? "Close plugins" : "Open plugins",
+          icon: "square.grid.2x2",
+          selected: pluginsVisible,
+          separateBackground: false,
+          onPress: pluginsVisible ? toggleAuxiliaryPane : props.onOpenPluginsInspector,
+        },
+      ]
+    : [];
+  const filesAction: AppBarAction[] = props.hasThreadCwd
     ? [
         {
           accessibilityLabel: filesVisible ? "Close files" : "Open files",
@@ -40,6 +54,7 @@ export function ThreadHeader(props: {
         },
       ]
     : [];
+  const actions = [...pluginsAction, ...filesAction];
   const menus = [gitMenu, terminalMenu].filter((menu): menu is AppBarMenu => menu !== null);
 
   return (

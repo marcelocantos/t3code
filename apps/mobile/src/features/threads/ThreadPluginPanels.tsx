@@ -74,6 +74,19 @@ function useThreadAgentControls(threadRef: ScopedThreadRef): PluginAgentControls
   };
 }
 
+/** The header offers the plugins pane only while a plugin answers for this thread. */
+export function useThreadHasPluginPanels(threadRef: ScopedThreadRef | null): boolean {
+  const query = useEnvironmentQuery(
+    threadRef
+      ? threadPluginPanels({
+          environmentId: threadRef.environmentId,
+          input: { threadId: threadRef.threadId, filters: [] },
+        })
+      : null,
+  );
+  return (query.data?.length ?? 0) > 0 || query.error !== null;
+}
+
 export function ThreadPluginPanels({ threadRef }: { threadRef: ScopedThreadRef }) {
   const [filters, setFilters] = useState<SubscribePluginPanelsInput["filters"]>([]);
   const agent = useThreadAgentControls(threadRef);
