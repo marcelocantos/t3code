@@ -116,8 +116,9 @@ the advertisement is stale and it is ignored. The same route's WebSocket upgrade
 **Consent.** T3 re-checks advertisements when the directory changes and every ten seconds while a
 client is connected. New plugins appear in **Settings → Plugins**, which explains why it opened:
 the first time a desktop or web client sees an undecided plugin, it opens that page once; a plugin
-found later in the session gets a "New plugin found" notice instead. Mobile shows a count on its
-Plugins settings row. Select plugins and choose **Enable selected** (the unselected ones are
+found later in the session gets a "New plugin found" notice instead. Until each one is decided, a
+puzzle-piece button with a dot stays in the sidebar footer and opens that page. Mobile shows a
+count on its Plugins settings row. Select plugins and choose **Enable selected** (the unselected ones are
 dismissed) or **Not now** (nothing is decided). Nothing connects, and no workspace or thread reaches
 the plugin, until the user enables it. Enabling saves the endpoint the user saw, and the scopes it
 declared, to `plugin-discovery.json` beside `settings.json` and shows its panels without a restart.
