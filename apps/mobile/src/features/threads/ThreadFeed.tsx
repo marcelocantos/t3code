@@ -161,7 +161,7 @@ import {
   type NativeMarkdownTextStyle,
   type SelectableMarkdownSkill,
 } from "../../native/SelectableMarkdownText";
-import { PluginLinkCardSheet, usePluginLinkMatcher } from "../plugins/PluginLinkCard";
+import { PluginLinkCardSheet, usePluginLinkTakeover } from "../plugins/PluginLinkCard";
 
 import { AppText as Text } from "../../components/ui/AppText";
 import { VideoPreviewModal, type VideoPreviewSource } from "../../components/ui/VideoPreviewModal";
@@ -2717,7 +2717,7 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
   const { copiedRowId, expandedWorkGroups, expandedWorkRows, expandedTurnIds, revealedMessageId } =
     interactionState;
   const markdownLinkRequest = useRef<AbortController | null>(null);
-  const matchPluginLinkHref = usePluginLinkMatcher(props.environmentId);
+  const pluginLinkTakeover = usePluginLinkTakeover(props.environmentId);
   const [pluginLinkCard, setPluginLinkCard] = useState<{
     readonly link: PluginLink;
     readonly url: string;
@@ -2819,9 +2819,14 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
     return scopeThreadRef(props.environmentId, link.threadId);
   };
   const onMarkdownLinkPress = (href: string, imageEmbed = false, skipPluginCard = false) => {
-    const pluginLink = imageEmbed || skipPluginCard ? undefined : matchPluginLinkHref(href);
+    const pluginLink = imageEmbed || skipPluginCard ? undefined : pluginLinkTakeover.match(href);
     if (pluginLink) {
-      setPluginLinkCard({ link: pluginLink, url: href });
+      // Touch has no hover, so a plugin link shows its card first unless the plugin says `open`.
+      if (pluginLink.click === "open") {
+        onMarkdownLinkPress(pluginLinkTakeover.hrefFor(pluginLink, href), false, true);
+      } else {
+        setPluginLinkCard({ link: pluginLink, url: href });
+      }
       return;
     }
     markdownLinkRequest.current?.abort();
@@ -2982,7 +2987,12 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
         standalone,
       ),
     onLinkPress: onMarkdownLinkPress,
-    linkCustomization: enrichedThreadLinkCustomization,
+    linkCustomization: (href) => {
+      const thread = enrichedThreadLinkCustomization(href);
+      if (thread) return thread;
+      const label = pluginLinkTakeover.textFor(href);
+      return label === undefined ? undefined : { label };
+    },
     onImagePress: (href) => onMarkdownLinkPress(href, true),
     resolveImageSource,
     fileContextMenu: (href) => {
@@ -3781,7 +3791,11 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
             onClose={() => setPluginLinkCard(null)}
             onOpenLink={() => {
               setPluginLinkCard(null);
-              onMarkdownLinkPress(pluginLinkCard.url, false, true);
+              onMarkdownLinkPress(
+                pluginLinkTakeover.hrefFor(pluginLinkCard.link, pluginLinkCard.url),
+                false,
+                true,
+              );
             }}
           />
         ) : null}

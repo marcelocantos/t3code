@@ -3290,6 +3290,7 @@ export const layerWsRpc = (
         [WS_METHODS.pluginPanelsAct]: (input) => panelPlugins.act(input),
         [WS_METHODS.pluginPanelsSurface]: (input) => panelPlugins.surface(input),
         [WS_METHODS.subscribePluginLinks]: () => panelPlugins.subscribeLinks(),
+        [WS_METHODS.pluginLinksResolve]: (input) => panelPlugins.linkResolve(input),
         [WS_METHODS.pluginLinksCard]: (input) =>
           panelPlugins.linkCard(input, {
             allowWeb: currentSession.scopes.includes(AuthOrchestrationOperateScope),

@@ -76,6 +76,7 @@ describe("RPC authorization scopes", () => {
       WS_METHODS.pluginPanelsSurface,
       WS_METHODS.subscribePluginLinks,
       WS_METHODS.pluginLinksCard,
+      WS_METHODS.pluginLinksResolve,
     ]) {
       expect(requiredScopeForRpcMethod(method)).toBe(AuthOrchestrationReadScope);
     }

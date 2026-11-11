@@ -9,6 +9,7 @@ import {
   PluginSidecarReady,
   type PanelPluginConfig,
   type PluginActionResult,
+  type PluginLinkResolution,
   type PluginLinkWebCard,
   type PluginPanelSnapshot,
   type SubscribePluginPanelsInput,
@@ -40,8 +41,11 @@ type Subscription = {
   emit: (snapshot: PluginPanelSnapshot, endpoint?: string) => void;
 };
 
-/** `web` answers only link card requests. */
-export type PluginRequestResult = PluginActionResult & { readonly web?: PluginLinkWebCard };
+/** `web` answers only link card requests, `link` only link resolution. */
+export type PluginRequestResult = PluginActionResult & {
+  readonly web?: PluginLinkWebCard;
+  readonly link?: PluginLinkResolution;
+};
 export type PluginRequestOutcome = PluginRequestResult | PluginPanelRequestError;
 
 export type PluginRequestFrame =
@@ -61,7 +65,7 @@ export type PluginRequestFrame =
       readonly itemId?: string | undefined;
     }
   | {
-      readonly type: "surface";
+      readonly type: "surface" | "resolve";
       readonly scope: "link";
       readonly linkId: string;
       readonly url: string;
@@ -342,6 +346,7 @@ export class PanelPluginConnection {
                     ...(message.surface ? { surface: message.surface } : {}),
                     ...(message.close !== undefined ? { close: message.close } : {}),
                     ...(message.web ? { web: message.web } : {}),
+                    ...(message.link ? { link: message.link } : {}),
                   }
                 : new PluginPanelRequestError({
                     reason: "rejected",
