@@ -283,8 +283,9 @@ function useHostApi(
     readonly environmentId: EnvironmentId;
     readonly link: PluginLink;
     readonly url: string;
-    readonly anchor: Element;
-    readonly transientKey: string;
+    readonly anchor: Element | null;
+    readonly transientKey: string | undefined;
+    readonly presentation: "popover" | "dialog";
   }) => {
     const { environmentId, link, url } = input;
     const cacheKey = JSON.stringify([environmentId, link.pluginId, link.linkId, url]);
@@ -294,7 +295,7 @@ function useHostApi(
       id,
       parentId: null,
       transientKey: input.transientKey,
-      presentation: "popover",
+      presentation: input.presentation,
       title: url,
       anchor: input.anchor,
       side: "bottom",
@@ -663,7 +664,23 @@ function useHostApi(
       cancelHoverClose(input.transientKey);
       const current = tree.nodes.find((node) => node.transientKey === input.transientKey);
       if (current?.anchor === input.anchor) return;
-      void openLinkCard(input);
+      void openLinkCard({ ...input, presentation: "popover" });
+    },
+    /** A claimed link's card as a dialog, for plugins that take over the link's click. */
+    openLinkCardDialog(input: {
+      readonly environmentId: EnvironmentId;
+      readonly link: PluginLink;
+      readonly url: string;
+    }) {
+      for (const node of tree.nodes.filter((candidate) => candidate.transientKey !== undefined)) {
+        tree.close(node.id, "dismissed");
+      }
+      void openLinkCard({
+        ...input,
+        anchor: null,
+        transientKey: undefined,
+        presentation: "dialog",
+      });
     },
     /** A plugin page in a modal, such as a composer canvas; its bridge talks to this thread. */
     openWebModal(input: {

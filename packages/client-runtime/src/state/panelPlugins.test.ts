@@ -1,6 +1,11 @@
 // @effect-diagnostics globalDate:off - Fixtures are local calendar days.
 import { describe, expect, it } from "vite-plus/test";
-import { matchPluginLink, pluginDateChoices, toCalendarDate } from "./panelPlugins.ts";
+import {
+  matchPluginLink,
+  pluginDateChoices,
+  pluginLinkHref,
+  toCalendarDate,
+} from "./panelPlugins.ts";
 
 describe("pluginDateChoices", () => {
   it.each([
@@ -40,5 +45,33 @@ describe("matchPluginLink", () => {
     ["https://viewer.example/msgs/1", undefined],
   ])("matches %s", (href, linkId) => {
     expect(matchPluginLink(links, href)?.linkId).toBe(linkId);
+  });
+});
+
+describe("pluginLinkHref", () => {
+  const link = {
+    pluginId: "viewer",
+    linkId: "message",
+    prefix: "https://viewer.example/msg/",
+    href: "https://internal.example/view/{rest}?from={url}",
+  };
+  const url = "https://viewer.example/msg/pacs/008 a?x=1";
+  it.each([
+    ["a resolution wins", link, { href: "https://other.example/1" }, "https://other.example/1"],
+    [
+      "the template keeps rest's slashes and encodes the whole link",
+      link,
+      undefined,
+      "https://internal.example/view/pacs/008%20a%3Fx%3D1?from=https%3A%2F%2Fviewer.example%2Fmsg%2Fpacs%2F008%20a%3Fx%3D1",
+    ],
+    ["no template keeps the link", { ...link, href: undefined }, undefined, url],
+    [
+      "a non-http result is ignored",
+      { ...link, href: "javascript:alert(1)//{rest}" },
+      { href: "file:///etc/passwd" },
+      url,
+    ],
+  ])("%s", (_name, declared, resolution, expected) => {
+    expect(pluginLinkHref(declared, url, resolution)).toBe(expected);
   });
 });

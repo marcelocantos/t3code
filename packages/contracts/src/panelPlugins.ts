@@ -22,8 +22,29 @@ export const PluginLinkPrefix = Schema.String.check(
   Schema.isMaxLength(2048),
   Schema.isPattern(/^https?:\/\/[^\s/?#@]+\/\S*$/),
 );
-/** Chat links starting with `prefix` get a hover card from the plugin that declared it. */
-export const PluginLinkPattern = Schema.Struct({ id: Id, prefix: PluginLinkPrefix });
+/**
+ * An http(s) URL with `{url}` (the whole link) and `{rest}` (what follows the prefix) filled in,
+ * each URI-encoded. A template that does not produce an http(s) URL is ignored.
+ */
+export const PluginLinkTemplate = Schema.String.check(
+  Schema.isMaxLength(2048),
+  Schema.isPattern(/^https?:\/\/\S+$/),
+);
+/** `open` follows the link (rewritten if the plugin says so); `card` shows the plugin's card. */
+export const PluginLinkClick = Schema.Literals(["open", "card"]);
+export type PluginLinkClick = typeof PluginLinkClick.Type;
+const PluginLinkBehaviour = {
+  click: Schema.optional(PluginLinkClick),
+  href: Schema.optional(PluginLinkTemplate),
+  /** The plugin answers a `resolve` request per distinct link with its own href and text. */
+  resolve: Schema.optional(Schema.Boolean),
+};
+/** Chat links starting with `prefix` belong to the plugin that declared it. */
+export const PluginLinkPattern = Schema.Struct({
+  id: Id,
+  prefix: PluginLinkPrefix,
+  ...PluginLinkBehaviour,
+});
 export type PluginLinkPattern = typeof PluginLinkPattern.Type;
 export const PluginLinkPatterns = Schema.Array(PluginLinkPattern).check(Schema.isMaxLength(16));
 
@@ -301,7 +322,12 @@ export class PluginPanelRequestError extends Schema.TaggedError<PluginPanelReque
 }
 
 /** A declared link prefix of an enabled plugin, as clients match chat links against it. */
-export const PluginLink = Schema.Struct({ pluginId: Id, linkId: Id, prefix: PluginLinkPrefix });
+export const PluginLink = Schema.Struct({
+  pluginId: Id,
+  linkId: Id,
+  prefix: PluginLinkPrefix,
+  ...PluginLinkBehaviour,
+});
 export type PluginLink = typeof PluginLink.Type;
 export const PluginLinksState = Schema.Array(PluginLink).check(Schema.isMaxLength(320));
 
@@ -311,6 +337,13 @@ export const PluginLinkCardInput = Schema.Struct({
   url: Schema.String.check(Schema.isNonEmpty(), Schema.isMaxLength(8192)),
 });
 export type PluginLinkCardInput = typeof PluginLinkCardInput.Type;
+
+/** What a plugin that declared `resolve` says about one link; absent fields keep the original. */
+export const PluginLinkResolution = Schema.Struct({
+  href: Schema.optional(PluginLinkTemplate),
+  text: Schema.optional(Schema.String.check(Schema.isNonEmpty(), Schema.isMaxLength(200))),
+});
+export type PluginLinkResolution = typeof PluginLinkResolution.Type;
 
 const LinkCardHeight = Schema.Int.check(Schema.isBetween({ minimum: 80, maximum: 800 }));
 /** `webUrl` is a gateway path on the environment's HTTP origin, served in a sandboxed frame. */
@@ -342,6 +375,8 @@ export const PluginResultMessage = Schema.Union([
     close: Schema.optional(Schema.Boolean),
     /** Link cards only: a page on the plugin's own origin, shown through the gateway. */
     web: Schema.optional(PluginLinkWebCard),
+    /** Link resolution only: the link's new href and text. */
+    link: Schema.optional(PluginLinkResolution),
   }),
   Schema.Struct({
     type: Schema.Literal("result"),

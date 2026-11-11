@@ -14,6 +14,7 @@ import {
   type PluginLink,
   type PluginLinkCard,
   type PluginLinkCardInput,
+  type PluginLinkResolution,
   type PluginPanelActionInput,
   type PluginPanelScope,
   type PluginPanelSnapshot,
@@ -55,11 +56,7 @@ const rejected = (detail: string) => new PluginPanelRequestError({ reason: "reje
 /** Link prefixes count only for plugins the user let serve link cards. */
 const pluginLinksOf = (plugin: PanelPluginConfig): ReadonlyArray<PluginLink> =>
   servesScope(plugin, "links")
-    ? (plugin.links ?? []).map((link) => ({
-        pluginId: plugin.id,
-        linkId: link.id,
-        prefix: link.prefix,
-      }))
+    ? (plugin.links ?? []).map(({ id, ...link }) => ({ pluginId: plugin.id, linkId: id, ...link }))
     : [];
 const isRequestError = Schema.is(PluginPanelRequestError);
 
@@ -93,6 +90,10 @@ export class PanelPlugins extends Context.Service<
     ) => Effect.Effect<PluginSurface, PluginPanelRequestError>;
     /** Link prefixes of plugins serving link cards; keeps those plugins connected while open. */
     readonly subscribeLinks: () => Stream.Stream<ReadonlyArray<PluginLink>>;
+    /** Asks the plugin that declared `linkId`, with `resolve`, for the link's href and text. */
+    readonly linkResolve: (
+      input: PluginLinkCardInput,
+    ) => Effect.Effect<PluginLinkResolution, PluginPanelRequestError>;
     /** Asks the plugin that declared `linkId` for a card, if `url` matches its prefix. */
     readonly linkCard: (
       input: PluginLinkCardInput,
@@ -433,18 +434,36 @@ const make = Effect.gen(function* () {
       { bufferSize: 1, strategy: "sliding" },
     );
 
+  /** The connected plugin that declared `linkId`; it only ever sees links it claimed. */
+  const claimedLink = Effect.fn("PanelPlugins.claimedLink")(function* (input: PluginLinkCardInput) {
+    const found = [...connections.entries()].flatMap(([key, { plugin, connection }]) => {
+      if (plugin.id !== input.pluginId || !connection.connected) return [];
+      const declared = pluginLinksOf(plugin).find((link) => link.linkId === input.linkId);
+      return declared ? [{ key, connection, declared }] : [];
+    })[0];
+    if (!found) return yield* notConnected();
+    if (!input.url.startsWith(found.declared.prefix))
+      return yield* rejected("The link does not match the plugin's prefix.");
+    return found;
+  });
+
+  const linkResolve: PanelPlugins["Service"]["linkResolve"] = Effect.fn("PanelPlugins.linkResolve")(
+    function* (input) {
+      const { connection, declared } = yield* claimedLink(input);
+      if (declared.resolve !== true) return yield* rejected("The plugin does not resolve links.");
+      const result = yield* send(connection, undefined, {
+        type: "resolve",
+        scope: "link",
+        linkId: input.linkId,
+        url: input.url,
+      });
+      return result.link ?? {};
+    },
+  );
+
   const linkCard: PanelPlugins["Service"]["linkCard"] = Effect.fn("PanelPlugins.linkCard")(
     function* (input, options) {
-      const found = [...connections.entries()].flatMap(([key, { plugin, connection }]) => {
-        if (plugin.id !== input.pluginId || !connection.connected) return [];
-        const declared = pluginLinksOf(plugin).find((link) => link.linkId === input.linkId);
-        return declared ? [{ key, connection, declared }] : [];
-      })[0];
-      if (!found) return yield* notConnected();
-      const { key, connection, declared } = found;
-      // The plugin only ever sees links it claimed, never arbitrary chat URLs.
-      if (!input.url.startsWith(declared.prefix))
-        return yield* rejected("The link does not match the plugin's prefix.");
+      const { key, connection } = yield* claimedLink(input);
       const result = yield* send(connection, undefined, {
         type: "surface",
         scope: "link",
@@ -483,6 +502,7 @@ const make = Effect.gen(function* () {
     surface,
     subscribeLinks,
     linkCard,
+    linkResolve,
   });
 });
 

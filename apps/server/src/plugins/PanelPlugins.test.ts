@@ -80,6 +80,13 @@ const startPlugin = Effect.acquireRelease(
             if (message.actionId === "reject") reply({ ...result, ok: false, error: "Nope" });
             else reply({ ...result, ok: true, close: true });
             break;
+          case "resolve":
+            reply({
+              ...result,
+              ok: true,
+              link: { href: `https://internal.example/view?u=${message.url}`, text: "Resolved" },
+            });
+            break;
           case "surface":
             if (message.scope === "link")
               reply(
@@ -412,6 +419,13 @@ it.live("serves link cards only for declared prefixes of plugins with the links 
     const links = [
       { id: "message", prefix: "https://viewer.example/msg/" },
       { id: "page", prefix: "https://viewer.example/page/" },
+      {
+        id: "staff",
+        prefix: "https://staff.example/u/",
+        click: "card" as const,
+        href: "https://directory.example/people/{rest}",
+        resolve: true,
+      },
     ];
     yield* fs.writeFileString(
       path.join(baseDir, "userdata", "panel-plugins.json"),
@@ -451,7 +465,7 @@ it.live("serves link cards only for declared prefixes of plugins with the links 
       );
       assert.deepStrictEqual(
         Option.getOrThrow(listed),
-        links.map((link) => ({ pluginId: "viewer", linkId: link.id, prefix: link.prefix })),
+        links.map(({ id, ...link }) => ({ pluginId: "viewer", linkId: id, ...link })),
       );
       yield* Deferred.await(connected);
       const card = (input: { pluginId: string; linkId: string; url: string }, allowWeb = true) =>
@@ -486,6 +500,26 @@ it.live("serves link cards only for declared prefixes of plugins with the links 
       );
       assert.equal(readOnly.reason, "rejected");
       assert.equal(plugin.frames.filter((frame) => frame.message.scope === "link").length, 3);
+
+      // Only a link declared with `resolve` is resolved, and only within its prefix.
+      const staffUrl = "https://staff.example/u/42";
+      assert.deepStrictEqual(
+        yield* panels.linkResolve({ pluginId: "viewer", linkId: "staff", url: staffUrl }),
+        { href: `https://internal.example/view?u=${staffUrl}`, text: "Resolved" },
+      );
+      const resolved = yield* plugin.frame((frame) => frame.message.type === "resolve");
+      assert.deepStrictEqual(
+        [resolved.message.scope, resolved.message.linkId, resolved.message.url],
+        ["link", "staff", staffUrl],
+      );
+      const unresolvable = yield* Effect.flip(
+        panels.linkResolve({ pluginId: "viewer", linkId: "message", url }),
+      );
+      assert.equal(unresolvable.reason, "rejected");
+      const outsideStaff = yield* Effect.flip(
+        panels.linkResolve({ pluginId: "viewer", linkId: "staff", url }),
+      );
+      assert.equal(outsideStaff.reason, "rejected");
 
       // Declaring links without the scope gets neither a connection nor link frames.
       const unscoped = yield* Effect.flip(

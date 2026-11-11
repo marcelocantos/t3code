@@ -1,5 +1,5 @@
 // @effect-diagnostics globalDate:off - Plugin dates are local calendar days chosen in the UI, not instants.
-import { WS_METHODS, type PluginLink } from "@t3tools/contracts";
+import { WS_METHODS, type PluginLink, type PluginLinkResolution } from "@t3tools/contracts";
 import { Atom } from "effect/reactivity";
 import type { EnvironmentRegistry } from "../connection/registry.ts";
 import {
@@ -55,7 +55,40 @@ export function createPluginLinkAtoms<R, E>(runtime: Atom.AtomRuntime<Environmen
       label: "environment-data:plugin-links:card",
       tag: WS_METHODS.pluginLinksCard,
     }),
+    resolve: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:plugin-links:resolve",
+      tag: WS_METHODS.pluginLinksResolve,
+    }),
   };
+}
+
+/**
+ * Where a claimed link leads: the plugin's resolved href, else its template filled in, else the
+ * link itself. `{url}` is encoded as one component; `{rest}` keeps its slashes, so a path can
+ * follow the prefix. A result that is not an http(s) URL is ignored.
+ */
+export function pluginLinkHref(
+  link: PluginLink,
+  url: string,
+  resolution?: PluginLinkResolution,
+): string {
+  const candidates = [
+    resolution?.href,
+    link.href
+      ?.replaceAll("{url}", encodeURIComponent(url))
+      .replaceAll(
+        "{rest}",
+        encodeURIComponent(url.slice(link.prefix.length)).replace(/%2F/gi, "/"),
+      ),
+  ];
+  for (const candidate of candidates) {
+    if (candidate === undefined) continue;
+    try {
+      const parsed = new URL(candidate);
+      if (parsed.protocol === "https:" || parsed.protocol === "http:") return parsed.href;
+    } catch {}
+  }
+  return url;
 }
 
 /** The declared prefix `href` starts with; the longest wins when prefixes nest. */
@@ -118,3 +151,50 @@ export function pluginDateChoices(now: Date, locale?: string): ReadonlyArray<Plu
     choice("next-week", "Next week", nextWeek),
   ];
 }
+
+const RESOLUTION_CACHE_LIMIT = 500;
+
+/**
+ * Plugin answers for links declared with `resolve`, kept for the app session so a link is resolved
+ * once however often it renders. A failed lookup is remembered as no change, never retried.
+ */
+export function createPluginLinkResolutions() {
+  const values = new Map<string, PluginLinkResolution>();
+  const requested = new Set<string>();
+  const listeners = new Set<() => void>();
+  let version = 0;
+  return {
+    /** Changes whenever an answer arrives, for renderers that read many links at once. */
+    version: () => version,
+    key: (environmentId: string, link: PluginLink, url: string) =>
+      JSON.stringify([environmentId, link.pluginId, link.linkId, url]),
+    read: (key: string) => values.get(key),
+    requested: (key: string) => requested.has(key),
+    subscribe(listener: () => void) {
+      listeners.add(listener);
+      return () => void listeners.delete(listener);
+    },
+    /** Starts one lookup per key; later calls for the same key do nothing. */
+    request(key: string, lookup: () => Promise<PluginLinkResolution | undefined>) {
+      if (requested.has(key)) return;
+      if (requested.size >= RESOLUTION_CACHE_LIMIT) {
+        const oldest = requested.values().next().value;
+        if (oldest !== undefined) {
+          requested.delete(oldest);
+          values.delete(oldest);
+        }
+      }
+      requested.add(key);
+      void lookup().then(
+        (resolution) => {
+          if (!requested.has(key)) return;
+          values.set(key, resolution ?? {});
+          version += 1;
+          for (const listener of listeners) listener();
+        },
+        () => undefined,
+      );
+    },
+  };
+}
+export type PluginLinkResolutions = ReturnType<typeof createPluginLinkResolutions>;
