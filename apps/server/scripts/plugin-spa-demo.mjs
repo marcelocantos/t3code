@@ -75,12 +75,15 @@ document.querySelector('#pick').onclick = () => open.has('picker') || request({ 
   size: { width: 320, height: 160 }, content: { kind: 'web', path: 'dialog.html' } });
 document.querySelector('#ask').onclick = () => request({ type: 'agent.prompt', prompt: 'Summarize what the thread counter panel shows.' });
 `;
-// Link cards: `message` links get a structured card, `page` links a web card page. Configure with
-// "scopes": ["thread", "links"] and "links": [{ "id": "message", "prefix": LINK_PREFIXES.message }, …].
+// Link cards: `message` gets a structured card, `page` a web card, and `person` is taken over
+// (resolved to a name, rewritten, card on click). See "Link cards" in panel-plugins.md for the
+// `links` entries to configure.
 const LINK_PREFIXES = {
   message: "https://example.invalid/msg/",
   page: "https://example.invalid/page/",
+  person: "https://example.invalid/staff/",
 };
+const PEOPLE = { jdoe: "Jane Doe", rroe: "Richard Roe" };
 const linkKey = (url, prefix) =>
   (url.slice(prefix.length).match(/^[A-Za-z0-9._-]{1,64}/) ?? ["unknown"])[0];
 const escapeHtml = (text) =>
@@ -92,6 +95,26 @@ const linkResult = (message) => {
   if (typeof message.url !== "string" || !prefix || !message.url.startsWith(prefix))
     return { ok: false, error: "Unknown link" };
   const key = linkKey(message.url, prefix);
+  if (message.type === "resolve")
+    return PEOPLE[key]
+      ? { ok: true, link: { text: PEOPLE[key], href: `https://example.invalid/people/${key}` } }
+      : { ok: true, link: {} };
+  if (message.linkId === "person")
+    return {
+      ok: true,
+      surface: {
+        title: PEOPLE[key] ?? key,
+        blocks: [
+          {
+            type: "fields",
+            items: [
+              { label: "Staff ID", value: key },
+              { label: "Team", value: "Payments" },
+            ],
+          },
+        ],
+      },
+    };
   if (message.linkId === "page")
     return { ok: true, web: { path: `/cards/page/${encodeURIComponent(key)}`, height: 140 } };
   return {
@@ -185,7 +208,7 @@ panels.on("connection", (socket) => {
     try {
       const message = JSON.parse(raw.toString());
       if (message.type === "unsubscribe") return;
-      if (message.type === "surface" && message.scope === "link") {
+      if ((message.type === "surface" || message.type === "resolve") && message.scope === "link") {
         socket.send(
           JSON.stringify({ type: "result", requestId: message.requestId, ...linkResult(message) }),
         );

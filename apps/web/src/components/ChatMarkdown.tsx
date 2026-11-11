@@ -206,7 +206,7 @@ import {
   markdownImageCopy,
 } from "./chat/ChatMarkdownMedia";
 import { MarkdownExternalLinkContent } from "./chat/MarkdownExternalLink";
-import { PluginLinkHover } from "./plugins/PluginLinkHover";
+import { PluginLinkHover, usePluginLinkTakeover } from "./plugins/PluginLinkHover";
 import { MarkdownFileLink } from "./chat/MarkdownFileLink";
 import { canUseMarkdownFileShellActions } from "./chat/MarkdownFileLink.logic";
 import { rehypeChipPunctuation } from "./chat/markdownChipPunctuation";
@@ -1059,7 +1059,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
       />
     );
   },
-  a: function MarkdownAnchor({ node, href, children, title: _title, ...props }) {
+  a: function MarkdownAnchor({ node, href: writtenHref, children, title: _title, ...props }) {
     const {
       canOperateHost,
       canOperatePreview,
@@ -1082,6 +1082,13 @@ const CHAT_MARKDOWN_COMPONENTS = {
       renderContextReference,
     } = use(ChatMarkdownRendererContext);
     const text = use(ChatMarkdownTextContext);
+    // A plugin that claims the link may send it elsewhere and name a bare URL.
+    const takeover = usePluginLinkTakeover(environmentId, writtenHref);
+    const href = takeover?.href ?? writtenHref;
+    const takeoverText =
+      takeover?.text !== undefined && hastPlainTextDeep(node) === writtenHref
+        ? takeover.text
+        : undefined;
     const citation = href ? parseAssistantCitationHref(href) : null;
     if (citation) return <AssistantCitationChip citation={citation} />;
     const threadLink = href ? parseThreadLinkHref(href) : null;
@@ -1139,7 +1146,9 @@ const CHAT_MARKDOWN_COMPONENTS = {
       const onClick = props.onClick;
       const canOpenInPreview =
         canOperatePreview && Boolean(threadRef && isPreviewAvailableFor(threadRef.environmentId));
-      const linkChildren = <MarkdownLinkContext value>{children}</MarkdownLinkContext>;
+      const linkChildren = (
+        <MarkdownLinkContext value>{takeoverText ?? children}</MarkdownLinkContext>
+      );
       const link = (
         <a
           {...props}
@@ -1272,7 +1281,10 @@ const CHAT_MARKDOWN_COMPONENTS = {
           }}
         >
           {faviconHost && hasText && !isPullRequestAutolink ? (
-            <MarkdownExternalLinkContent host={faviconHost} plainText={plainHastText(node)}>
+            <MarkdownExternalLinkContent
+              host={faviconHost}
+              plainText={takeoverText ?? plainHastText(node)}
+            >
               {linkChildren}
             </MarkdownExternalLinkContent>
           ) : (
@@ -1308,7 +1320,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
         );
       }
       return (
-        <PluginLinkHover environmentId={environmentId} href={href} link={link}>
+        <PluginLinkHover environmentId={environmentId} href={writtenHref ?? href} link={link}>
           <Tooltip>
             <TooltipTrigger render={link} />
             <TooltipPopup side="top">{href}</TooltipPopup>

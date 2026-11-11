@@ -320,7 +320,7 @@ prefixes in the probe answer or the `panel-plugins.json` entry:
 
 A prefix is an absolute `http` or `https` URL with a path (at most 2,048 characters); a malformed
 one is ignored. A link whose URL starts with a prefix gets the card, the longest prefix winning;
-clicking it still opens the link. Adding `links` to an enabled plugin's scopes asks the user again,
+clicking it opens the link unless the plugin takes the link over (below). Adding `links` to an enabled plugin's scopes asks the user again,
 like `environment`; changing the prefixes does not. T3 keeps a plugin with link prefixes connected
 while a client is open, and lists its prefixes to clients only while it is connected.
 
@@ -342,6 +342,45 @@ page on the plugin's own origin that T3 shows in a sandboxed frame through the g
 a query, and assets should be relative or inline. Web cards need `orchestration:operate`; structured
 cards need only `orchestration:read`. Cards are read-only: actions in them are not run. Clients
 cache a URL's card for the page session.
+
+### Taking a link over
+
+A link pattern can also say what the link does and where it leads:
+
+```json
+{
+  "id": "person",
+  "prefix": "https://intranet.example/staff/",
+  "click": "card",
+  "href": "https://directory.example/people/{rest}",
+  "resolve": true
+}
+```
+
+- `click`: `"card"` makes a click show the card as a dialog (on mobile, a sheet) instead of
+  following the link. A modified click (⌘, Ctrl, Shift or Alt) still follows it. `"open"`, the
+  default, follows the link. On mobile, a tap shows the card unless `click` is `"open"`.
+- `href`: where following the link goes. `{url}` is the whole link encoded as one URL component;
+  `{rest}` is what follows the prefix, keeping its slashes. A result that is not an http(s) URL is
+  ignored.
+- `resolve`: T3 asks the plugin once per distinct link, the first time a client shows it, and
+  caches the answer for the app session:
+
+  ```json
+  {
+    "type": "resolve",
+    "requestId": "r4",
+    "scope": "link",
+    "linkId": "person",
+    "url": "…/staff/jdoe"
+  }
+  ```
+
+  Answer `"link": { "href"?: "https://…", "text"?: "Jane Doe" }`. `href` overrides the template.
+  `text` replaces a bare URL on web and desktop; on mobile it replaces the link's text even when
+  the message gave the link its own text. A failed or empty answer leaves the link as it is.
+
+Cards, hovers and resolution requests always carry the link as written, not the rewritten href.
 
 ## Embedded web applications
 

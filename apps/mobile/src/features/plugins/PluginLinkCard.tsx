@@ -1,7 +1,11 @@
 import { useAtomValue } from "@effect/atom-react";
-import { matchPluginLink } from "@t3tools/client-runtime/state/panelPlugins";
+import {
+  createPluginLinkResolutions,
+  matchPluginLink,
+  pluginLinkHref,
+} from "@t3tools/client-runtime/state/panelPlugins";
 import type { EnvironmentId, PluginLink, PluginLinkCard } from "@t3tools/contracts";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -17,11 +21,42 @@ import { SurfaceBlock } from "./PluginSurfaceSheet";
 
 const WEB_CARD_HEIGHT = 240;
 
-/** The plugin link a chat href belongs to, if any plugin declared a prefix for it. */
-export function usePluginLinkMatcher(environmentId: EnvironmentId) {
+const resolutions = createPluginLinkResolutions();
+
+/**
+ * Plugins' claims on chat links: which plugin owns an href, where it should lead, and the text it
+ * names a bare URL with. Lookups for links declared with `resolve` start on first use and
+ * re-render the caller when they land.
+ */
+export function usePluginLinkTakeover(environmentId: EnvironmentId) {
   const result = useAtomValue(pluginLinks.links({ environmentId, input: {} }));
   const links = result._tag === "Success" ? result.value : [];
-  return (href: string) => matchPluginLink(links, href);
+  const resolve = useAtomCommand(pluginLinks.resolve, { reportFailure: false });
+  useSyncExternalStore(resolutions.subscribe, resolutions.version);
+  const resolutionFor = (link: PluginLink, url: string) => {
+    if (link.resolve !== true) return undefined;
+    const key = resolutions.key(environmentId, link, url);
+    // Deferred so a render only reads; the lookup runs once per link for the session.
+    if (!resolutions.requested(key))
+      setTimeout(() =>
+        resolutions.request(key, () =>
+          resolve({
+            environmentId,
+            input: { pluginId: link.pluginId, linkId: link.linkId, url },
+          }).then((answer) => (answer._tag === "Success" ? answer.value : undefined)),
+        ),
+      );
+    return resolutions.read(key);
+  };
+  const match = (href: string) => matchPluginLink(links, href);
+  return {
+    match,
+    hrefFor: (link: PluginLink, url: string) => pluginLinkHref(link, url, resolutionFor(link, url)),
+    textFor: (href: string) => {
+      const link = match(href);
+      return link === undefined ? undefined : resolutionFor(link, href)?.text;
+    },
+  };
 }
 
 /**
