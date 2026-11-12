@@ -76,8 +76,8 @@ document.querySelector('#pick').onclick = () => open.has('picker') || request({ 
 document.querySelector('#ask').onclick = () => request({ type: 'agent.prompt', prompt: 'Summarize what the thread counter panel shows.' });
 `;
 // Link cards: `message` gets a structured card, `page` a web card, and `person` is taken over
-// (resolved to a name, rewritten, card on click). See "Link cards" in panel-plugins.md for the
-// `links` entries to configure.
+// (resolved to a name, rewritten, card on click); `markdown` globs file links. See "Link cards"
+// in panel-plugins.md for the `links` entries to configure.
 const LINK_PREFIXES = {
   message: "https://example.invalid/msg/",
   page: "https://example.invalid/page/",
@@ -91,6 +91,14 @@ const escapeHtml = (text) =>
 const cardPage = (key) =>
   `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0;padding:12px;font:13px system-ui;color:#ddd;background:#17191c}h1{font-size:15px;margin:0 0 8px}dt{color:#999}dd{margin:0 0 6px}</style></head><body><h1>Page ${escapeHtml(key)}</h1><dl><dt>Served by</dt><dd>plugin-spa-demo through the T3 gateway</dd><dt>Rendered</dt><dd>${new Date().toISOString()}</dd></dl></body></html>`;
 const linkResult = (message) => {
+  if (message.linkId === "markdown" && typeof message.url === "string")
+    return {
+      ok: true,
+      surface: {
+        title: message.url.split("/").pop(),
+        blocks: [{ type: "fields", items: [{ label: "Path", value: message.url }] }],
+      },
+    };
   const prefix = LINK_PREFIXES[message.linkId];
   if (typeof message.url !== "string" || !prefix || !message.url.startsWith(prefix))
     return { ok: false, error: "Unknown link" };

@@ -308,23 +308,38 @@ panels receive neither `x-t3-thread-id` nor `x-t3-workspace`.
 ## Link cards
 
 A plugin can show a card when the user hovers or focuses a chat link it recognizes, for example a
-staff profile or a message viewer. On mobile, tapping the link shows the card with an Open link button. It needs no panels. Declare the `links` scope and up to 16 link
-prefixes in the probe answer or the `panel-plugins.json` entry:
+staff profile, a message viewer, or a Markdown file the agent wrote. On mobile, tapping the link
+shows the card with an Open link button. It needs no panels. Declare the `links` scope and up to 16
+link patterns in the probe answer or the `panel-plugins.json` entry:
 
 ```json
 {
   "scopes": ["links"],
-  "links": [{ "id": "message", "prefix": "https://viewer.example/msg/" }]
+  "links": [
+    { "id": "message", "prefix": "https://viewer.example/msg/" },
+    { "id": "markdown", "glob": "/**/*.{md,markdown}" }
+  ]
 }
 ```
 
-A prefix is an absolute `http` or `https` URL with a path (at most 2,048 characters); a malformed
-one is ignored. A link whose URL starts with a prefix gets the card, the longest prefix winning;
-clicking it opens the link unless the plugin takes the link over (below). Adding `links` to an enabled plugin's scopes asks the user again,
-like `environment`; changing the prefixes does not. T3 keeps a plugin with link prefixes connected
-while a client is open, and lists its prefixes to clients only while it is connected.
+A pattern has either a `prefix` or a `glob`; a malformed one is ignored.
 
-On hover T3 sends a request with no thread or projects, after checking the URL against the prefix:
+- A `prefix` is an absolute `http` or `https` URL with a path (at most 2,048 characters), and
+  claims web links that start with it.
+- A `glob` (at most 512 characters) must match the whole target. `*` and `?` match within one
+  `/`-separated segment, `**` matches across segments, and `{a,b}` matches either alternative.
+  Everything else is literal. The target is the URL of a web link, or the absolute path of a file
+  link, including a path in inline code. Relative paths resolve against the thread's workspace,
+  and a path that still contains `.` or `..` segments matches no glob. A file link's `url` in
+  requests is that path.
+
+When several patterns match, the one with the longest literal start wins. For a glob, that is the
+text before its first wildcard. A matching link gets the card. Clicking it opens the link, unless
+the plugin takes the link over (below). Adding `links` to an enabled plugin's scopes asks the user
+again, like `environment`; changing the patterns does not. T3 keeps a plugin with link patterns
+connected while a client is open, and lists its patterns to clients only while it is connected.
+
+On hover T3 sends a request with no thread or projects, after checking the URL against the pattern:
 
 ```json
 {
@@ -361,8 +376,9 @@ A link pattern can also say what the link does and where it leads:
   following the link. A modified click (⌘, Ctrl, Shift or Alt) still follows it. `"open"`, the
   default, follows the link. On mobile, a tap shows the card unless `click` is `"open"`.
 - `href`: where following the link goes. `{url}` is the whole link encoded as one URL component;
-  `{rest}` is what follows the prefix, keeping its slashes. A result that is not an http(s) URL is
-  ignored.
+  `{rest}` is what follows the prefix, or the glob's literal start, keeping its slashes. A result
+  that is not an http(s) URL is ignored. When a rewritten file link is clicked, the new URL opens
+  in place of the file.
 - `resolve`: T3 asks the plugin once per distinct link, the first time a client shows it, and
   caches the answer for the app session:
 
@@ -378,9 +394,11 @@ A link pattern can also say what the link does and where it leads:
 
   Answer `"link": { "href"?: "https://…", "text"?: "Jane Doe" }`. `href` overrides the template.
   `text` replaces a bare URL on web and desktop; on mobile it replaces the link's text even when
-  the message gave the link its own text. A failed or empty answer leaves the link as it is.
+  the message gave the link its own text. File chips on web and desktop keep their file name. A
+  failed or empty answer leaves the link as it is.
 
-Cards, hovers and resolution requests always carry the link as written, not the rewritten href.
+Cards, hovers and resolution requests carry the link as written (a file link as its absolute
+path), not the rewritten href.
 
 ## Embedded web applications
 
@@ -471,8 +489,8 @@ backend, the panel can show the same state as a thumbnail.
 
 The runnable example `apps/server/scripts/plugin-spa-demo.mjs` (server package script
 `plugin:spa-demo`) serves a thread counter. Configure it as a sidecar using the example above.
-Add `"scopes": ["thread", "links"]` and `"links": [{ "id": "message", "prefix": "https://example.invalid/msg/" }, { "id": "page", "prefix": "https://example.invalid/page/" }]`
+Add `"scopes": ["thread", "links"]` and `"links": [{ "id": "message", "prefix": "https://example.invalid/msg/" }, { "id": "page", "prefix": "https://example.invalid/page/" }, { "id": "markdown", "glob": "/**/*.md", "click": "card" }]`
 to see a structured link card and a web link card on chat links such as
-`https://example.invalid/msg/42`.
+`https://example.invalid/msg/42`, and a card on Markdown file links.
 It exercises a stylesheet, module entrypoint, dynamic import, a JSON API, a POST mutation and
 live WebSocket updates. Its “Isolated” indicator checks parent DOM and local-storage denial.

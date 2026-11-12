@@ -1,5 +1,14 @@
 // @effect-diagnostics globalDate:off - Plugin dates are local calendar days chosen in the UI, not instants.
-import { WS_METHODS, type PluginLink, type PluginLinkResolution } from "@t3tools/contracts";
+import {
+  WS_METHODS,
+  pluginLinkMatches,
+  pluginLinkStem,
+  type PluginLink,
+  type PluginLinkResolution,
+} from "@t3tools/contracts";
+import { resolvePathLinkTarget } from "@t3tools/shared/fileLinks";
+import { parseMarkdownFileLink } from "@t3tools/shared/markdownLinks";
+import { isAbsolutePath } from "@t3tools/shared/path";
 import { Atom } from "effect/reactivity";
 import type { EnvironmentRegistry } from "../connection/registry.ts";
 import {
@@ -43,7 +52,7 @@ export function createPanelPluginCommands<R, E>(
   };
 }
 
-/** Declared link prefixes of an environment's connected plugins, and their on-demand cards. */
+/** Declared link patterns of an environment's connected plugins, and their on-demand cards. */
 export function createPluginLinkAtoms<R, E>(runtime: Atom.AtomRuntime<EnvironmentRegistry | R, E>) {
   return {
     links: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
@@ -65,7 +74,7 @@ export function createPluginLinkAtoms<R, E>(runtime: Atom.AtomRuntime<Environmen
 /**
  * Where a claimed link leads: the plugin's resolved href, else its template filled in, else the
  * link itself. `{url}` is encoded as one component; `{rest}` keeps its slashes, so a path can
- * follow the prefix. A result that is not an http(s) URL is ignored.
+ * follow the pattern's literal start. A result that is not an http(s) URL is ignored.
  */
 export function pluginLinkHref(
   link: PluginLink,
@@ -78,7 +87,7 @@ export function pluginLinkHref(
       ?.replaceAll("{url}", encodeURIComponent(url))
       .replaceAll(
         "{rest}",
-        encodeURIComponent(url.slice(link.prefix.length)).replace(/%2F/gi, "/"),
+        encodeURIComponent(url.slice(pluginLinkStem(link).length)).replace(/%2F/gi, "/"),
       ),
   ];
   for (const candidate of candidates) {
@@ -91,17 +100,45 @@ export function pluginLinkHref(
   return url;
 }
 
-/** The declared prefix `href` starts with; the longest wins when prefixes nest. */
+/** The declared pattern claiming `target`; the longest literal start wins when patterns overlap. */
 export function matchPluginLink(
   links: ReadonlyArray<PluginLink>,
-  href: string,
+  target: string,
 ): PluginLink | undefined {
   let best: PluginLink | undefined;
   for (const link of links) {
-    if (href.startsWith(link.prefix) && link.prefix.length > (best?.prefix.length ?? -1))
+    if (
+      pluginLinkMatches(link, target) &&
+      pluginLinkStem(link).length > (best === undefined ? -1 : pluginLinkStem(best).length)
+    )
       best = link;
   }
   return best;
+}
+
+/**
+ * What plugin link patterns see for a chat href: an http(s) URL as written, or a file link's
+ * absolute path, resolved against the workspace when relative. Anything else is never claimed.
+ */
+export function pluginLinkTarget(
+  href: string,
+  workspaceRoot: string | null | undefined,
+): string | undefined {
+  if (/^https?:\/\//i.test(href)) return href;
+  const file = parseMarkdownFileLink(href);
+  if (file === null) return undefined;
+  const path = isAbsolutePath(file.path)
+    ? file.path
+    : workspaceRoot
+      ? resolvePathLinkTarget(file.path, workspaceRoot)
+      : undefined;
+  if (path === undefined) return undefined;
+  const segments: string[] = [];
+  for (const segment of path.split("/")) {
+    if (segment === "..") segments.length > 1 && segments.pop();
+    else if (segment !== ".") segments.push(segment);
+  }
+  return segments.join("/");
 }
 
 export interface PluginDateChoice {

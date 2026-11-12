@@ -3,6 +3,7 @@ import {
   createPluginLinkResolutions,
   matchPluginLink,
   pluginLinkHref,
+  pluginLinkTarget,
 } from "@t3tools/client-runtime/state/panelPlugins";
 import type { EnvironmentId, PluginLink, PluginLinkCard } from "@t3tools/contracts";
 import { useEffect, useState, useSyncExternalStore } from "react";
@@ -24,11 +25,14 @@ const WEB_CARD_HEIGHT = 240;
 const resolutions = createPluginLinkResolutions();
 
 /**
- * Plugins' claims on chat links: which plugin owns an href, where it should lead, and the text it
- * names a bare URL with. Lookups for links declared with `resolve` start on first use and
- * re-render the caller when they land.
+ * Plugins' claims on chat links: which plugin owns an href (web links by URL, file links by their
+ * absolute path), where it should lead, and the text it names the link with. Lookups for links
+ * declared with `resolve` start on first use and re-render the caller when they land.
  */
-export function usePluginLinkTakeover(environmentId: EnvironmentId) {
+export function usePluginLinkTakeover(
+  environmentId: EnvironmentId,
+  workspaceRoot: string | null | undefined,
+) {
   const result = useAtomValue(pluginLinks.links({ environmentId, input: {} }));
   const links = result._tag === "Success" ? result.value : [];
   const resolve = useAtomCommand(pluginLinks.resolve, { reportFailure: false });
@@ -48,13 +52,18 @@ export function usePluginLinkTakeover(environmentId: EnvironmentId) {
       );
     return resolutions.read(key);
   };
-  const match = (href: string) => matchPluginLink(links, href);
+  /** The claiming link, and the URL or path the plugin knows the href by. */
+  const match = (href: string) => {
+    const url = pluginLinkTarget(href, workspaceRoot);
+    const link = url === undefined ? undefined : matchPluginLink(links, url);
+    return link === undefined || url === undefined ? undefined : { link, url };
+  };
   return {
     match,
     hrefFor: (link: PluginLink, url: string) => pluginLinkHref(link, url, resolutionFor(link, url)),
     textFor: (href: string) => {
-      const link = match(href);
-      return link === undefined ? undefined : resolutionFor(link, href)?.text;
+      const claim = match(href);
+      return claim === undefined ? undefined : resolutionFor(claim.link, claim.url)?.text;
     },
   };
 }

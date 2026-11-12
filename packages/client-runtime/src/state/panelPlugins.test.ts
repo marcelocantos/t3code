@@ -4,6 +4,7 @@ import {
   matchPluginLink,
   pluginDateChoices,
   pluginLinkHref,
+  pluginLinkTarget,
   toCalendarDate,
 } from "./panelPlugins.ts";
 
@@ -33,6 +34,9 @@ describe("matchPluginLink", () => {
     { pluginId: "viewer", linkId: "message", prefix: "https://viewer.example/msg/" },
     { pluginId: "viewer", linkId: "pacs", prefix: "https://viewer.example/msg/pacs/" },
     { pluginId: "staff", linkId: "person", prefix: "https://intranet.example/people/" },
+    { pluginId: "docs", linkId: "markdown", glob: "/**/*.{md,markdown}" },
+    { pluginId: "docs", linkId: "notes", glob: "/Users/*/notes/**/*.md" },
+    { pluginId: "wiki", linkId: "page", glob: "https://*.wiki.example/?/*" },
   ];
   it.each([
     ["https://viewer.example/msg/camt.053/1", "message"],
@@ -43,8 +47,32 @@ describe("matchPluginLink", () => {
     ["https://viewer.example.evil/msg/1", undefined],
     ["http://viewer.example/msg/1", undefined],
     ["https://viewer.example/msgs/1", undefined],
+    ["/repo/README.md", "markdown"],
+    ["/repo/docs/guide.markdown", "markdown"],
+    // Overlapping globs: the longer literal start wins.
+    ["/Users/me/notes/2026/plan.md", "notes"],
+    ["/repo/README.mdx", undefined],
+    // An unnormalized path matches nothing, so `..` cannot escape a glob's directory.
+    ["/Users/me/notes/../../../etc/passwd.md", undefined],
+    // `*` and `?` stop at a slash; regex characters in a glob are literal.
+    ["https://en.wiki.example/a/Page", "page"],
+    ["https://en.wiki.example/ab/Page", undefined],
+    ["https://evil.example/x.wiki.example/a/Page", undefined],
   ])("matches %s", (href, linkId) => {
     expect(matchPluginLink(links, href)?.linkId).toBe(linkId);
+  });
+});
+
+describe("pluginLinkTarget", () => {
+  it.each([
+    ["https://a.example/x.md", "https://a.example/x.md"],
+    ["docs/guide.md", "/repo/docs/guide.md"],
+    ["./docs/../README.md#L3", "/repo/README.md"],
+    ["file:///etc/notes.md", "/etc/notes.md"],
+    ["mailto:a@b.example", undefined],
+    ["#section", undefined],
+  ])("%s", (href, expected) => {
+    expect(pluginLinkTarget(href, "/repo")).toBe(expected);
   });
 });
 
