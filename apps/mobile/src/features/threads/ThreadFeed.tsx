@@ -2717,7 +2717,7 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
   const { copiedRowId, expandedWorkGroups, expandedWorkRows, expandedTurnIds, revealedMessageId } =
     interactionState;
   const markdownLinkRequest = useRef<AbortController | null>(null);
-  const pluginLinkTakeover = usePluginLinkTakeover(props.environmentId);
+  const pluginLinkTakeover = usePluginLinkTakeover(props.environmentId, props.workspaceRoot);
   const [pluginLinkCard, setPluginLinkCard] = useState<{
     readonly link: PluginLink;
     readonly url: string;
@@ -2819,13 +2819,14 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
     return scopeThreadRef(props.environmentId, link.threadId);
   };
   const onMarkdownLinkPress = (href: string, imageEmbed = false, skipPluginCard = false) => {
-    const pluginLink = imageEmbed || skipPluginCard ? undefined : pluginLinkTakeover.match(href);
-    if (pluginLink) {
+    const claim = imageEmbed || skipPluginCard ? undefined : pluginLinkTakeover.match(href);
+    if (claim) {
       // Touch has no hover, so a plugin link shows its card first unless the plugin says `open`.
-      if (pluginLink.click === "open") {
-        onMarkdownLinkPress(pluginLinkTakeover.hrefFor(pluginLink, href), false, true);
-      } else {
-        setPluginLinkCard({ link: pluginLink, url: href });
+      if (claim.link.click !== "open") setPluginLinkCard(claim);
+      else {
+        const target = pluginLinkTakeover.hrefFor(claim.link, claim.url);
+        // A file link the plugin did not rewrite opens as the file it was.
+        onMarkdownLinkPress(target === claim.url ? href : target, false, true);
       }
       return;
     }

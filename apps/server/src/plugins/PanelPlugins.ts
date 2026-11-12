@@ -12,6 +12,7 @@ import {
   PluginPanelRequestError,
   type PluginActionResult,
   type PluginLink,
+  pluginLinkMatches,
   type PluginLinkCard,
   type PluginLinkCardInput,
   type PluginLinkResolution,
@@ -53,7 +54,7 @@ const servesScope = (plugin: PanelPluginConfig, scope: PluginPanelScope) =>
 const notConnected = () => new PluginPanelRequestError({ reason: "not-connected" });
 const rejected = (detail: string) => new PluginPanelRequestError({ reason: "rejected", detail });
 
-/** Link prefixes count only for plugins the user let serve link cards. */
+/** Link patterns count only for plugins the user let serve link cards. */
 const pluginLinksOf = (plugin: PanelPluginConfig): ReadonlyArray<PluginLink> =>
   servesScope(plugin, "links")
     ? (plugin.links ?? []).map(({ id, ...link }) => ({ pluginId: plugin.id, linkId: id, ...link }))
@@ -88,13 +89,13 @@ export class PanelPlugins extends Context.Service<
     readonly surface: (
       input: PluginPanelSurfaceInput,
     ) => Effect.Effect<PluginSurface, PluginPanelRequestError>;
-    /** Link prefixes of plugins serving link cards; keeps those plugins connected while open. */
+    /** Link patterns of plugins serving link cards; keeps those plugins connected while open. */
     readonly subscribeLinks: () => Stream.Stream<ReadonlyArray<PluginLink>>;
     /** Asks the plugin that declared `linkId`, with `resolve`, for the link's href and text. */
     readonly linkResolve: (
       input: PluginLinkCardInput,
     ) => Effect.Effect<PluginLinkResolution, PluginPanelRequestError>;
-    /** Asks the plugin that declared `linkId` for a card, if `url` matches its prefix. */
+    /** Asks the plugin that declared `linkId` for a card, if `url` matches its pattern. */
     readonly linkCard: (
       input: PluginLinkCardInput,
       options: { readonly allowWeb: boolean },
@@ -442,8 +443,8 @@ const make = Effect.gen(function* () {
       return declared ? [{ key, connection, declared }] : [];
     })[0];
     if (!found) return yield* notConnected();
-    if (!input.url.startsWith(found.declared.prefix))
-      return yield* rejected("The link does not match the plugin's prefix.");
+    if (!pluginLinkMatches(found.declared, input.url))
+      return yield* rejected("The link does not match the plugin's pattern.");
     return found;
   });
 

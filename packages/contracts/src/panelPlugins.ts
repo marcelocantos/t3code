@@ -11,7 +11,7 @@ const Tone = Schema.Literals(["default", "muted", "info", "success", "warning", 
 /**
  * What a plugin serves. `thread` panels sit in a thread's details and are scoped to its workspace.
  * `environment` panels sit in the left sidebar and see every project of the environment. `links`
- * shows the plugin's cards for chat links matching its declared prefixes.
+ * shows the plugin's cards for chat links matching its declared patterns.
  */
 export const PluginPanelScope = Schema.Literals(["thread", "environment", "links"]);
 export type PluginPanelScope = typeof PluginPanelScope.Type;
@@ -23,8 +23,17 @@ export const PluginLinkPrefix = Schema.String.check(
   Schema.isPattern(/^https?:\/\/[^\s/?#@]+\/\S*$/),
 );
 /**
- * An http(s) URL with `{url}` (the whole link) and `{rest}` (what follows the prefix) filled in,
- * each URI-encoded. A template that does not produce an http(s) URL is ignored.
+ * A pattern matched against a whole http(s) URL, or a file link's absolute path. `*` and `?` stay
+ * within one `/`-separated segment, `**` spans segments, `{a,b}` picks one; the rest is literal.
+ */
+export const PluginLinkGlob = Schema.String.check(
+  Schema.isMaxLength(512),
+  Schema.isPattern(/^[^\s{}]*(\{[^\s{}]*\}[^\s{}]*)*$/),
+  Schema.isPattern(/[*?{]/),
+);
+/**
+ * An http(s) URL with `{url}` (the whole link) and `{rest}` (what follows the prefix, or the glob's
+ * text before its first wildcard) filled in, each URI-encoded. Anything else is ignored.
  */
 export const PluginLinkTemplate = Schema.String.check(
   Schema.isMaxLength(2048),
@@ -39,12 +48,11 @@ const PluginLinkBehaviour = {
   /** The plugin answers a `resolve` request per distinct link with its own href and text. */
   resolve: Schema.optional(Schema.Boolean),
 };
-/** Chat links starting with `prefix` belong to the plugin that declared it. */
-export const PluginLinkPattern = Schema.Struct({
-  id: Id,
-  prefix: PluginLinkPrefix,
-  ...PluginLinkBehaviour,
-});
+/** Chat links starting with `prefix`, or matching `glob`, belong to the plugin that declared it. */
+export const PluginLinkPattern = Schema.Union([
+  Schema.Struct({ id: Id, prefix: PluginLinkPrefix, ...PluginLinkBehaviour }),
+  Schema.Struct({ id: Id, glob: PluginLinkGlob, ...PluginLinkBehaviour }),
+]);
 export type PluginLinkPattern = typeof PluginLinkPattern.Type;
 export const PluginLinkPatterns = Schema.Array(PluginLinkPattern).check(Schema.isMaxLength(16));
 
@@ -60,7 +68,7 @@ export const PanelPluginConfig = Schema.Struct({
   ]),
   /** Scopes the plugin serves. Absent means `["thread"]`, so older plugins never see new frames. */
   scopes: Schema.optional(PluginPanelScopes),
-  /** Link prefixes the plugin shows cards for; used only with the `links` scope. */
+  /** Link patterns the plugin shows cards for; used only with the `links` scope. */
   links: Schema.optional(PluginLinkPatterns),
 });
 export type PanelPluginConfig = typeof PanelPluginConfig.Type;
@@ -321,14 +329,50 @@ export class PluginPanelRequestError extends Schema.TaggedError<PluginPanelReque
   }
 }
 
-/** A declared link prefix of an enabled plugin, as clients match chat links against it. */
-export const PluginLink = Schema.Struct({
-  pluginId: Id,
-  linkId: Id,
-  prefix: PluginLinkPrefix,
-  ...PluginLinkBehaviour,
-});
+/** A declared link pattern of an enabled plugin, as clients match chat links against it. */
+export const PluginLink = Schema.Union([
+  Schema.Struct({ pluginId: Id, linkId: Id, prefix: PluginLinkPrefix, ...PluginLinkBehaviour }),
+  Schema.Struct({ pluginId: Id, linkId: Id, glob: PluginLinkGlob, ...PluginLinkBehaviour }),
+]);
 export type PluginLink = typeof PluginLink.Type;
+
+const globCache = new Map<string, RegExp>();
+const globRegExp = (glob: string) => {
+  let compiled = globCache.get(glob);
+  if (compiled !== undefined) return compiled;
+  let source = "";
+  let inBraces = false;
+  for (let index = 0; index < glob.length; index++) {
+    const char = glob[index]!;
+    if (char === "*" && glob[index + 1] === "*") {
+      source += ".*";
+      index++;
+    } else if (char === "*") source += "[^/]*";
+    else if (char === "?") source += "[^/]";
+    else if (char === "{") [source, inBraces] = [`${source}(?:`, true];
+    else if (char === "}") [source, inBraces] = [`${source})`, false];
+    else if (char === "," && inBraces) source += "|";
+    else source += char.replace(/[.+^$()|[\]\\]/g, "\\$&");
+  }
+  compiled = new RegExp(`^${source}$`);
+  globCache.set(glob, compiled);
+  return compiled;
+};
+
+/** The literal text a link's pattern starts with; longer is more specific. */
+export const pluginLinkStem = (link: PluginLink): string =>
+  "prefix" in link ? link.prefix : link.glob.slice(0, link.glob.search(/[*?{]/));
+
+/**
+ * Whether `target` (an http(s) URL, or a file link's absolute path) is claimed by `link`. A path
+ * must already be normalized, so `..` cannot walk a link out of the directory a glob names.
+ */
+export const pluginLinkMatches = (link: PluginLink, target: string): boolean =>
+  "prefix" in link
+    ? target.startsWith(link.prefix)
+    : globRegExp(link.glob).test(target) &&
+      (/^https?:\/\//i.test(target) || !/(^|\/)\.\.?(\/|$)/.test(target));
+
 export const PluginLinksState = Schema.Array(PluginLink).check(Schema.isMaxLength(320));
 
 export const PluginLinkCardInput = Schema.Struct({

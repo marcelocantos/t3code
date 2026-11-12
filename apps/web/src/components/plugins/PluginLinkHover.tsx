@@ -14,8 +14,8 @@ const HOVER_OPEN_MS = 350;
 const resolutions = createPluginLinkResolutions();
 
 /**
- * How a plugin that claims `url` rewrites it: where it leads, and the text to show in place of
- * the bare URL. Undefined when no plugin claims the link.
+ * How a plugin that claims `url` (an http(s) URL, or a file link's absolute path) rewrites it:
+ * where it leads, and the text to show in place of the bare link. Undefined when unclaimed.
  */
 export function usePluginLinkTakeover(
   environmentId: EnvironmentId | null,
@@ -48,9 +48,9 @@ export function usePluginLinkTakeover(
 }
 
 /**
- * A chat link whose URL starts with a prefix a plugin declared gets that plugin's card on hover or
- * focus, and on click when the plugin takes the click over; any other link renders `children`
- * unchanged. Cards are fetched when shown, never on render. `href` is the link as written.
+ * A chat link a plugin's pattern claims gets that plugin's card on hover or focus, and on click
+ * when the plugin takes the click over; any other link renders `children` unchanged. Cards are
+ * fetched when shown, never on render. `href` is the link as written.
  */
 export function PluginLinkHover(props: {
   environmentId: EnvironmentId | null;
@@ -75,10 +75,37 @@ export function PluginLinkHover(props: {
   );
 }
 
+/**
+ * A file chip whose absolute `path` a plugin's pattern claims: the plugin's card on hover, and a
+ * plain click shows the card or, when the plugin rewrote the link, opens where it now leads.
+ */
+export function PluginFileLink(props: {
+  environmentId: EnvironmentId | null;
+  path: string;
+  children: ReactNode;
+}) {
+  const takeover = usePluginLinkTakeover(props.environmentId, props.path);
+  if (props.environmentId === null || takeover === undefined) return props.children;
+  return (
+    <PluginSurfaceHost>
+      <LinkCardTrigger
+        environmentId={props.environmentId}
+        link={takeover.link}
+        url={props.path}
+        {...(takeover.href !== props.path ? { openHref: takeover.href } : {})}
+      >
+        {props.children}
+      </LinkCardTrigger>
+    </PluginSurfaceHost>
+  );
+}
+
 function LinkCardTrigger(props: {
   environmentId: EnvironmentId;
   link: PluginLink;
   url: string;
+  /** Where a plain click goes instead, for links whose own click cannot be rewritten. */
+  openHref?: string;
   children: ReactNode;
 }) {
   const host = usePluginSurfaceHost();
@@ -114,8 +141,14 @@ function LinkCardTrigger(props: {
     <span
       data-plugin-link={props.link.pluginId}
       onClickCapture={(event) => {
-        if (props.link.click !== "card") return;
         if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+        if (props.link.click !== "card") {
+          if (props.openHref === undefined) return;
+          event.preventDefault();
+          event.stopPropagation();
+          window.open(props.openHref, "_blank", "noopener,noreferrer");
+          return;
+        }
         event.preventDefault();
         event.stopPropagation();
         cancelOpen();

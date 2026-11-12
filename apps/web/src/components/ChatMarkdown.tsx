@@ -64,6 +64,7 @@ import {
   markdownImageSourceFragment,
 } from "@t3tools/client-runtime/markdown-images";
 import { mediaUrlReference } from "@t3tools/client-runtime/media-reference";
+import { pluginLinkTarget } from "@t3tools/client-runtime/state/panelPlugins";
 import { mediaKindFromPath, mediaMimeTypeFromExtension } from "@t3tools/shared/mediaPreview";
 import { InlineAudioPreview } from "./files/InlineAudioPreview";
 import { HostImageUrlContext } from "./chat/hostImageUrl";
@@ -206,7 +207,7 @@ import {
   markdownImageCopy,
 } from "./chat/ChatMarkdownMedia";
 import { MarkdownExternalLinkContent } from "./chat/MarkdownExternalLink";
-import { PluginLinkHover, usePluginLinkTakeover } from "./plugins/PluginLinkHover";
+import { PluginFileLink, PluginLinkHover, usePluginLinkTakeover } from "./plugins/PluginLinkHover";
 import { MarkdownFileLink } from "./chat/MarkdownFileLink";
 import { canUseMarkdownFileShellActions } from "./chat/MarkdownFileLink.logic";
 import { rehypeChipPunctuation } from "./chat/markdownChipPunctuation";
@@ -832,7 +833,8 @@ function useChatMarkdownState({
       fileLinkMeta.workspaceRelativePath ??
       (!canPreviewMedia && isHostPath(fileLinkMeta.filePath) ? fileLinkMeta.filePath : null);
 
-    return (
+    const pluginPath = pluginLinkTarget(fileLinkMeta.filePath, cwd);
+    const chip = (
       <MarkdownFileLink
         environmentId={environmentId}
         href={fileLinkMeta.targetPath}
@@ -885,6 +887,13 @@ function useChatMarkdownState({
             : undefined
         }
       />
+    );
+    return pluginPath === undefined ? (
+      chip
+    ) : (
+      <PluginFileLink environmentId={environmentId} path={pluginPath}>
+        {chip}
+      </PluginFileLink>
     );
   };
 
@@ -1082,8 +1091,12 @@ const CHAT_MARKDOWN_COMPONENTS = {
       renderContextReference,
     } = use(ChatMarkdownRendererContext);
     const text = use(ChatMarkdownTextContext);
-    // A plugin that claims the link may send it elsewhere and name a bare URL.
-    const takeover = usePluginLinkTakeover(environmentId, writtenHref);
+    // A plugin that claims a web link may send it elsewhere and name a bare URL. File links
+    // become chips below, which plugins claim by their resolved path instead.
+    const takeover = usePluginLinkTakeover(
+      environmentId,
+      writtenHref && /^https?:\/\//i.test(writtenHref) ? writtenHref : undefined,
+    );
     const href = takeover?.href ?? writtenHref;
     const takeoverText =
       takeover?.text !== undefined && hastPlainTextDeep(node) === writtenHref
