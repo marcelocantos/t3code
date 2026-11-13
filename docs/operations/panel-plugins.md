@@ -400,6 +400,19 @@ A link pattern can also say what the link does and where it leads:
 Cards, hovers and resolution requests carry the link as written (a file link as its absolute
 path), not the rewritten href.
 
+### Opening file links with the default application
+
+No plugin is needed to hand a kind of file to the application the computer registers for it, such
+as Markdown to a viewer. In **Settings → Plugins → File links**, give a glob in the syntax above
+(for example `/**/*.{md,markdown}`). A plain click on a matching file link then asks the
+environment's machine to open the file, as `open <path>` does on macOS. A modified click keeps
+the chip's usual action, and a plugin that takes the click over still gets it first.
+
+The pattern is stored per device, in the client's local storage. It applies only where the client
+can run commands on the environment's machine: the desktop app or a browser on that machine.
+Mobile and remote clients ignore it and open the file as usual, since the application would open
+on a screen the user is not looking at.
+
 ## Embedded web applications
 
 A plugin may also send a web panel alongside native lists:

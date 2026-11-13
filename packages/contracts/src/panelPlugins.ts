@@ -368,10 +368,12 @@ export const pluginLinkStem = (link: PluginLink): string =>
  * must already be normalized, so `..` cannot walk a link out of the directory a glob names.
  */
 export const pluginLinkMatches = (link: PluginLink, target: string): boolean =>
-  "prefix" in link
-    ? target.startsWith(link.prefix)
-    : globRegExp(link.glob).test(target) &&
-      (/^https?:\/\//i.test(target) || !/(^|\/)\.\.?(\/|$)/.test(target));
+  "prefix" in link ? target.startsWith(link.prefix) : pluginLinkGlobMatches(link.glob, target);
+
+/** Whether a valid `PluginLinkGlob` matches `target`, under the same path rule as above. */
+export const pluginLinkGlobMatches = (glob: string, target: string): boolean =>
+  globRegExp(glob).test(target) &&
+  (/^https?:\/\//i.test(target) || !/(^|\/)\.\.?(\/|$)/.test(target));
 
 export const PluginLinksState = Schema.Array(PluginLink).check(Schema.isMaxLength(320));
 

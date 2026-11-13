@@ -16,6 +16,7 @@ import { SettingsPageContainer, SettingsSection } from "../settings/settingsLayo
 import { useSettingsScope } from "../settings/SettingsScopeContext";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
+import { DefaultAppLinksSetting } from "./DefaultAppFileLink";
 import { pluginDiscovery } from "./pluginState";
 
 export const PLUGINS_FOUND_EXPLANATION =
@@ -186,6 +187,9 @@ function PluginsSettingsBody({ environmentId }: { environmentId: EnvironmentId }
             You can see this environment's plugins but not change them.
           </p>
         )}
+      </SettingsSection>
+      <SettingsSection title="File links" id="plugin-file-links">
+        <DefaultAppLinksSetting />
       </SettingsSection>
     </SettingsPageContainer>
   );

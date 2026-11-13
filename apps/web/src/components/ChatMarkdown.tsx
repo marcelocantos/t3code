@@ -207,6 +207,11 @@ import {
   markdownImageCopy,
 } from "./chat/ChatMarkdownMedia";
 import { MarkdownExternalLinkContent } from "./chat/MarkdownExternalLink";
+import {
+  DefaultAppFileLink,
+  opensWithDefaultApp,
+  useDefaultAppLinkGlob,
+} from "./plugins/DefaultAppFileLink";
 import { PluginFileLink, PluginLinkHover, usePluginLinkTakeover } from "./plugins/PluginLinkHover";
 import { MarkdownFileLink } from "./chat/MarkdownFileLink";
 import { canUseMarkdownFileShellActions } from "./chat/MarkdownFileLink.logic";
@@ -628,12 +633,14 @@ function useChatMarkdownState({
   );
   const projects = useProjects();
   const [preferredEditor] = usePreferredEditor(availableEditors);
+  const [defaultAppLinkGlob] = useDefaultAppLinkGlob();
   const preferredEditorMenuLabel = openInEditorMenuLabel(preferredEditor);
   const openInPreferredEditor = useOpenInPreferredEditor(environmentId, availableEditors);
   const openInEditor = useAtomCommand(shellEnvironment.openInEditor, {
     reportFailure: false,
   });
-  const revealFileInFileManager = (filePath: string) => {
+  // Without `reveal`, the file manager's launcher opens a file with its default application.
+  const launchFileManager = (filePath: string, reveal: boolean) => {
     if (environmentId === null) {
       return Promise.resolve(
         AsyncResult.failure<void, PreferredEditorEnvironmentRequiredError>(
@@ -644,13 +651,13 @@ function useChatMarkdownState({
     if (!readEnvironmentScope(environmentId, AuthOrchestrationOperateScope)) {
       return Promise.resolve(
         AsyncResult.failure<void, Error>(
-          Cause.fail(new Error("This connection cannot reveal files on this environment.")),
+          Cause.fail(new Error("This connection cannot open or reveal files on this environment.")),
         ),
       );
     }
     return openInEditor({
       environmentId,
-      input: { cwd: filePath, editor: "file-manager", reveal: true },
+      input: { cwd: filePath, editor: "file-manager", reveal },
     });
   };
   const diffThemeName = resolveDiffThemeName(resolvedTheme);
@@ -874,7 +881,7 @@ function useChatMarkdownState({
         openInEditorMenuLabel={preferredEditorMenuLabel}
         onReveal={
           canUseShellActions && revealInFileManagerLabel !== undefined
-            ? async () => revealFileInFileManager((await resolveHostPath()).absolutePath)
+            ? async () => launchFileManager((await resolveHostPath()).absolutePath, true)
             : undefined
         }
         revealLabel={revealInFileManagerLabel}
@@ -888,11 +895,24 @@ function useChatMarkdownState({
         }
       />
     );
-    return pluginPath === undefined ? (
-      chip
-    ) : (
+    if (pluginPath === undefined) return chip;
+    // Inside the plugin wrapper, so a plugin that takes the click over still gets it first.
+    const hostChip =
+      canUseShellActions &&
+      availableEditors.includes("file-manager") &&
+      opensWithDefaultApp(defaultAppLinkGlob, pluginPath) ? (
+        <DefaultAppFileLink
+          target={fileLinkMeta.targetPath}
+          onOpen={async () => launchFileManager((await resolveHostPath()).absolutePath, false)}
+        >
+          {chip}
+        </DefaultAppFileLink>
+      ) : (
+        chip
+      );
+    return (
       <PluginFileLink environmentId={environmentId} path={pluginPath}>
-        {chip}
+        {hostChip}
       </PluginFileLink>
     );
   };
