@@ -67,6 +67,7 @@ const LINUX_ICON_SIZES = [16, 22, 24, 32, 48, 64, 128, 256, 512] as const;
 const PLUGIN_BUILD_MODE = parsePluginBuildMode(process.env.T3CODE_PLUGIN_BUILD);
 const PLUGIN_BUILD = PLUGIN_BUILD_MODE === "parallel";
 const DESKTOP_APP_ID = PLUGIN_BUILD ? "com.marcelocantos.t3code.plugins" : "com.t3tools.t3code";
+const PLUGIN_MAC_ENTITLEMENTS = "apps/desktop/resources/entitlements.plugins.mac.plist";
 const APPLE_TEAM_ID_PATTERN = /^[A-Z0-9]{10}$/u;
 
 const BuildPlatform = Schema.Literals(["mac", "linux", "win"]);
@@ -2891,6 +2892,15 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
         },
       ],
       ...(signed ? { sign: path.join(repoRoot, "scripts/sign-macos.ts") } : {}),
+      // Plugin builds sign with a Developer ID outside T3's team, so they carry no
+      // provisioning profile and only unrestricted entitlements.
+      ...(signed && PLUGIN_BUILD_MODE !== "off"
+        ? {
+            hardenedRuntime: true,
+            entitlements: path.join(repoRoot, PLUGIN_MAC_ENTITLEMENTS),
+            entitlementsInherit: path.join(repoRoot, PLUGIN_MAC_ENTITLEMENTS),
+          }
+        : {}),
       ...(macPasskeySigning
         ? {
             entitlements: macPasskeySigning.entitlementsPath,
@@ -3831,7 +3841,7 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
   yield* fs.copy(stageResourcesDir, stageProdResourcesDir);
 
   const configuredMacPasskeySigning =
-    options.platform === "mac" && options.signed
+    options.platform === "mac" && options.signed && PLUGIN_BUILD_MODE === "off"
       ? yield* Effect.try({
           try: () => resolveMacPasskeySigningConfiguration(loadRepoEnv({ repoRoot })),
           catch: MacPasskeySigningConfigurationResolutionError.fromCause,

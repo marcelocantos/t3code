@@ -2,7 +2,7 @@
 
 ## Install the macOS plugin build
 
-Download the Apple Silicon DMG from [this fork's releases](https://github.com/marcelocantos/t3code/releases), open it, and drag **T3 Code+.app** to Applications. (Releases before the rename installed **T3 Code Plugins.app**; delete it after installing, as both are the same app and share their data.) This unsigned build may require approval in **System Settings → Privacy & Security → Open Anyway** after the first launch attempt.
+Download the Apple Silicon DMG from [this fork's releases](https://github.com/marcelocantos/t3code/releases), open it, and drag **T3 Code+.app** to Applications. (Releases before the rename installed **T3 Code Plugins.app**; delete it after installing, as both are the same app and share their data.) Releases signed with a Developer ID open without a warning. Earlier, ad-hoc signed releases need approval in **System Settings → Privacy & Security → Open Anyway** after the first launch attempt.
 
 The fork runs alongside the official app. Its data lives in `~/.t3-plugins/userdata` and its browser profile in `~/Library/Application Support/t3code-plugins`. It starts with a separate workspace list; add your existing project directories. Automatic updates are disabled for this build; install subsequent releases from the same release page. Do not set `T3CODE_HOME` to the official app's data directory.
 
@@ -25,6 +25,22 @@ The `upgrade` build is for replacing an installed official app with this fork wh
 The updater is switched off by the build itself, not only by the absence of a publish feed: the packaged app carries no `app-update.yml`, and the desktop refuses to configure or check any feed, including a managed-policy or mock feed. Otherwise an official release could replace the fork without notice. About shows "Plugin panels build" to tell the two apart.
 
 Back up `~/.t3` and `~/Library/Application Support/t3code-v2` before the first launch. Chromium and the SQLite database are not safe to share between two running versions, so quit the old app first. This repository does not take or verify backups.
+
+### Signing and notarization
+
+Desktop releases are built, signed and notarized on the maintainer's Mac, not in CI. `.github/workflows/plugin-release.yml` builds an unsigned DMG for pull requests and never uploads to a release.
+
+```sh
+T3CODE_PLUGIN_BUILD=1 vp run release:plugin-desktop
+```
+
+This builds the app and DMG and signs them with `Developer ID Application: <team> (<team id>)`, using the hardened runtime and `apps/desktop/resources/entitlements.plugins.mac.plist`. It notarizes and staples the DMG, whose ticket also covers the app, then fails unless `codesign`, `stapler` and `spctl` accept the result. Notarization can take hours, especially a team's first submissions. If the script is interrupted, run it again: it waits on the recorded submission (`release/T3-Code-<version>-arm64.dmg.notary-submission.json`) while the DMG is unchanged, instead of rebuilding. Attach `release/T3-Code-<version>-arm64.dmg` and `release/SHA256SUMS` to the GitHub release.
+
+The script reads the team and the App Store Connect API key from `~/.appstoreconnect/canticode.json` (`--notary-config` to change it). It expects the Developer ID certificate and its private key in the login keychain. Only the team's Account Holder can create that certificate, at [Certificates](https://developer.apple.com/account/resources/certificates/add) → **Developer ID Application**, from a certificate signing request made on this Mac. Double-click the downloaded `.cer` to pair it with the key.
+
+Keep the team and the bundle identifier of a mode unchanged between releases. macOS ties privacy permissions and Keychain access to the signing team and the bundle identifier. An ad-hoc signature is tied to one exact build instead, so every ad-hoc upgrade can lose them.
+
+`--identity <name> --skip-notarize` signs with another identity, such as an Apple Development certificate, to check signing and launch without notarizing.
 
 ### Mobile
 
