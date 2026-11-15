@@ -75,6 +75,7 @@ describe("resolvePluginWebPath", () => {
 
   it("resolves relative paths inside the gateway directory", () => {
     expect(resolvePluginWebPath(gateway, "dialog.html")).toBe(`${gateway}dialog.html`);
+    expect(resolvePluginWebPath(gateway, "?details=1")).toBe(`${gateway}?details=1`);
     expect(resolvePluginWebPath(gateway, "nested/view.html?mode=pick")).toBe(
       `${gateway}nested/view.html?mode=pick`,
     );
