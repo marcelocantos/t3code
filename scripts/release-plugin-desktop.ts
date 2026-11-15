@@ -8,6 +8,8 @@ import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import * as NodeUtil from "node:util";
 
+import { loadRepoEnv } from "./lib/public-config.ts";
+
 const { values } = NodeUtil.parseArgs({
   options: {
     "notary-config": {
@@ -25,6 +27,19 @@ const repoRoot = NodePath.resolve(import.meta.dirname, "..");
 const mode = process.env.T3CODE_PLUGIN_BUILD;
 if (mode !== "1" && mode !== "upgrade")
   throw new Error("Set T3CODE_PLUGIN_BUILD to 1 or upgrade, as for any plugin build.");
+
+// Without these the build compiles T3 Connect out: no sign-in, no cloud-only settings, no
+// `t3 cloud`. .env.example carries the public production values.
+const repoEnv = loadRepoEnv();
+const missingCloudConfig = [
+  "T3CODE_RELAY_URL",
+  "T3CODE_CLERK_PUBLISHABLE_KEY",
+  "T3CODE_CLERK_CLI_OAUTH_CLIENT_ID",
+].filter((name) => !repoEnv[name]);
+if (missingCloudConfig.length > 0)
+  throw new Error(
+    `T3 Connect config is missing (${missingCloudConfig.join(", ")}). Copy .env.example to .env, or set them in the environment.`,
+  );
 
 interface NotaryConfig {
   readonly team: string;
