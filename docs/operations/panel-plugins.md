@@ -8,7 +8,7 @@ The fork runs alongside the official app. Its data lives in `~/.t3-plugins/userd
 
 Use this fork's desktop app or bundled web client for panels; official T3 clients do not include the panel renderers. Both desktop apps register the upstream `t3code` link scheme, so external sign-in/deep links can open either app. Direct environment connections avoid that ambiguity.
 
-A plugin that advertises itself (see [Discovery](#discovery)) appears in **Settings → Plugins**; nothing needs configuring by hand. The URL it advertises is resolved by the T3 environment hosting the thread, so a loopback address refers to that machine. T3 does not bundle or launch any plugin: each one is a service its own project runs.
+A plugin that advertises itself (see [Discovery](#discovery)) appears in **Settings → Plugins**; nothing needs configuring by hand. The URL it advertises is resolved by the T3 environment hosting the thread, so a loopback address refers to that machine. T3 never launches a discovered plugin: each one is a service its own project runs. Only a sidecar entry in `panel-plugins.json` (below) makes T3 start a process.
 
 ## Build modes
 
@@ -166,7 +166,7 @@ plugin directly. Web and desktop show sections in thread details; mobile shows t
 the thread list in the sidebar for the selected thread.
 
 Configure the environment's `panel-plugins.json` beside `settings.json` in its userdata
-folder. Configuration is read when a sidebar subscribes and when a discovery decision changes: close and reopen the sidebar after editing the file.
+folder. While a client is connected, T3 re-reads the file every 10 seconds and when the plugin manifest directory changes; it is also read when a sidebar subscribes and when a discovery decision changes.
 This file is environment-owned because sidecar commands execute with the server's privileges.
 Repository `t3.json` does not install or execute plugins.
 
