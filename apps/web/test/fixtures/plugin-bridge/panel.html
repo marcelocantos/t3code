@@ -6,18 +6,21 @@
     <button id="ask">Ask</button>
     <button id="escape">Escape</button>
     <button id="resize">Fit content</button>
+    <button id="hover">Hover card</button>
     <script>
       // Reports to the test through the window; the host must ignore these.
       const report = (text) => parent.postMessage({ fixtureLog: text }, "*");
       window.onerror = (message) => report(`fail ${message}`);
       let port = null;
       let next = 0;
+      let hoverOpen = false;
       const log = (text) => report(text);
       const request = (message) => port.postMessage({ requestId: String(++next), ...message });
       window.addEventListener("message", (event) => {
         if (event.source !== parent || event.data?.type !== "t3.bridge.init") return;
         port = event.ports[0];
         port.onmessage = ({ data }) => {
+          if (data.type === "surface.closed" && data.surfaceId === "hover") hoverOpen = false;
           if (data.type === "surface.action") log(`action ${data.actionId}`);
           if (data.type === "surface.closed" && data.result) log(`picked ${data.result.colour}`);
           if (data.type === "agent.result") log(data.ok ? "agent sent" : `agent ${data.error}`);
@@ -54,6 +57,20 @@
         request({ type: "agent.prompt", prompt: "Summarize the panel." });
       document.querySelector("#resize").onclick = () =>
         request({ type: "panel.resize", height: 144 });
+      document.querySelector("#hover").onpointerenter = (event) => {
+        if (hoverOpen) return;
+        hoverOpen = true;
+        request({
+          type: "surface.open",
+          surfaceId: "hover",
+          presentation: "popover",
+          hover: true,
+          placement: "left-start",
+          anchor: { x: 0, y: 0, width: innerWidth, height: innerHeight },
+          size: { width: 300, height: 160 },
+          content: { kind: "web", path: "dialog.html" },
+        });
+      };
       document.querySelector("#escape").onclick = () =>
         request({
           type: "surface.open",

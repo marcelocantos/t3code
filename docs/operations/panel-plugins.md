@@ -482,6 +482,12 @@ validated; an invalid one gets an `error` reply.
 | `agent.result { requestId, ok, error? }`, `error { requestId?, message }` | Outcomes.                                                                                                  |
 
 `features` lists optional abilities; offer one only when it is listed.
+On web and desktop, `surface.hover` allows `hover: true` on a `surface.open`
+popover. The host uses the native plugin-card hover timer: entering its source
+frame or card cancels dismissal, and leaving both closes it after the crossing
+grace period. Leave `hover` unset for keyboard-opened or persistent surfaces.
+Mobile hosts keep their existing sheet behavior and do not advertise this feature.
+
 The `panel.resize` feature lets a panel report its content height with
 `{ "type": "panel.resize", "height": 144 }` over its port (integer 16–800 px).
 The host fits both the iframe and sidebar section to it and hides manual resize

@@ -10,6 +10,7 @@ export const PLUGIN_BRIDGE_VERSION = 1;
 /** Optional host abilities, listed in `t3.bridge.init` so a page can offer them only when present. */
 export const PLUGIN_BRIDGE_FEATURES = ["surface.maximize"] as const;
 export const PLUGIN_PANEL_RESIZE_FEATURE = "panel.resize";
+export const PLUGIN_SURFACE_HOVER_FEATURE = "surface.hover";
 /** Serialized size limit for one frame message, results included. */
 export const PLUGIN_BRIDGE_MAX_MESSAGE_BYTES = 256 * 1024;
 const PLUGIN_SURFACE_LIMITS = {
@@ -68,6 +69,7 @@ export const PluginBridgeInbound = Schema.Union([
     surfaceId: Id,
     parentSurfaceId: Schema.optional(Id),
     presentation: PluginBridgePresentation,
+    hover: Schema.optional(Schema.Boolean),
     anchor: Schema.optional(PluginBridgeRect),
     placement: Schema.optional(PluginBridgePlacement),
     size: Schema.optional(Schema.Struct({ width: Extent, height: Extent })),
@@ -105,7 +107,9 @@ export type PluginBridgeOutbound =
       /** Set for a web surface: the id its opener gave it, which `surface.close` takes. */
       readonly surfaceId?: string;
       readonly features: ReadonlyArray<
-        (typeof PLUGIN_BRIDGE_FEATURES)[number] | typeof PLUGIN_PANEL_RESIZE_FEATURE
+        | (typeof PLUGIN_BRIDGE_FEATURES)[number]
+        | typeof PLUGIN_PANEL_RESIZE_FEATURE
+        | typeof PLUGIN_SURFACE_HOVER_FEATURE
       >;
     }
   | { readonly type: "surface.opened"; readonly requestId: string; readonly surfaceId: string }

@@ -1,6 +1,6 @@
 import { expect, it, vi } from "vite-plus/test";
 import { page } from "vite-plus/test/browser";
-import { render } from "../../../test/render";
+import { fakeTimers, render } from "../../../test/render";
 import { SizedPanel } from "./PluginPanels";
 
 const host = vi.hoisted(() => ({
@@ -117,6 +117,47 @@ it("lets a sandboxed panel open surfaces, read a child's result, and prompt the 
     "Send this message from Counter?\nSummarize the panel.",
   );
   expect(host.submit).toHaveBeenCalledWith("frame:counter", "Summarize the panel.");
+});
+
+it("keeps a web hover card across its panel and card, then closes outside both", async () => {
+  await using _screen = await render(
+    <PluginSurfaceHost>
+      <button style={{ position: "fixed", left: 0, bottom: 0 }}>Outside</button>
+      <div style={{ width: 300, marginLeft: "auto" }}>
+        <PluginFrame
+          src={`${gateway}panel.html`}
+          title="Hover panel"
+          height={240}
+          nodeId={null}
+          ownSurfaceId={undefined}
+          gatewayUrl={`${gateway}panel.html`}
+          panelTitle="Hover details"
+          agentSource="frame:hover"
+        />
+      </div>
+    </PluginSurfaceHost>,
+  );
+  const panel = page.frameLocator(page.getByTitle("Hover panel"));
+  await panel.getByRole("button", { name: "Hover card" }).hover();
+  const card = page.getByTitle("Hover details", { exact: true });
+  const details = page.frameLocator(card);
+  await expect.element(card).toBeVisible();
+  using _timers = fakeTimers();
+  await details.getByRole("button", { name: "Blue" }).hover();
+  await vi.runOnlyPendingTimersAsync();
+  await expect.element(card).toBeVisible();
+  await panel.getByRole("button", { name: "Hover card" }).hover();
+  await vi.runOnlyPendingTimersAsync();
+  await expect.element(card).toBeVisible();
+  await details.getByRole("button", { name: "Blue" }).hover();
+  await page.getByRole("button", { name: "Outside", exact: true }).hover();
+  await vi.runOnlyPendingTimersAsync();
+  await expect.element(card).not.toBeInTheDocument();
+  await panel.getByRole("button", { name: "Hover card" }).hover();
+  await expect.element(card).toBeVisible();
+  await page.getByRole("button", { name: "Outside", exact: true }).hover();
+  await vi.runOnlyPendingTimersAsync();
+  await expect.element(card).not.toBeInTheDocument();
 });
 
 it("hands the bridge again to a frame that asks after missing it", async () => {

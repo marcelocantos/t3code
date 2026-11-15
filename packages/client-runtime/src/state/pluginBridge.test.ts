@@ -16,6 +16,7 @@ describe("parsePluginBridgeMessage", () => {
         requestId: "r1",
         surfaceId: "card",
         presentation: "popover",
+        hover: true,
         anchor: { x: 1, y: 2, width: 30, height: 10 },
         placement: "right-start",
         content: { kind: "structured", surface: { title: "Card", blocks: [] } },
@@ -39,6 +40,16 @@ describe("parsePluginBridgeMessage", () => {
   });
 
   it("rejects malformed, oversized, and non-JSON messages and keeps the request id", () => {
+    expect(
+      parsePluginBridgeMessage({
+        type: "surface.open",
+        requestId: "hover",
+        surfaceId: "h",
+        presentation: "popover",
+        hover: "yes",
+        content: { kind: "web", path: "card.html" },
+      }).ok,
+    ).toBe(false);
     for (const height of [-1, 0, 15, 801, 1.5, Infinity, NaN, "100"]) {
       expect(parsePluginBridgeMessage({ type: "panel.resize", height }).ok).toBe(false);
     }
