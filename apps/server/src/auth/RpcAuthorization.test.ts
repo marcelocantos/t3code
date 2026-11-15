@@ -81,9 +81,9 @@ describe("RPC authorization scopes", () => {
       expect(requiredScopeForRpcMethod(method)).toBe(AuthOrchestrationReadScope);
     }
     expect(requiredScopeForRpcMethod(WS_METHODS.pluginDiscoveryAct)).toBe(AuthSettingsWriteScope);
-    expect(requiredScopeForRpcMethod(WS_METHODS.pluginPanelsAct)).toBe(
-      AuthOrchestrationOperateScope,
-    );
+    for (const method of [WS_METHODS.pluginPanelsAct, WS_METHODS.pluginLinksActivate]) {
+      expect(requiredScopeForRpcMethod(method)).toBe(AuthOrchestrationOperateScope);
+    }
   });
 
   it("lets thread readers observe and refresh checkout branches", () => {

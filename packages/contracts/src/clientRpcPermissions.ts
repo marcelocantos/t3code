@@ -65,6 +65,8 @@ export const CLIENT_GUARDED_RPC_SCOPES = {
   [WS_METHODS.pluginDiscoveryAct]: AuthSettingsWriteScope,
   // Plugin actions can change the plugin's own data, such as a Bullseye ledger.
   [WS_METHODS.pluginPanelsAct]: AuthOrchestrationOperateScope,
+  // Activation runs the plugin's own code on the environment's machine, such as opening an app.
+  [WS_METHODS.pluginLinksActivate]: AuthOrchestrationOperateScope,
 
   // Starts an agent session on this environment that can read its logs and database.
   [WS_METHODS.serverPrepareTriage]: AuthOrchestrationOperateScope,

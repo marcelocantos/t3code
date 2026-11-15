@@ -350,8 +350,9 @@ A pattern has either a `prefix` or a `glob`; a malformed one is ignored.
   requests is that path.
 
 When several patterns match, the one with the longest literal start wins. For a glob, that is the
-text before its first wildcard. A matching link gets the card. Clicking it opens the link, unless
-the plugin takes the link over (below). Adding `links` to an enabled plugin's scopes asks the user
+text before its first wildcard. A matching link gets the card, unless the pattern says
+`"card": false`; T3 then never asks for one. Clicking it opens the link, unless the plugin takes the
+link over (below). Adding `links` to an enabled plugin's scopes asks the user
 again, like `environment`; changing the patterns does not. T3 keeps a plugin with link patterns
 connected while a client is open, and lists its patterns to clients only while it is connected.
 
@@ -389,8 +390,9 @@ A link pattern can also say what the link does and where it leads:
 ```
 
 - `click`: `"card"` makes a click show the card as a dialog (on mobile, a sheet) instead of
-  following the link. A modified click (⌘, Ctrl, Shift or Alt) still follows it. `"open"`, the
-  default, follows the link. On mobile, a tap shows the card unless `click` is `"open"`.
+  following the link. `"activate"` hands the click to the plugin (below). `"open"`, the default,
+  follows the link. A modified click (⌘, Ctrl, Shift or Alt) always follows it. On mobile, a tap
+  shows the card unless `click` is `"open"` or `"activate"`, or the pattern has no card.
 - `href`: where following the link goes. `{url}` is the whole link encoded as one URL component;
   `{rest}` is what follows the prefix, or the glob's literal start, keeping its slashes. A result
   that is not an http(s) URL is ignored. When a rewritten file link is clicked, the new URL opens
@@ -413,8 +415,34 @@ A link pattern can also say what the link does and where it leads:
   the message gave the link its own text. File chips on web and desktop keep their file name. A
   failed or empty answer leaves the link as it is.
 
-Cards, hovers and resolution requests carry the link as written (a file link as its absolute
-path), not the rewritten href.
+- With `"click": "activate"`, a plain click or tap asks the plugin to handle it:
+
+  ```json
+  {
+    "type": "activate",
+    "requestId": "r5",
+    "scope": "link",
+    "linkId": "markdown",
+    "url": "/work/notes/plan.md",
+    "client": { "local": true }
+  }
+  ```
+
+  Answer `"activate": { "handled": true }` when you dealt with the click, for example by opening
+  the file in an application on this machine; T3 then does nothing more. Answer
+  `{ "handled": false }` to decline. A decline, an error, no answer within two seconds, or a
+  disconnected plugin makes the client do what it does for an unclaimed link: follow it, or open
+  the file in T3. Decide before acting, so a slow answer never does both. Activation needs
+  `orchestration:operate`; a client without it never asks.
+
+  `client.local` says whether the person clicking sits at this machine. It is true only when the
+  client says it runs here (desktop, or a browser on a loopback address of this machine) and its
+  connection to T3 comes from a loopback address. Mobile is never local. A tunnel or SSH forward
+  also arrives on loopback, so treat `local` as where the user is, not as authentication: any
+  client with `orchestration:operate` can already open editors on this machine.
+
+Cards, hovers, resolution and activation requests carry the link as written (a file link as its
+absolute path), not the rewritten href.
 
 ## Embedded web applications
 
