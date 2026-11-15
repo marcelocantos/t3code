@@ -9,6 +9,7 @@ import {
   PluginSidecarReady,
   type PanelPluginConfig,
   type PluginActionResult,
+  type PluginLinkActivation,
   type PluginLinkResolution,
   type PluginLinkWebCard,
   type PluginPanelSnapshot,
@@ -41,10 +42,11 @@ type Subscription = {
   emit: (snapshot: PluginPanelSnapshot, endpoint?: string) => void;
 };
 
-/** `web` answers only link card requests, `link` only link resolution. */
+/** `web` answers only link card requests, `link` only link resolution, `activate` only clicks. */
 export type PluginRequestResult = PluginActionResult & {
   readonly web?: PluginLinkWebCard;
   readonly link?: PluginLinkResolution;
+  readonly activate?: PluginLinkActivation;
 };
 export type PluginRequestOutcome = PluginRequestResult | PluginPanelRequestError;
 
@@ -69,6 +71,13 @@ export type PluginRequestFrame =
       readonly scope: "link";
       readonly linkId: string;
       readonly url: string;
+    }
+  | {
+      readonly type: "activate";
+      readonly scope: "link";
+      readonly linkId: string;
+      readonly url: string;
+      readonly client: { readonly local: boolean };
     };
 
 const targetFields = (target: PluginFrameTarget) =>
@@ -347,6 +356,7 @@ export class PanelPluginConnection {
                     ...(message.close !== undefined ? { close: message.close } : {}),
                     ...(message.web ? { web: message.web } : {}),
                     ...(message.link ? { link: message.link } : {}),
+                    ...(message.activate ? { activate: message.activate } : {}),
                   }
                 : new PluginPanelRequestError({
                     reason: "rejected",

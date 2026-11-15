@@ -52,7 +52,7 @@ export function createPanelPluginCommands<R, E>(
   };
 }
 
-/** Declared link patterns of an environment's connected plugins, and their on-demand cards. */
+/** Declared link patterns of an environment's connected plugins, their cards and click handling. */
 export function createPluginLinkAtoms<R, E>(runtime: Atom.AtomRuntime<EnvironmentRegistry | R, E>) {
   return {
     links: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
@@ -67,6 +67,10 @@ export function createPluginLinkAtoms<R, E>(runtime: Atom.AtomRuntime<Environmen
     resolve: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:plugin-links:resolve",
       tag: WS_METHODS.pluginLinksResolve,
+    }),
+    activate: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:plugin-links:activate",
+      tag: WS_METHODS.pluginLinksActivate,
     }),
   };
 }

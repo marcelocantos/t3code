@@ -36,6 +36,8 @@ import {
 import {
   PluginActionResult,
   PluginLinkCard,
+  PluginLinkActivateInput,
+  PluginLinkActivation,
   PluginLinkCardInput,
   PluginLinkResolution,
   PluginLinksState,
@@ -644,6 +646,7 @@ export const WS_METHODS = {
   subscribePluginLinks: "subscribePluginLinks",
   pluginLinksCard: "pluginLinks.card",
   pluginLinksResolve: "pluginLinks.resolve",
+  pluginLinksActivate: "pluginLinks.activate",
   subscribePluginDiscovery: "subscribePluginDiscovery",
   pluginDiscoveryAct: "pluginDiscovery.act",
   subscribeDiscoveredLocalServers: "subscribeDiscoveredLocalServers",
@@ -1771,6 +1774,12 @@ const WsPluginLinksResolveRpc = Rpc.make(WS_METHODS.pluginLinksResolve, {
   error: Schema.Union([PluginPanelRequestError, EnvironmentAuthorizationError]),
 });
 
+const WsPluginLinksActivateRpc = Rpc.make(WS_METHODS.pluginLinksActivate, {
+  payload: PluginLinkActivateInput,
+  success: PluginLinkActivation,
+  error: Schema.Union([PluginPanelRequestError, EnvironmentAuthorizationError]),
+});
+
 const WsSubscribePluginDiscoveryRpc = Rpc.make(WS_METHODS.subscribePluginDiscovery, {
   payload: Schema.Struct({}),
   success: PluginDiscoverySnapshot,
@@ -2340,6 +2349,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsSubscribePluginLinksRpc,
   WsPluginLinksCardRpc,
   WsPluginLinksResolveRpc,
+  WsPluginLinksActivateRpc,
   WsSubscribePluginDiscoveryRpc,
   WsPluginDiscoveryActRpc,
   WsSubscribeDiscoveredLocalServersRpc,

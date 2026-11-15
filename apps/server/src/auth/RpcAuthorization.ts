@@ -208,6 +208,8 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.pluginLinksResolve]: AuthOrchestrationReadScope,
   // Plugin actions can change the plugin's own data, such as a Bullseye ledger.
   [WS_METHODS.pluginPanelsAct]: AuthOrchestrationOperateScope,
+  // Activation runs the plugin's own code on the environment's machine, such as opening an app.
+  [WS_METHODS.pluginLinksActivate]: AuthOrchestrationOperateScope,
   [WS_METHODS.subscribePluginDiscovery]: AuthOrchestrationReadScope,
   [WS_METHODS.subscribeDiscoveredLocalServers]: AuthOrchestrationReadScope,
   [WS_METHODS.deviceConfigure]: AuthSettingsWriteScope,
