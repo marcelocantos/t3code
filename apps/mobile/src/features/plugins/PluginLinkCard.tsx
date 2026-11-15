@@ -36,6 +36,8 @@ export function usePluginLinkTakeover(
   const result = useAtomValue(pluginLinks.links({ environmentId, input: {} }));
   const links = result._tag === "Success" ? result.value : [];
   const resolve = useAtomCommand(pluginLinks.resolve, { reportFailure: false });
+  const activate = useAtomCommand(pluginLinks.activate, { reportFailure: false });
+  const canActivate = useAtomValue(pluginLinks.activate.permissionAtom(environmentId));
   useSyncExternalStore(resolutions.subscribe, resolutions.version);
   const resolutionFor = (link: PluginLink, url: string) => {
     if (link.resolve !== true) return undefined;
@@ -60,6 +62,18 @@ export function usePluginLinkTakeover(
   };
   return {
     match,
+    /**
+     * Offers a tap on a `click: "activate"` link to its plugin. A phone is never the environment's
+     * machine, so `local` is false; false back means the tap opens the link as usual.
+     */
+    activate: async (link: PluginLink, url: string) => {
+      if (!canActivate) return false;
+      const answer = await activate({
+        environmentId,
+        input: { pluginId: link.pluginId, linkId: link.linkId, url, client: { local: false } },
+      });
+      return answer._tag === "Success" && answer.value.handled;
+    },
     hrefFor: (link: PluginLink, url: string) => pluginLinkHref(link, url, resolutionFor(link, url)),
     textFor: (href: string) => {
       const claim = match(href);
