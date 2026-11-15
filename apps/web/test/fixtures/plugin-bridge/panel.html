@@ -5,6 +5,7 @@
     <button id="dialog">Open dialog</button>
     <button id="ask">Ask</button>
     <button id="escape">Escape</button>
+    <button id="resize">Fit content</button>
     <script>
       // Reports to the test through the window; the host must ignore these.
       const report = (text) => parent.postMessage({ fixtureLog: text }, "*");
@@ -51,6 +52,8 @@
         });
       document.querySelector("#ask").onclick = () =>
         request({ type: "agent.prompt", prompt: "Summarize the panel." });
+      document.querySelector("#resize").onclick = () =>
+        request({ type: "panel.resize", height: 144 });
       document.querySelector("#escape").onclick = () =>
         request({
           type: "surface.open",

@@ -10,6 +10,7 @@ import {
 describe("parsePluginBridgeMessage", () => {
   it("accepts each frame message the bridge defines", () => {
     for (const message of [
+      { type: "panel.resize", height: 144 },
       {
         type: "surface.open",
         requestId: "r1",
@@ -38,6 +39,9 @@ describe("parsePluginBridgeMessage", () => {
   });
 
   it("rejects malformed, oversized, and non-JSON messages and keeps the request id", () => {
+    for (const height of [-1, 0, 15, 801, 1.5, Infinity, NaN, "100"]) {
+      expect(parsePluginBridgeMessage({ type: "panel.resize", height }).ok).toBe(false);
+    }
     expect(
       parsePluginBridgeMessage({
         type: "surface.open",

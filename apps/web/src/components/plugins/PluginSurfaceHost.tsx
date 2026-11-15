@@ -37,6 +37,7 @@ import {
   pluginPlacementParts,
   resolvePluginWebPath,
   PLUGIN_BRIDGE_FEATURES,
+  PLUGIN_PANEL_RESIZE_FEATURE,
   PLUGIN_BRIDGE_VERSION,
   type PluginBridgeContent,
   type PluginBridgeOutbound,
@@ -94,6 +95,7 @@ type SurfaceAnchor = Element | VirtualAnchor | null;
 
 /** One frame's end of the bridge. Mutable: it follows the frame across loads. */
 export interface PluginFrameEndpoint {
+  readonly onResize?: (height: number) => void;
   /** The surface showing this frame; null for a panel frame. */
   readonly nodeId: string | null;
   /** The id this frame's opener gave its surface. */
@@ -503,6 +505,11 @@ function useHostApi(
     }
     const message = parsed.message;
     switch (message.type) {
+      case "panel.resize": {
+        if (frame.nodeId === null && frame.onResize !== undefined) frame.onResize(message.height);
+        else post(frame, { type: "error", message: "This frame cannot resize a panel." });
+        return;
+      }
       case "surface.open": {
         const reject = (text: string) =>
           post(frame, { type: "error", requestId: message.requestId, message: text });
@@ -941,7 +948,10 @@ function openBridge(
     {
       type: "t3.bridge.init",
       version: PLUGIN_BRIDGE_VERSION,
-      features: PLUGIN_BRIDGE_FEATURES,
+      features:
+        endpoint.nodeId === null && endpoint.onResize !== undefined
+          ? [...PLUGIN_BRIDGE_FEATURES, PLUGIN_PANEL_RESIZE_FEATURE]
+          : PLUGIN_BRIDGE_FEATURES,
       ...(endpoint.ownSurfaceId === undefined ? {} : { surfaceId: endpoint.ownSurfaceId }),
     } satisfies PluginBridgeOutbound,
     "*",
@@ -954,6 +964,7 @@ function openBridge(
  * frame is opaque-origin, so the init message targets `*` and only the transferred port is trusted.
  */
 export function PluginFrame(props: {
+  onResize?: (height: number) => void;
   src: string;
   title: string;
   height: number | string;
@@ -965,6 +976,7 @@ export function PluginFrame(props: {
 }) {
   const host = usePluginSurfaceHost();
   const [endpoint] = useState<PluginFrameEndpoint>(() => ({
+    ...(props.onResize === undefined ? {} : { onResize: props.onResize }),
     nodeId: props.nodeId,
     ownSurfaceId: props.ownSurfaceId,
     gatewayUrl: props.gatewayUrl,

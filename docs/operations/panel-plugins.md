@@ -481,7 +481,16 @@ validated; an invalid one gets an `error` reply.
 | `surface.action { surfaceId, actionId, value? }`                          | A button, form or list item in a structured surface this frame opened.                                     |
 | `agent.result { requestId, ok, error? }`, `error { requestId?, message }` | Outcomes.                                                                                                  |
 
-`features` lists optional abilities; offer one only when it is listed. A web surface shown
+`features` lists optional abilities; offer one only when it is listed.
+The `panel.resize` feature lets a panel report its content height with
+`{ "type": "panel.resize", "height": 144 }` over its port (integer 16–800 px).
+The host fits both the iframe and sidebar section to it and hides manual resize
+controls for that panel. Report only changes, for example with `ResizeObserver`
+on a content element whose height does not depend on the iframe viewport.
+Web surfaces cannot resize sidebar panels. Hosts without the feature keep the
+configured height and manual controls.
+
+A web surface shown
 `maximized` fills the window less a 1rem margin on web and desktop, whose dialogs with web content
 also get a maximize toggle in their header. On mobile it becomes a full-height sheet; Android's
 sheet keeps its maximum width on large tablets. The page sees the change as an ordinary `resize`.
