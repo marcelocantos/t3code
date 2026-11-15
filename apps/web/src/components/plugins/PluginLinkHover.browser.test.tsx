@@ -11,22 +11,37 @@ const state = vi.hoisted(() => ({
       surface: { title: "pacs.008 123", blocks: [{ type: "text", text: "Settled" }] },
     },
   })),
+  activate: vi.fn(async (_request: unknown): Promise<unknown> => ({ _tag: "Failure" })),
+  activateCommand: { permissionAtom: (): unknown => undefined },
 }));
 
-vi.mock("./pluginState", () => ({
-  pluginPanelCommands: { act: {}, surface: {} },
-  pluginLinks: { links: () => ({}), card: "link-card" },
-}));
+vi.mock("./pluginState", async () => {
+  const { Atom } = await import("effect/reactivity");
+  const permitted = Atom.make(true);
+  state.activateCommand.permissionAtom = () => permitted;
+  return {
+    pluginPanelCommands: { act: {}, surface: {} },
+    pluginLinks: { links: () => ({}), card: "link-card", activate: state.activateCommand },
+  };
+});
 vi.mock("../../state/query", () => ({
   useEnvironmentQuery: () => ({
-    data: [{ pluginId: "viewer", linkId: "message", prefix: "https://viewer.example/msg/" }],
+    data: [
+      { pluginId: "viewer", linkId: "message", prefix: "https://viewer.example/msg/" },
+      { pluginId: "opener", linkId: "markdown", glob: "/**/*.md", click: "activate", card: false },
+    ],
   }),
 }));
 vi.mock("../../state/use-atom-command", () => ({
-  useAtomCommand: (command: unknown) => (command === LINK_CARD ? state.card : vi.fn()),
+  useAtomCommand: (command: unknown) =>
+    command === LINK_CARD
+      ? state.card
+      : command === state.activateCommand
+        ? state.activate
+        : vi.fn(),
 }));
 
-import { PluginLinkHover } from "./PluginLinkHover";
+import { PluginFileLink, PluginLinkHover } from "./PluginLinkHover";
 
 const environmentId = EnvironmentId.make("env");
 
@@ -37,7 +52,7 @@ function ChatLink({ href, label }: { href: string; label: string }) {
     </a>
   );
   return (
-    <PluginLinkHover environmentId={environmentId} href={href} link={link}>
+    <PluginLinkHover environmentId={environmentId} href={href} link={link} local={false}>
       <span data-testid="fallback">{link}</span>
     </PluginLinkHover>
   );
@@ -73,4 +88,41 @@ it("shows a plugin's card for a declared link on hover, cached, and closes it on
   await userEvent.hover(link);
   await expect.element(page.getByText("pacs.008 123")).toBeVisible();
   expect(state.card).toHaveBeenCalledTimes(1);
+});
+
+it("offers a plain click to a plugin that activates links, and falls back when it declines", async () => {
+  const opened = vi.fn();
+  await using screen = await render(
+    <PluginFileLink environmentId={environmentId} path="/work/notes.md" local>
+      <button type="button" onClick={opened}>
+        notes.md
+      </button>
+    </PluginFileLink>,
+  );
+  const chip = screen.getByRole("button", { name: "notes.md" });
+  const asked = { pluginId: "opener", linkId: "markdown", url: "/work/notes.md" };
+
+  // Handled: the chip's own click never runs.
+  state.activate.mockResolvedValueOnce({ _tag: "Success", value: { handled: true } });
+  await userEvent.click(chip);
+  await vi.waitFor(() => expect(state.activate).toHaveBeenCalledTimes(1));
+  expect(state.activate).toHaveBeenCalledWith({
+    environmentId,
+    input: { ...asked, client: { local: true } },
+  });
+  expect(opened).not.toHaveBeenCalled();
+
+  // Declined, or failed (timeout, disconnected plugin): the click runs as if unclaimed.
+  state.activate.mockResolvedValueOnce({ _tag: "Success", value: { handled: false } });
+  await userEvent.click(chip);
+  await vi.waitFor(() => expect(opened).toHaveBeenCalledTimes(1));
+  state.activate.mockResolvedValueOnce({ _tag: "Failure" });
+  await userEvent.click(chip);
+  await vi.waitFor(() => expect(opened).toHaveBeenCalledTimes(2));
+  expect(state.activate).toHaveBeenCalledTimes(3);
+
+  // A modified click keeps the link's own behaviour.
+  await userEvent.click(chip, { modifiers: ["Meta"] });
+  expect(opened).toHaveBeenCalledTimes(3);
+  expect(state.activate).toHaveBeenCalledTimes(3);
 });

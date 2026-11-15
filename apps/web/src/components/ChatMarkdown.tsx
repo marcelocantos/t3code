@@ -891,7 +891,7 @@ function useChatMarkdownState({
     return pluginPath === undefined ? (
       chip
     ) : (
-      <PluginFileLink environmentId={environmentId} path={pluginPath}>
+      <PluginFileLink environmentId={environmentId} path={pluginPath} local={canUseShellActions}>
         {chip}
       </PluginFileLink>
     );
@@ -899,6 +899,7 @@ function useChatMarkdownState({
 
   const componentState = {
     canOperateHost,
+    canUseShellActions,
     canOperatePreview,
     cwd,
     diffThemeName,
@@ -1072,6 +1073,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
     const {
       canOperateHost,
       canOperatePreview,
+      canUseShellActions,
       cwd,
       environmentId,
       imageBaseDir,
@@ -1333,7 +1335,12 @@ const CHAT_MARKDOWN_COMPONENTS = {
         );
       }
       return (
-        <PluginLinkHover environmentId={environmentId} href={writtenHref ?? href} link={link}>
+        <PluginLinkHover
+          environmentId={environmentId}
+          href={writtenHref ?? href}
+          link={link}
+          local={canUseShellActions}
+        >
           <Tooltip>
             <TooltipTrigger render={link} />
             <TooltipPopup side="top">{href}</TooltipPopup>
