@@ -31,7 +31,7 @@ Back up `~/.t3` and `~/Library/Application Support/t3code-v2` before the first l
 Desktop releases are built, signed and notarized on the maintainer's Mac, not in CI. `.github/workflows/plugin-release.yml` builds an unsigned DMG for pull requests and never uploads to a release.
 
 ```sh
-T3CODE_PLUGIN_BUILD=1 vp run release:plugin-desktop
+T3CODE_PLUGIN_BUILD=1 node scripts/release-plugin-desktop.ts
 ```
 
 This builds the app and DMG and signs them with `Developer ID Application: <team> (<team id>)`, using the hardened runtime and `apps/desktop/resources/entitlements.plugins.mac.plist`. It notarizes and staples the DMG, whose ticket also covers the app, then fails unless `codesign`, `stapler` and `spctl` accept the result. Notarization can take hours, especially a team's first submissions. If the script is interrupted, run it again: it waits on the recorded submission (`release/T3-Code-<version>-arm64.dmg.notary-submission.json`) while the DMG is unchanged, instead of rebuilding. Attach `release/T3-Code-<version>-arm64.dmg` and `release/SHA256SUMS` to the GitHub release.
