@@ -519,7 +519,9 @@ grace period. Leave `hover` unset for keyboard-opened or persistent surfaces.
 Mobile hosts keep their existing sheet behavior and do not advertise this feature.
 
 The `panel.resize` feature lets a panel report its content height with
-`{ "type": "panel.resize", "height": 144 }` over its port (integer 16–800 px).
+`{ "type": "panel.resize", "height": 144 }` over its port (integer 1–800 px; hosts
+that predate the `panel.collapse` feature accept 16–800). A panel with nothing to show can
+report 1 px and collapse to its sidebar heading.
 The host fits both the iframe and sidebar section to it and hides manual resize
 controls for that panel. Report only changes, for example with `ResizeObserver`
 on a content element whose height does not depend on the iframe viewport.

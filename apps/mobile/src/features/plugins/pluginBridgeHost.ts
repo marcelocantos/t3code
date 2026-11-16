@@ -3,7 +3,7 @@ import {
   resolvePluginWebPath,
   PLUGIN_BRIDGE_MAX_MESSAGE_BYTES,
   PLUGIN_BRIDGE_FEATURES,
-  PLUGIN_PANEL_RESIZE_FEATURE,
+  PLUGIN_PANEL_RESIZE_FEATURES,
   PLUGIN_BRIDGE_VERSION,
   type PluginBridgeContent,
   type PluginBridgeOutbound,
@@ -291,7 +291,7 @@ export function pluginBridgeHostHtml(
     type: "t3.bridge.init",
     version: PLUGIN_BRIDGE_VERSION,
     features: resizable
-      ? [...PLUGIN_BRIDGE_FEATURES, PLUGIN_PANEL_RESIZE_FEATURE]
+      ? [...PLUGIN_BRIDGE_FEATURES, ...PLUGIN_PANEL_RESIZE_FEATURES]
       : PLUGIN_BRIDGE_FEATURES,
     ...(ownSurfaceId === undefined ? {} : { surfaceId: ownSurfaceId }),
   } satisfies PluginBridgeOutbound;

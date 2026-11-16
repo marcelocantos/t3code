@@ -11,6 +11,7 @@ describe("parsePluginBridgeMessage", () => {
   it("accepts each frame message the bridge defines", () => {
     for (const message of [
       { type: "panel.resize", height: 144 },
+      { type: "panel.resize", height: 1 },
       {
         type: "surface.open",
         requestId: "r1",
@@ -50,7 +51,7 @@ describe("parsePluginBridgeMessage", () => {
         content: { kind: "web", path: "card.html" },
       }).ok,
     ).toBe(false);
-    for (const height of [-1, 0, 15, 801, 1.5, Infinity, NaN, "100"]) {
+    for (const height of [-1, 0, 801, 1.5, Infinity, NaN, "100"]) {
       expect(parsePluginBridgeMessage({ type: "panel.resize", height }).ok).toBe(false);
     }
     expect(
