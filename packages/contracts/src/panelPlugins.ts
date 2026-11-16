@@ -154,10 +154,17 @@ export const PluginPanelRow = Schema.Struct({
 });
 export type PluginPanelRow = typeof PluginPanelRow.Type;
 
+/**
+ * Built-in thread details sections this panel replaces, by the client's section id (`usage`).
+ * Thread panels only. Clients ignore ids they don't know, so a newer id can't break an older client.
+ */
+const Supersedes = Schema.optional(Schema.Array(Id).check(Schema.isMaxLength(20)));
+
 const NativePluginPanel = Schema.Struct({
   kind: Schema.optional(Schema.Literal("list")),
   id: Id,
   title: Label,
+  supersedes: Supersedes,
   rows: Schema.Array(PluginPanelRow).check(Schema.isMaxLength(2000)),
   filters: Schema.Array(Schema.Struct({ id: Id, label: Label })).check(Schema.isMaxLength(20)),
   filter: Id,
@@ -180,6 +187,7 @@ export const PluginPanel = Schema.Union([
     kind: Schema.Literal("web"),
     id: Id,
     title: Label,
+    supersedes: Supersedes,
     path: Schema.String.check(Schema.isNonEmpty(), Schema.isMaxLength(2048)),
     height: Schema.optional(Schema.Int.check(Schema.isBetween({ minimum: 200, maximum: 1200 }))),
     /** Adds a composer button that opens this page, with `#t3-composer`, in a modal. */

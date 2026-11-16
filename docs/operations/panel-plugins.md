@@ -255,6 +255,14 @@ An empty `panels` array removes all panels for that subscription. IDs are scoped
 and thread; do not reuse panel or row IDs within a snapshot. Panels without a `kind` remain native lists for backwards compatibility.
 Use `kind: "web"` for the isolated SPA renderer described below.
 
+A thread panel of either kind may replace built-in thread details items with
+`"supersedes": ["usage"]`. The ids are the web client's item ids: `environment`, `openIn`,
+`scripts`, `branch`, `gitActions`, `changes`, `servers`, `automations`, `lineage`, `sideChats`,
+`usage` and `context`; unknown ids are ignored. The item is hidden only while the plugin is
+connected and its panel is shown, so it returns when the plugin stops. The thread details menu
+marks it "Replaced by <panel title>", and checking it there keeps it beside the panel. Mobile
+has no thread details items and ignores the field.
+
 Frames are limited to 1 MiB, snapshots to 20 panels, and panels to 2,000 rows. Malformed
 frames disconnect the plugin and show an error. Plugins should validate all incoming messages
 and bind locally unless deliberately deployed remotely. The example rejects browser Origins;

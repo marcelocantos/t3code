@@ -74,7 +74,7 @@ vi.mock("../../state/query", () => ({
   }),
 }));
 
-import { ThreadPluginPanels } from "./ThreadPluginPanels";
+import { ThreadPluginPanels, useThreadPluginPanels } from "./ThreadPluginPanels";
 
 const environmentId = EnvironmentId.make("env");
 const rowTarget = {
@@ -90,10 +90,17 @@ function setup(rows: ReadonlyArray<PluginPanelRow> | null) {
   plugin.surface.mockClear();
 }
 
+// The details card owns the subscription; this stands in for it.
+function Panels(props: { thread: string }) {
+  const threadId = ThreadId.make(props.thread);
+  const panels = useThreadPluginPanels(environmentId, threadId, true);
+  return <ThreadPluginPanels environmentId={environmentId} threadId={threadId} {...panels} />;
+}
+
 const panel = (thread: string) => (
   // The details sidebar sits at the window's right edge.
   <div style={{ width: 240, marginLeft: "auto" }}>
-    <ThreadPluginPanels environmentId={environmentId} threadId={ThreadId.make(thread)} />
+    <Panels thread={thread} />
   </div>
 );
 
