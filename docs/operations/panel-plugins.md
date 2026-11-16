@@ -2,13 +2,13 @@
 
 ## Install the macOS plugin build
 
-Download the Apple Silicon DMG from [this fork's releases](https://github.com/marcelocantos/t3code/releases), open it, and drag **T3 Code+.app** to Applications. (Releases before the rename installed **T3 Code Plugins.app**; delete it after installing, as both are the same app and share their data.) This unsigned build may require approval in **System Settings → Privacy & Security → Open Anyway** after the first launch attempt.
+Download the Apple Silicon DMG from [this fork's releases](https://github.com/marcelocantos/t3code/releases), open it, and drag **T3 Code+.app** to Applications. (Releases before the rename installed **T3 Code Plugins.app**; delete it after installing, as both are the same app and share their data.) Releases signed with a Developer ID open without a warning. Earlier, ad-hoc signed releases need approval in **System Settings → Privacy & Security → Open Anyway** after the first launch attempt.
 
 The fork runs alongside the official app. Its data lives in `~/.t3-plugins/userdata` and its browser profile in `~/Library/Application Support/t3code-plugins`. It starts with a separate workspace list; add your existing project directories. Automatic updates are disabled for this build; install subsequent releases from the same release page. Do not set `T3CODE_HOME` to the official app's data directory.
 
 Use this fork's desktop app or bundled web client for panels; official T3 clients do not include the panel renderers. Both desktop apps register the upstream `t3code` link scheme, so external sign-in/deep links can open either app. Direct environment connections avoid that ambiguity.
 
-A plugin that advertises itself (see [Discovery](#discovery)) appears in **Settings → Plugins**; nothing needs configuring by hand. The URL it advertises is resolved by the T3 environment hosting the thread, so a loopback address refers to that machine. T3 does not bundle or launch any plugin: each one is a service its own project runs.
+A plugin that advertises itself (see [Discovery](#discovery)) appears in **Settings → Plugins**; nothing needs configuring by hand. The URL it advertises is resolved by the T3 environment hosting the thread, so a loopback address refers to that machine. T3 never launches a discovered plugin: each one is a service its own project runs. Only a sidecar entry in `panel-plugins.json` (below) makes T3 start a process.
 
 ## Build modes
 
@@ -25,6 +25,24 @@ The `upgrade` build is for replacing an installed official app with this fork wh
 The updater is switched off by the build itself, not only by the absence of a publish feed: the packaged app carries no `app-update.yml`, and the desktop refuses to configure or check any feed, including a managed-policy or mock feed. Otherwise an official release could replace the fork without notice. About shows "Plugin panels build" to tell the two apart.
 
 Back up `~/.t3` and `~/Library/Application Support/t3code-v2` before the first launch. Chromium and the SQLite database are not safe to share between two running versions, so quit the old app first. This repository does not take or verify backups.
+
+### Signing and notarization
+
+Desktop releases are built, signed and notarized on the maintainer's Mac, not in CI. `.github/workflows/plugin-release.yml` builds an unsigned DMG for pull requests and never uploads to a release.
+
+```sh
+T3CODE_PLUGIN_BUILD=1 node scripts/release-plugin-desktop.ts
+```
+
+This builds the app and DMG and signs them with `Developer ID Application: <team> (<team id>)`, using the hardened runtime and `apps/desktop/resources/entitlements.plugins.mac.plist`. It notarizes and staples the DMG, whose ticket also covers the app, then fails unless `codesign`, `stapler` and `spctl` accept the result. Notarization can take hours, especially a team's first submissions. If the script is interrupted, run it again: it waits on the recorded submission (`release/T3-Code-<version>-arm64.dmg.notary-submission.json`) while the DMG is unchanged, instead of rebuilding. Attach `release/T3-Code-<version>-arm64.dmg` and `release/SHA256SUMS` to the GitHub release.
+
+The build needs T3 Connect's public configuration (relay URL, Clerk publishable key and CLI OAuth client id) from `.env`, `.env.local` or the environment; copy `.env.example` to `.env` for the production values. Without it the app compiles T3 Connect out, so the script refuses to run.
+
+The script reads the team and the App Store Connect API key from `~/.appstoreconnect/canticode.json` (`--notary-config` to change it). It expects the Developer ID certificate and its private key in the login keychain. Only the team's Account Holder can create that certificate, at [Certificates](https://developer.apple.com/account/resources/certificates/add) → **Developer ID Application**, from a certificate signing request made on this Mac. Double-click the downloaded `.cer` to pair it with the key.
+
+Keep the team and the bundle identifier of a mode unchanged between releases. macOS ties privacy permissions and Keychain access to the signing team and the bundle identifier. An ad-hoc signature is tied to one exact build instead, so every ad-hoc upgrade can lose them.
+
+`--identity <name> --skip-notarize` signs with another identity, such as an Apple Development certificate, to check signing and launch without notarizing.
 
 ### Mobile
 
@@ -150,7 +168,7 @@ plugin directly. Web and desktop show sections in thread details; mobile shows t
 the thread list in the sidebar for the selected thread.
 
 Configure the environment's `panel-plugins.json` beside `settings.json` in its userdata
-folder. Configuration is read when a sidebar subscribes and when a discovery decision changes: close and reopen the sidebar after editing the file.
+folder. While a client is connected, T3 re-reads the file every 10 seconds and when the plugin manifest directory changes; it is also read when a sidebar subscribes and when a discovery decision changes.
 This file is environment-owned because sidecar commands execute with the server's privileges.
 Repository `t3.json` does not install or execute plugins.
 
@@ -334,8 +352,9 @@ A pattern has either a `prefix` or a `glob`; a malformed one is ignored.
   requests is that path.
 
 When several patterns match, the one with the longest literal start wins. For a glob, that is the
-text before its first wildcard. A matching link gets the card. Clicking it opens the link, unless
-the plugin takes the link over (below). Adding `links` to an enabled plugin's scopes asks the user
+text before its first wildcard. A matching link gets the card, unless the pattern says
+`"card": false`; T3 then never asks for one. Clicking it opens the link, unless the plugin takes the
+link over (below). Adding `links` to an enabled plugin's scopes asks the user
 again, like `environment`; changing the patterns does not. T3 keeps a plugin with link patterns
 connected while a client is open, and lists its patterns to clients only while it is connected.
 
@@ -373,8 +392,9 @@ A link pattern can also say what the link does and where it leads:
 ```
 
 - `click`: `"card"` makes a click show the card as a dialog (on mobile, a sheet) instead of
-  following the link. A modified click (⌘, Ctrl, Shift or Alt) still follows it. `"open"`, the
-  default, follows the link. On mobile, a tap shows the card unless `click` is `"open"`.
+  following the link. `"activate"` hands the click to the plugin (below). `"open"`, the default,
+  follows the link. A modified click (⌘, Ctrl, Shift or Alt) always follows it. On mobile, a tap
+  shows the card unless `click` is `"open"` or `"activate"`, or the pattern has no card.
 - `href`: where following the link goes. `{url}` is the whole link encoded as one URL component;
   `{rest}` is what follows the prefix, or the glob's literal start, keeping its slashes. A result
   that is not an http(s) URL is ignored. When a rewritten file link is clicked, the new URL opens
@@ -397,8 +417,34 @@ A link pattern can also say what the link does and where it leads:
   the message gave the link its own text. File chips on web and desktop keep their file name. A
   failed or empty answer leaves the link as it is.
 
-Cards, hovers and resolution requests carry the link as written (a file link as its absolute
-path), not the rewritten href.
+- With `"click": "activate"`, a plain click or tap asks the plugin to handle it:
+
+  ```json
+  {
+    "type": "activate",
+    "requestId": "r5",
+    "scope": "link",
+    "linkId": "markdown",
+    "url": "/work/notes/plan.md",
+    "client": { "local": true }
+  }
+  ```
+
+  Answer `"activate": { "handled": true }` when you dealt with the click, for example by opening
+  the file in an application on this machine; T3 then does nothing more. Answer
+  `{ "handled": false }` to decline. A decline, an error, no answer within two seconds, or a
+  disconnected plugin makes the client do what it does for an unclaimed link: follow it, or open
+  the file in T3. Decide before acting, so a slow answer never does both. Activation needs
+  `orchestration:operate`; a client without it never asks.
+
+  `client.local` says whether the person clicking sits at this machine. It is true only when the
+  client says it runs here (desktop, or a browser on a loopback address of this machine) and its
+  connection to T3 comes from a loopback address. Mobile is never local. A tunnel or SSH forward
+  also arrives on loopback, so treat `local` as where the user is, not as authentication: any
+  client with `orchestration:operate` can already open editors on this machine.
+
+Cards, hovers, resolution and activation requests carry the link as written (a file link as its
+absolute path), not the rewritten href.
 
 ## Embedded web applications
 
@@ -465,7 +511,22 @@ validated; an invalid one gets an `error` reply.
 | `surface.action { surfaceId, actionId, value? }`                          | A button, form or list item in a structured surface this frame opened.                                     |
 | `agent.result { requestId, ok, error? }`, `error { requestId?, message }` | Outcomes.                                                                                                  |
 
-`features` lists optional abilities; offer one only when it is listed. A web surface shown
+`features` lists optional abilities; offer one only when it is listed.
+On web and desktop, `surface.hover` allows `hover: true` on a `surface.open`
+popover. The host uses the native plugin-card hover timer: entering its source
+frame or card cancels dismissal, and leaving both closes it after the crossing
+grace period. Leave `hover` unset for keyboard-opened or persistent surfaces.
+Mobile hosts keep their existing sheet behavior and do not advertise this feature.
+
+The `panel.resize` feature lets a panel report its content height with
+`{ "type": "panel.resize", "height": 144 }` over its port (integer 16–800 px).
+The host fits both the iframe and sidebar section to it and hides manual resize
+controls for that panel. Report only changes, for example with `ResizeObserver`
+on a content element whose height does not depend on the iframe viewport.
+Web surfaces cannot resize sidebar panels. Hosts without the feature keep the
+configured height and manual controls.
+
+A web surface shown
 `maximized` fills the window less a 1rem margin on web and desktop, whose dialogs with web content
 also get a maximize toggle in their header. On mobile it becomes a full-height sheet; Android's
 sheet keeps its maximum width on large tablets. The page sees the change as an ordinary `resize`.

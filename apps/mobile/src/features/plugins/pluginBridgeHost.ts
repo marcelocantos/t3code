@@ -3,6 +3,7 @@ import {
   resolvePluginWebPath,
   PLUGIN_BRIDGE_MAX_MESSAGE_BYTES,
   PLUGIN_BRIDGE_FEATURES,
+  PLUGIN_PANEL_RESIZE_FEATURE,
   PLUGIN_BRIDGE_VERSION,
   type PluginBridgeContent,
   type PluginBridgeOutbound,
@@ -16,6 +17,7 @@ import type { PluginSurface } from "@t3tools/contracts";
 
 /** One WebView's end of the bridge. Mutable: it follows the frame across loads. */
 export interface PluginBridgeFrame {
+  readonly onResize?: (height: number) => void;
   /** The surface showing this frame; null for a panel frame. */
   readonly nodeId: string | null;
   /** The id this frame's opener gave its surface. */
@@ -61,6 +63,7 @@ export type PluginBridgeAgent = (
 ) => Promise<string | null>;
 
 export function createPluginBridgeFrame(input: {
+  readonly onResize?: (height: number) => void;
   readonly nodeId: string | null;
   readonly ownSurfaceId: string | undefined;
   readonly gatewayUrl: string;
@@ -160,6 +163,11 @@ export function handlePluginBridgeRelay(
   }
   const message = parsed.message;
   switch (message.type) {
+    case "panel.resize": {
+      if (frame.nodeId === null && frame.onResize !== undefined) frame.onResize(message.height);
+      else frame.send({ type: "error", message: "This frame cannot resize a panel." });
+      return;
+    }
     case "surface.open": {
       const reject = (text: string) =>
         frame.send({ type: "error", requestId: message.requestId, message: text });
@@ -274,11 +282,17 @@ const htmlAttribute = (value: string) =>
  * `t3.bridge.hello` from the frame itself, gets a fresh `MessageChannel`; port messages are relayed
  * to React Native as JSON with the frame's rect. No other window message is accepted.
  */
-export function pluginBridgeHostHtml(src: string, ownSurfaceId: string | undefined) {
+export function pluginBridgeHostHtml(
+  src: string,
+  ownSurfaceId: string | undefined,
+  resizable = false,
+) {
   const init = {
     type: "t3.bridge.init",
     version: PLUGIN_BRIDGE_VERSION,
-    features: PLUGIN_BRIDGE_FEATURES,
+    features: resizable
+      ? [...PLUGIN_BRIDGE_FEATURES, PLUGIN_PANEL_RESIZE_FEATURE]
+      : PLUGIN_BRIDGE_FEATURES,
     ...(ownSurfaceId === undefined ? {} : { surfaceId: ownSurfaceId }),
   } satisfies PluginBridgeOutbound;
   // `<` is escaped so plugin-chosen ids cannot close the script element.

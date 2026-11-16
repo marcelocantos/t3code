@@ -233,6 +233,8 @@ import * as DefectReporter from "./observability/DefectReporter.ts";
 import * as EventLoopMonitor from "./observability/EventLoopMonitor.ts";
 import * as BackgroundPolicy from "./background/BackgroundPolicy.ts";
 import * as EnvironmentAuth from "./auth/EnvironmentAuth.ts";
+import { deriveAuthClientMetadata } from "./auth/utils.ts";
+import { isLocalLoopbackHost } from "@t3tools/shared/hostClassification";
 import { requiredScopeForDeviceList, rpcAuthorizationError } from "./auth/RpcAuthorization.ts";
 import * as RpcAuthorization from "./auth/RpcAuthorization.ts";
 import { RpcInstrumentation, rpcInstrumentationLayer } from "./observability/RpcInstrumentation.ts";
@@ -1402,6 +1404,8 @@ export const layerWsRpc = (
   serverBrowser: ServerBrowser.ServerBrowser["Service"],
   reportProfiles: ServerBrowser.ProfileReporter,
   settingsClient: { readonly secretReferences: boolean },
+  /** A loopback peer may still be a tunnel or port forward; a non-loopback one is never local. */
+  peer: { readonly loopback: boolean } = { loopback: false },
 ) =>
   Layer.effectContext(
     Effect.gen(function* () {
@@ -3291,6 +3295,8 @@ export const layerWsRpc = (
         [WS_METHODS.pluginPanelsSurface]: (input) => panelPlugins.surface(input),
         [WS_METHODS.subscribePluginLinks]: () => panelPlugins.subscribeLinks(),
         [WS_METHODS.pluginLinksResolve]: (input) => panelPlugins.linkResolve(input),
+        [WS_METHODS.pluginLinksActivate]: (input) =>
+          panelPlugins.linkActivate(input, { loopbackPeer: peer.loopback }),
         [WS_METHODS.pluginLinksCard]: (input) =>
           panelPlugins.linkCard(input, {
             allowWeb: currentSession.scopes.includes(AuthOrchestrationOperateScope),
@@ -3625,6 +3631,11 @@ export const layer = Layer.unwrap(
               serverBrowser,
               reportProfiles,
               readSettingsClient(url.value),
+              {
+                loopback: isLocalLoopbackHost(
+                  deriveAuthClientMetadata({ request }).ipAddress ?? "",
+                ),
+              },
             ).pipe(
               Layer.provideMerge(RpcSerialization.layerJson),
               // Handler-context reporters see only request defects, not server-wide defects.

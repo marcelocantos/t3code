@@ -39,14 +39,19 @@ export const PluginLinkTemplate = Schema.String.check(
   Schema.isMaxLength(2048),
   Schema.isPattern(/^https?:\/\/\S+$/),
 );
-/** `open` follows the link (rewritten if the plugin says so); `card` shows the plugin's card. */
-export const PluginLinkClick = Schema.Literals(["open", "card"]);
+/**
+ * `open` follows the link (rewritten if the plugin says so); `card` shows the plugin's card;
+ * `activate` asks the plugin to handle the click and follows the link only if it declines.
+ */
+export const PluginLinkClick = Schema.Literals(["open", "card", "activate"]);
 export type PluginLinkClick = typeof PluginLinkClick.Type;
 const PluginLinkBehaviour = {
   click: Schema.optional(PluginLinkClick),
   href: Schema.optional(PluginLinkTemplate),
   /** The plugin answers a `resolve` request per distinct link with its own href and text. */
   resolve: Schema.optional(Schema.Boolean),
+  /** `false`: the plugin serves no card for these links, so hovering shows none. */
+  card: Schema.optional(Schema.Boolean),
 };
 /** Chat links starting with `prefix`, or matching `glob`, belong to the plugin that declared it. */
 export const PluginLinkPattern = Schema.Union([
@@ -389,6 +394,17 @@ export const PluginLinkResolution = Schema.Struct({
 });
 export type PluginLinkResolution = typeof PluginLinkResolution.Type;
 
+/** A plain click on a link declared with `click: "activate"`. */
+export const PluginLinkActivateInput = Schema.Struct({
+  ...PluginLinkCardInput.fields,
+  /** Whether the clicking client runs on the environment's own machine, as the client sees it. */
+  client: Schema.Struct({ local: Schema.Boolean }),
+});
+export type PluginLinkActivateInput = typeof PluginLinkActivateInput.Type;
+/** `handled: false` means the client follows the link as if no plugin had claimed the click. */
+export const PluginLinkActivation = Schema.Struct({ handled: Schema.Boolean });
+export type PluginLinkActivation = typeof PluginLinkActivation.Type;
+
 const LinkCardHeight = Schema.Int.check(Schema.isBetween({ minimum: 80, maximum: 800 }));
 /** `webUrl` is a gateway path on the environment's HTTP origin, served in a sandboxed frame. */
 export const PluginLinkCard = Schema.Union([
@@ -421,6 +437,8 @@ export const PluginResultMessage = Schema.Union([
     web: Schema.optional(PluginLinkWebCard),
     /** Link resolution only: the link's new href and text. */
     link: Schema.optional(PluginLinkResolution),
+    /** Link activation only: whether the plugin handled the click. */
+    activate: Schema.optional(PluginLinkActivation),
   }),
   Schema.Struct({
     type: Schema.Literal("result"),

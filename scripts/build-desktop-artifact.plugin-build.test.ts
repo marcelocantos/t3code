@@ -5,7 +5,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { vi } from "vite-plus/test";
 
-const loadBuild = (mode: string) =>
+const loadBuild = (mode: string, signed = false) =>
   Effect.acquireUseRelease(
     Effect.sync(() => {
       vi.stubEnv("T3CODE_PLUGIN_BUILD", mode);
@@ -15,7 +15,7 @@ const loadBuild = (mode: string) =>
       Effect.gen(function* () {
         const script = yield* Effect.promise(() => import("./build-desktop-artifact.ts"));
         const config = yield* script
-          .createBuildConfig("mac", "dmg", "0.2.0", false, false, undefined, undefined)
+          .createBuildConfig("mac", "dmg", "0.2.0", signed, false, undefined, undefined)
           .pipe(
             Effect.provide(
               Layer.mergeAll(
@@ -69,6 +69,20 @@ describe("T3CODE_PLUGIN_BUILD packaging", () => {
         from: "apps/desktop/resources/upgrade/InfoPlist.strings",
         to: "en.lproj/InfoPlist.strings",
       });
+    }),
+  );
+
+  it.effect("signs plugin builds with the hardened runtime and no provisioning profile", () =>
+    Effect.gen(function* () {
+      for (const mode of ["1", "upgrade"]) {
+        const mac = (yield* loadBuild(mode, true)).config.mac as Record<string, unknown>;
+        assert.isTrue(mac.hardenedRuntime);
+        assert.match(String(mac.entitlements), /entitlements\.plugins\.mac\.plist$/);
+        assert.equal(mac.entitlementsInherit, mac.entitlements);
+        assert.isUndefined(mac.provisioningProfile);
+      }
+      const official = (yield* loadBuild("", true)).config.mac as Record<string, unknown>;
+      assert.isUndefined(official.entitlements);
     }),
   );
 });

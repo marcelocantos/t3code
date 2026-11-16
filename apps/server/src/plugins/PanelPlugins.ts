@@ -12,6 +12,8 @@ import {
   PluginPanelRequestError,
   type PluginActionResult,
   type PluginLink,
+  type PluginLinkActivateInput,
+  type PluginLinkActivation,
   pluginLinkMatches,
   type PluginLinkCard,
   type PluginLinkCardInput,
@@ -47,6 +49,8 @@ const CONFIGURATION_ERROR: PluginPanelSnapshot = {
   status: "error",
 };
 const REQUEST_TIMEOUT = Duration.seconds(10);
+/** The user is waiting on a click; past this the client follows the link instead. */
+const ACTIVATE_TIMEOUT = Duration.seconds(2);
 
 const servesScope = (plugin: PanelPluginConfig, scope: PluginPanelScope) =>
   (plugin.scopes ?? ["thread"]).includes(scope);
@@ -95,6 +99,14 @@ export class PanelPlugins extends Context.Service<
     readonly linkResolve: (
       input: PluginLinkCardInput,
     ) => Effect.Effect<PluginLinkResolution, PluginPanelRequestError>;
+    /**
+     * Asks the plugin that declared `linkId` with `click: "activate"` to handle a click on `url`.
+     * `local` holds only when the client claims it and the connection's peer is on this machine.
+     */
+    readonly linkActivate: (
+      input: PluginLinkActivateInput,
+      options: { readonly loopbackPeer: boolean },
+    ) => Effect.Effect<PluginLinkActivation, PluginPanelRequestError>;
     /** Asks the plugin that declared `linkId` for a card, if `url` matches its pattern. */
     readonly linkCard: (
       input: PluginLinkCardInput,
@@ -316,6 +328,7 @@ const make = Effect.gen(function* () {
     connection: PanelPluginConnection,
     target: PluginFrameTarget | undefined,
     frame: PluginRequestFrame,
+    timeout: Duration.Duration = REQUEST_TIMEOUT,
   ) {
     return yield* Effect.callback<PluginRequestResult, PluginPanelRequestError>((resume) => {
       const abandon = connection.request(target, frame, (outcome) =>
@@ -324,7 +337,7 @@ const make = Effect.gen(function* () {
       return Effect.sync(abandon);
     }).pipe(
       Effect.timeoutOrElse({
-        duration: REQUEST_TIMEOUT,
+        duration: timeout,
         orElse: () => Effect.fail(new PluginPanelRequestError({ reason: "timeout" })),
       }),
     );
@@ -462,9 +475,33 @@ const make = Effect.gen(function* () {
     },
   );
 
+  const linkActivate: PanelPlugins["Service"]["linkActivate"] = Effect.fn(
+    "PanelPlugins.linkActivate",
+  )(function* (input, options) {
+    const { connection, declared } = yield* claimedLink(input);
+    if (declared.click !== "activate")
+      return yield* rejected("The plugin does not take link clicks over.");
+    const result = yield* send(
+      connection,
+      undefined,
+      {
+        type: "activate",
+        scope: "link",
+        linkId: input.linkId,
+        url: input.url,
+        client: { local: input.client.local && options.loopbackPeer },
+      },
+      ACTIVATE_TIMEOUT,
+    );
+    if (!result.activate) return yield* new PluginPanelRequestError({ reason: "invalid-response" });
+    return result.activate;
+  });
+
   const linkCard: PanelPlugins["Service"]["linkCard"] = Effect.fn("PanelPlugins.linkCard")(
     function* (input, options) {
-      const { key, connection } = yield* claimedLink(input);
+      const { key, connection, declared } = yield* claimedLink(input);
+      if (declared.card === false)
+        return yield* rejected("The plugin serves no card for this link.");
       const result = yield* send(connection, undefined, {
         type: "surface",
         scope: "link",
@@ -504,6 +541,7 @@ const make = Effect.gen(function* () {
     subscribeLinks,
     linkCard,
     linkResolve,
+    linkActivate,
   });
 });
 

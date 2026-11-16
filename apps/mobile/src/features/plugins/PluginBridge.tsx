@@ -138,6 +138,7 @@ export function useOpenPluginPage() {
  * plugin and relays its port (see `pluginBridgeHostHtml`); replies go back via `injectJavaScript`.
  */
 export function PluginBridgeWebView(props: {
+  readonly onResize?: (height: number) => void;
   readonly src: string;
   readonly height: number;
   readonly nodeId: string | null;
@@ -150,6 +151,7 @@ export function PluginBridgeWebView(props: {
   const connection = usePreparedConnection(host.environmentId);
   const [frame] = useState(() =>
     createPluginBridgeFrame({
+      ...(props.onResize === undefined ? {} : { onResize: props.onResize }),
       nodeId: props.nodeId,
       ownSurfaceId: props.ownSurfaceId,
       gatewayUrl: props.gatewayUrl,
@@ -173,7 +175,14 @@ export function PluginBridgeWebView(props: {
               : (message) => view.injectJavaScript(pluginBridgeInjection(message)),
           )
         }
-        source={{ html: pluginBridgeHostHtml(props.src, props.ownSurfaceId), baseUrl }}
+        source={{
+          html: pluginBridgeHostHtml(
+            props.src,
+            props.ownSurfaceId,
+            props.nodeId === null && props.onResize !== undefined,
+          ),
+          baseUrl,
+        }}
         originWhitelist={["*"]}
         incognito
         sharedCookiesEnabled={false}

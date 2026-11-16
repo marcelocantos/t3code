@@ -2821,13 +2821,18 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
   const onMarkdownLinkPress = (href: string, imageEmbed = false, skipPluginCard = false) => {
     const claim = imageEmbed || skipPluginCard ? undefined : pluginLinkTakeover.match(href);
     if (claim) {
-      // Touch has no hover, so a plugin link shows its card first unless the plugin says `open`.
-      if (claim.link.click !== "open") setPluginLinkCard(claim);
-      else {
+      const open = () => {
         const target = pluginLinkTakeover.hrefFor(claim.link, claim.url);
         // A file link the plugin did not rewrite opens as the file it was.
         onMarkdownLinkPress(target === claim.url ? href : target, false, true);
-      }
+      };
+      // Touch has no hover, so a plugin link shows its card first unless the plugin says `open`.
+      if (claim.link.click === "activate")
+        void pluginLinkTakeover.activate(claim.link, claim.url).then((handled) => {
+          if (!handled) open();
+        });
+      else if (claim.link.click !== "open" && claim.link.card !== false) setPluginLinkCard(claim);
+      else open();
       return;
     }
     markdownLinkRequest.current?.abort();

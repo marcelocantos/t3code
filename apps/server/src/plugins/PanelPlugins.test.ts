@@ -80,6 +80,14 @@ const startPlugin = Effect.acquireRelease(
             if (message.actionId === "reject") reply({ ...result, ok: false, error: "Nope" });
             else reply({ ...result, ok: true, close: true });
             break;
+          case "activate":
+            if (message.url.includes("silent")) break;
+            reply(
+              message.url.includes("unanswered")
+                ? { ...result, ok: true }
+                : { ...result, ok: true, activate: { handled: message.client.local } },
+            );
+            break;
           case "resolve":
             reply({
               ...result,
@@ -267,7 +275,8 @@ const scopedPlugins = Effect.gen(function* () {
       {
         id: ENVIRONMENT_PLUGIN,
         connection: { kind: "server", baseUrl: `${plugin.origin}/plugins/environment` },
-        scopes: ["thread", "environment"],
+        scopes: ["thread", "environment", "links"],
+        links: [{ id: "open", glob: "/**/*.md", click: "activate" }],
       },
       {
         id: THREAD_PLUGIN,
@@ -403,6 +412,22 @@ it.effect("times out a silent plugin and ignores its late answer", () =>
         yield* panels.act({ target, pluginId: ENVIRONMENT_PLUGIN, ...row, actionId: "done" }),
         { close: true },
       );
+
+      // The user is waiting on a click, so activation gives up much sooner.
+      const activation = yield* panels
+        .linkActivate(
+          {
+            pluginId: ENVIRONMENT_PLUGIN,
+            linkId: "open",
+            url: "/work/silent.md",
+            client: { local: true },
+          },
+          { loopbackPeer: true },
+        )
+        .pipe(Effect.flip, Effect.forkScoped);
+      yield* plugin.frame((frame) => frame.message.type === "activate");
+      yield* TestClock.adjust("2 seconds");
+      assert.equal((yield* Fiber.join(activation)).reason, "timeout");
     }).pipe(Effect.provide(layer));
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
@@ -426,6 +451,7 @@ it.live("serves link cards only for declared prefixes of plugins with the links 
         href: "https://directory.example/people/{rest}",
         resolve: true,
       },
+      { id: "open", glob: "/**/*.md", click: "activate" as const, card: false },
     ];
     yield* fs.writeFileString(
       path.join(baseDir, "userdata", "panel-plugins.json"),
@@ -520,6 +546,48 @@ it.live("serves link cards only for declared prefixes of plugins with the links 
         panels.linkResolve({ pluginId: "viewer", linkId: "staff", url }),
       );
       assert.equal(outsideStaff.reason, "rejected");
+
+      // Activation tells the plugin where the user is: only a client that says it is local, on a
+      // loopback connection, counts as local.
+      const activate = (url: string, local: boolean, loopbackPeer: boolean) =>
+        panels.linkActivate(
+          { pluginId: "viewer", linkId: "open", url, client: { local } },
+          { loopbackPeer },
+        );
+      assert.deepStrictEqual(yield* activate("/work/notes.md", true, true), { handled: true });
+      const activated = yield* plugin.frame((frame) => frame.message.type === "activate");
+      assert.deepStrictEqual(
+        [activated.message.scope, activated.message.linkId, activated.message.url],
+        ["link", "open", "/work/notes.md"],
+      );
+      assert.deepStrictEqual(activated.message.client, { local: true });
+      assert.equal("threadId" in activated.message || "projects" in activated.message, false);
+      assert.deepStrictEqual(yield* activate("/work/notes.md", true, false), { handled: false });
+      assert.deepStrictEqual(yield* activate("/work/notes.md", false, true), { handled: false });
+      const unanswered = yield* Effect.flip(activate("/work/unanswered.md", true, true));
+      assert.equal(unanswered.reason, "invalid-response");
+      // Neither a link outside the glob nor one whose pattern keeps its clicks reaches the plugin.
+      const activations = () =>
+        plugin.frames.filter((frame) => frame.message.type === "activate").length;
+      const before = activations();
+      assert.equal(
+        (yield* Effect.flip(activate("/work/notes.txt", true, true))).reason,
+        "rejected",
+      );
+      const keepsClicks = yield* Effect.flip(
+        panels.linkActivate(
+          { pluginId: "viewer", linkId: "message", url, client: { local: true } },
+          { loopbackPeer: true },
+        ),
+      );
+      assert.equal(keepsClicks.reason, "rejected");
+      // A pattern that serves no card is never asked for one.
+      const cardless = yield* Effect.flip(
+        card({ pluginId: "viewer", linkId: "open", url: "/work/notes.md" }),
+      );
+      assert.equal(cardless.reason, "rejected");
+      assert.equal(activations(), before);
+      assert.equal(plugin.frames.filter((frame) => frame.message.type === "surface").length, 3);
 
       // Declaring links without the scope gets neither a connection nor link frames.
       const unscoped = yield* Effect.flip(

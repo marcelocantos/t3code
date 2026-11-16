@@ -29,6 +29,8 @@
         "fixtures/*/*.js",
         "knip-schemas.ts",
         "linux-after-pack.ts",
+        // The maintainer runs the plugin build's signed release by path; see panel-plugins.md.
+        "release-plugin-desktop.ts",
         "mobile-behavior/run.ts",
         "mobile-native-client.ts",
         "setup-worktree.ts",

@@ -3,6 +3,7 @@ import {
   matchPluginLink,
   pluginLinkHref,
 } from "@t3tools/client-runtime/state/panelPlugins";
+import { useAtomValue } from "@effect/atom-react";
 import type { EnvironmentId, PluginLink } from "@t3tools/contracts";
 import { useEffect, useId, useRef, useSyncExternalStore, type ReactNode } from "react";
 import { useEnvironmentQuery } from "../../state/query";
@@ -57,6 +58,8 @@ export function PluginLinkHover(props: {
   href: string;
   /** The bare link, shown with the card in place of `children`. */
   link: ReactNode;
+  /** Whether this client runs on the environment's machine, for plugins that take clicks over. */
+  local: boolean;
   children: ReactNode;
 }) {
   const query = useEnvironmentQuery(
@@ -68,8 +71,13 @@ export function PluginLinkHover(props: {
   if (props.environmentId === null || match === undefined) return props.children;
   return (
     <PluginSurfaceHost>
-      <LinkCardTrigger environmentId={props.environmentId} link={match} url={props.href}>
-        {props.link}
+      <LinkCardTrigger
+        environmentId={props.environmentId}
+        link={match}
+        url={props.href}
+        local={props.local}
+      >
+        {match.card === false ? props.children : props.link}
       </LinkCardTrigger>
     </PluginSurfaceHost>
   );
@@ -82,6 +90,7 @@ export function PluginLinkHover(props: {
 export function PluginFileLink(props: {
   environmentId: EnvironmentId | null;
   path: string;
+  local: boolean;
   children: ReactNode;
 }) {
   const takeover = usePluginLinkTakeover(props.environmentId, props.path);
@@ -92,6 +101,7 @@ export function PluginFileLink(props: {
         environmentId={props.environmentId}
         link={takeover.link}
         url={props.path}
+        local={props.local}
         {...(takeover.href !== props.path ? { openHref: takeover.href } : {})}
       >
         {props.children}
@@ -104,6 +114,7 @@ function LinkCardTrigger(props: {
   environmentId: EnvironmentId;
   link: PluginLink;
   url: string;
+  local: boolean;
   /** Where a plain click goes instead, for links whose own click cannot be rewritten. */
   openHref?: string;
   children: ReactNode;
@@ -111,6 +122,28 @@ function LinkCardTrigger(props: {
   const host = usePluginSurfaceHost();
   const transientKey = useId();
   const openTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const activate = useAtomCommand(pluginLinks.activate, { reportFailure: false });
+  const canActivate = useAtomValue(pluginLinks.activate.permissionAtom(props.environmentId));
+  const takesClick = props.link.click === "activate" && canActivate;
+  const activation = useRef<"idle" | "asking" | "replaying">("idle");
+  /** Asks the plugin; when it declines, fails or is gone, replays the click as an unclaimed one. */
+  const askPlugin = async (target: HTMLElement) => {
+    activation.current = "asking";
+    const result = await activate({
+      environmentId: props.environmentId,
+      input: {
+        pluginId: props.link.pluginId,
+        linkId: props.link.linkId,
+        url: props.url,
+        client: { local: props.local },
+      },
+    });
+    activation.current = "idle";
+    if ((result._tag === "Success" && result.value.handled) || !target.isConnected) return;
+    activation.current = "replaying";
+    target.click();
+    activation.current = "idle";
+  };
   const cancelOpen = () => {
     if (openTimer.current !== null) clearTimeout(openTimer.current);
     openTimer.current = null;
@@ -122,9 +155,10 @@ function LinkCardTrigger(props: {
     },
     [],
   );
+  const hasCard = props.link.card !== false;
   const show = (anchor: Element) => {
     cancelOpen();
-    if (!anchor.isConnected) return;
+    if (!anchor.isConnected || !hasCard) return;
     host.showLinkCard({
       environmentId: props.environmentId,
       link: props.link,
@@ -142,7 +176,17 @@ function LinkCardTrigger(props: {
       data-plugin-link={props.link.pluginId}
       onClickCapture={(event) => {
         if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-        if (props.link.click !== "card") {
+        if (takesClick && activation.current !== "replaying") {
+          event.preventDefault();
+          event.stopPropagation();
+          cancelOpen();
+          if (activation.current === "idle")
+            void askPlugin(
+              event.target instanceof HTMLElement ? event.target : event.currentTarget,
+            );
+          return;
+        }
+        if (props.link.click !== "card" || !hasCard) {
           if (props.openHref === undefined) return;
           event.preventDefault();
           event.stopPropagation();

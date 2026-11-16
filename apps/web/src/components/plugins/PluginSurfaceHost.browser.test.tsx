@@ -1,6 +1,7 @@
 import { expect, it, vi } from "vite-plus/test";
 import { page } from "vite-plus/test/browser";
-import { render } from "../../../test/render";
+import { fakeTimers, render } from "../../../test/render";
+import { SizedPanel } from "./PluginPanels";
 
 const host = vi.hoisted(() => ({
   confirm: vi.fn(async (_message: string) => true),
@@ -11,6 +12,7 @@ const host = vi.hoisted(() => ({
 vi.mock("./pluginState", () => ({
   pluginPanelCommands: { act: {}, surface: {} },
   pluginLinks: { card: {} },
+  usePluginPanelHeight: () => [320, () => {}],
 }));
 vi.mock("../../state/use-atom-command", () => ({ useAtomCommand: () => host.act }));
 vi.mock("../../confirmDialog", () => ({ requestConfirmDialog: host.confirm }));
@@ -41,22 +43,32 @@ it("lets a sandboxed panel open surfaces, read a child's result, and prompt the 
     [Symbol.asyncDispose]: () => page.viewport(viewport.width, viewport.height),
   };
   const reported = (text: string) => vi.waitFor(() => expect(reports).toContain(text));
-  await using _screen = await render(
-    <PluginAgentContext
-      value={{ runningSources: new Set(), submit: host.submit, stop: async () => null }}
-    >
-      <PluginSurfaceHost>
-        <div style={{ width: 300, marginLeft: "auto" }}>
+  function ContentSizedFrame() {
+    return (
+      <SizedPanel pluginId="counter" panelId="compact" title="Counter" defaultHeight={320}>
+        {(onResize, height) => (
           <PluginFrame
             src={`${gateway}panel.html`}
             title="Counter panel"
-            height={240}
+            height={height ?? 240}
+            onResize={onResize}
             nodeId={null}
             ownSurfaceId={undefined}
             gatewayUrl={`${gateway}panel.html`}
             panelTitle="Counter"
             agentSource="frame:counter"
           />
+        )}
+      </SizedPanel>
+    );
+  }
+  await using _screen = await render(
+    <PluginAgentContext
+      value={{ runningSources: new Set(), submit: host.submit, stop: async () => null }}
+    >
+      <PluginSurfaceHost>
+        <div style={{ width: 300, marginLeft: "auto" }}>
+          <ContentSizedFrame />
         </div>
       </PluginSurfaceHost>
     </PluginAgentContext>,
@@ -64,6 +76,19 @@ it("lets a sandboxed panel open surfaces, read a child's result, and prompt the 
   const frameElement = page.getByTitle("Counter panel");
   const frame = page.frameLocator(frameElement);
   await reported("bridge ready");
+  await frame.getByRole("button", { name: "Fit content" }).click();
+  await vi.waitFor(() => expect(frameElement.element().clientHeight).toBe(144));
+  await vi.waitFor(() =>
+    expect(
+      page
+        .getByRole("region", { name: "Counter content", exact: true })
+        .element()
+        .getBoundingClientRect().height,
+    ).toBe(144),
+  );
+  await expect
+    .element(page.getByRole("separator", { name: "Resize Counter" }))
+    .not.toBeInTheDocument();
 
   // A structured card anchored in the frame; its action goes back to the frame, not a plugin.
   await frame.getByRole("button", { name: "Open card" }).click();
@@ -92,6 +117,47 @@ it("lets a sandboxed panel open surfaces, read a child's result, and prompt the 
     "Send this message from Counter?\nSummarize the panel.",
   );
   expect(host.submit).toHaveBeenCalledWith("frame:counter", "Summarize the panel.");
+});
+
+it("keeps a web hover card across its panel and card, then closes outside both", async () => {
+  await using _screen = await render(
+    <PluginSurfaceHost>
+      <button style={{ position: "fixed", left: 0, bottom: 0 }}>Outside</button>
+      <div style={{ width: 300, marginLeft: "auto" }}>
+        <PluginFrame
+          src={`${gateway}panel.html`}
+          title="Hover panel"
+          height={240}
+          nodeId={null}
+          ownSurfaceId={undefined}
+          gatewayUrl={`${gateway}panel.html`}
+          panelTitle="Hover details"
+          agentSource="frame:hover"
+        />
+      </div>
+    </PluginSurfaceHost>,
+  );
+  const panel = page.frameLocator(page.getByTitle("Hover panel"));
+  await panel.getByRole("button", { name: "Hover card" }).hover();
+  const card = page.getByTitle("Hover details", { exact: true });
+  const details = page.frameLocator(card);
+  await expect.element(card).toBeVisible();
+  using _timers = fakeTimers();
+  await details.getByRole("button", { name: "Blue" }).hover();
+  await vi.runOnlyPendingTimersAsync();
+  await expect.element(card).toBeVisible();
+  await panel.getByRole("button", { name: "Hover card" }).hover();
+  await vi.runOnlyPendingTimersAsync();
+  await expect.element(card).toBeVisible();
+  await details.getByRole("button", { name: "Blue" }).hover();
+  await page.getByRole("button", { name: "Outside", exact: true }).hover();
+  await vi.runOnlyPendingTimersAsync();
+  await expect.element(card).not.toBeInTheDocument();
+  await panel.getByRole("button", { name: "Hover card" }).hover();
+  await expect.element(card).toBeVisible();
+  await page.getByRole("button", { name: "Outside", exact: true }).hover();
+  await vi.runOnlyPendingTimersAsync();
+  await expect.element(card).not.toBeInTheDocument();
 });
 
 it("hands the bridge again to a frame that asks after missing it", async () => {

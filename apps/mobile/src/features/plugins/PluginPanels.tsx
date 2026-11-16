@@ -123,12 +123,13 @@ export function PluginPanels(props: {
               }
               web={panel.kind === "web"}
             >
-              {(height) =>
+              {(height, onResize) =>
                 panel.kind === "web" ? (
                   <PluginWebPanel
                     environmentId={props.environmentId}
                     panel={panel}
                     height={height}
+                    onResize={onResize}
                     agentKey={pluginFrameAgentKey(plugin.pluginId, panel.id)}
                   />
                 ) : (
@@ -166,29 +167,34 @@ function PanelFrame(props: {
   readonly title: string;
   readonly fallbackHeight: number;
   readonly web: boolean;
-  readonly children: (height: number) => ReactNode;
+  readonly children: (height: number, onResize: (height: number) => void) => ReactNode;
 }) {
   const { height, resize } = usePluginPanelHeight(props.heightKey, props.fallbackHeight);
+  const [contentHeight, setContentHeight] = useState<number | null>(null);
   return (
     <View className={cn("gap-2", !props.web && "rounded-xl bg-grouped-card p-3")}>
       <View className="flex-row items-center gap-2">
         <Text accessibilityRole="header" className="min-w-0 flex-1 font-t3-medium text-foreground">
           {props.title}
         </Text>
-        <IconButton
-          icon="minus"
-          accessibilityLabel={`Shorten ${props.title}`}
-          disabled={height <= PLUGIN_PANEL_HEIGHT.min}
-          onPress={() => resize(-PLUGIN_PANEL_HEIGHT.step)}
-        />
-        <IconButton
-          icon="plus"
-          accessibilityLabel={`Lengthen ${props.title}`}
-          disabled={height >= PLUGIN_PANEL_HEIGHT.max}
-          onPress={() => resize(PLUGIN_PANEL_HEIGHT.step)}
-        />
+        {contentHeight === null && (
+          <IconButton
+            icon="minus"
+            accessibilityLabel={`Shorten ${props.title}`}
+            disabled={height <= PLUGIN_PANEL_HEIGHT.min}
+            onPress={() => resize(-PLUGIN_PANEL_HEIGHT.step)}
+          />
+        )}
+        {contentHeight === null && (
+          <IconButton
+            icon="plus"
+            accessibilityLabel={`Lengthen ${props.title}`}
+            disabled={height >= PLUGIN_PANEL_HEIGHT.max}
+            onPress={() => resize(PLUGIN_PANEL_HEIGHT.step)}
+          />
+        )}
       </View>
-      {props.children(height)}
+      {props.children(contentHeight ?? height, setContentHeight)}
     </View>
   );
 }

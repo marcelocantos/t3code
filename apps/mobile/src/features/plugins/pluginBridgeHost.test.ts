@@ -38,6 +38,27 @@ function setup(agent: PluginBridgeAgent = async () => null) {
 const structured = { kind: "structured", surface: { title: "Card", blocks: [] } };
 
 describe("handlePluginBridgeRelay", () => {
+  it("resizes an opting-in panel but refuses resize requests from surfaces", () => {
+    const { receive, sent } = setup();
+    const heights: number[] = [];
+    const panel = createPluginBridgeFrame({
+      nodeId: null,
+      ownSurfaceId: undefined,
+      gatewayUrl: GATEWAY,
+      panelTitle: "Compact",
+      agentKey: "compact",
+      onResize: (height) => heights.push(height),
+    });
+    receive(panel, { type: "panel.resize", height: 144 });
+    expect(heights).toEqual([144]);
+    const child = createPluginBridgeFrame({ ...panel, nodeId: "child", ownSurfaceId: "child" });
+    child.send = (message) => sent.push(["child", message]);
+    receive(child, { type: "panel.resize", height: 180 });
+    expect(heights).toEqual([144]);
+    expect(sent).toEqual([
+      ["child", { type: "error", message: "This frame cannot resize a panel." }],
+    ]);
+  });
   it("returns a child web surface's result to the frame that opened it", () => {
     const { tree, sent, frame, receive } = setup();
     const panel = frame("panel");

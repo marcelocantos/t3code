@@ -7,11 +7,13 @@ export function PluginWebPanel({
   panel,
   height,
   agentKey,
+  onResize,
 }: {
   environmentId: EnvironmentId;
   panel: Extract<PluginPanel, { kind: "web" }>;
   height: number;
   agentKey: string;
+  onResize: (height: number) => void;
 }) {
   const connection = usePreparedConnection(environmentId);
   if (connection._tag === "None") return null;
@@ -21,6 +23,7 @@ export function PluginWebPanel({
       key={url}
       src={url}
       height={height}
+      onResize={onResize}
       nodeId={null}
       ownSurfaceId={undefined}
       gatewayUrl={url}

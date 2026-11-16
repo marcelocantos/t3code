@@ -37,6 +37,8 @@ import {
   pluginPlacementParts,
   resolvePluginWebPath,
   PLUGIN_BRIDGE_FEATURES,
+  PLUGIN_PANEL_RESIZE_FEATURE,
+  PLUGIN_SURFACE_HOVER_FEATURE,
   PLUGIN_BRIDGE_VERSION,
   type PluginBridgeContent,
   type PluginBridgeOutbound,
@@ -94,6 +96,7 @@ type SurfaceAnchor = Element | VirtualAnchor | null;
 
 /** One frame's end of the bridge. Mutable: it follows the frame across loads. */
 export interface PluginFrameEndpoint {
+  readonly onResize?: (height: number) => void;
   /** The surface showing this frame; null for a panel frame. */
   readonly nodeId: string | null;
   /** The id this frame's opener gave its surface. */
@@ -503,6 +506,11 @@ function useHostApi(
     }
     const message = parsed.message;
     switch (message.type) {
+      case "panel.resize": {
+        if (frame.nodeId === null && frame.onResize !== undefined) frame.onResize(message.height);
+        else post(frame, { type: "error", message: "This frame cannot resize a panel." });
+        return;
+      }
       case "surface.open": {
         const reject = (text: string) =>
           post(frame, { type: "error", requestId: message.requestId, message: text });
@@ -519,9 +527,14 @@ function useHostApi(
         const { side, align } = pluginPlacementParts(message.placement);
         const id = tree.newId();
         const { surfaceId } = message;
+        const transientKey =
+          message.hover === true && message.presentation === "popover"
+            ? `frame-hover:${id}`
+            : undefined;
         const opened = tree.open({
           id,
           parentId,
+          transientKey,
           presentation: message.presentation,
           title: content.kind === "structured" ? content.surface.title : frame.panelTitle,
           anchor: frameAnchor(frame, message.anchor),
@@ -540,6 +553,7 @@ function useHostApi(
           panelTitle: frame.panelTitle,
           agentSource: frame.agentSource,
           onClosed: (reason, result) => {
+            if (transientKey !== undefined) cancelHoverClose(transientKey);
             frame.surfaces.delete(surfaceId);
             post(frame, {
               type: "surface.closed",
@@ -941,7 +955,13 @@ function openBridge(
     {
       type: "t3.bridge.init",
       version: PLUGIN_BRIDGE_VERSION,
-      features: PLUGIN_BRIDGE_FEATURES,
+      features: [
+        ...PLUGIN_BRIDGE_FEATURES,
+        ...(endpoint.nodeId === null ? ([PLUGIN_SURFACE_HOVER_FEATURE] as const) : []),
+        ...(endpoint.nodeId === null && endpoint.onResize !== undefined
+          ? ([PLUGIN_PANEL_RESIZE_FEATURE] as const)
+          : []),
+      ],
       ...(endpoint.ownSurfaceId === undefined ? {} : { surfaceId: endpoint.ownSurfaceId }),
     } satisfies PluginBridgeOutbound,
     "*",
@@ -954,6 +974,7 @@ function openBridge(
  * frame is opaque-origin, so the init message targets `*` and only the transferred port is trusted.
  */
 export function PluginFrame(props: {
+  onResize?: (height: number) => void;
   src: string;
   title: string;
   height: number | string;
@@ -965,6 +986,7 @@ export function PluginFrame(props: {
 }) {
   const host = usePluginSurfaceHost();
   const [endpoint] = useState<PluginFrameEndpoint>(() => ({
+    ...(props.onResize === undefined ? {} : { onResize: props.onResize }),
     nodeId: props.nodeId,
     ownSurfaceId: props.ownSurfaceId,
     gatewayUrl: props.gatewayUrl,
@@ -976,6 +998,17 @@ export function PluginFrame(props: {
   }));
   const { tree } = host;
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const hoverFrame = (inside: boolean) => {
+    for (const node of tree.nodes) {
+      if (
+        !Array.from(endpoint.surfaces.values()).includes(node.id) ||
+        node.transientKey === undefined
+      )
+        continue;
+      if (inside) host.cancelHoverClose(node.transientKey);
+      else host.scheduleHoverClose(node.transientKey);
+    }
+  };
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- the bridge port and what the frame opened end with the frame
   useEffect(() => () => closeFrame(endpoint, tree), [endpoint, tree]);
   // A frame whose script starts listening after `load` (a top-level await, say) missed the init;
@@ -1000,6 +1033,8 @@ export function PluginFrame(props: {
       referrerPolicy="no-referrer"
       className="block w-full border-0"
       style={{ height: props.height }}
+      onPointerEnter={() => hoverFrame(true)}
+      onPointerLeave={() => hoverFrame(false)}
       onLoad={(event) =>
         openBridge(endpoint, tree, event.currentTarget, (data) =>
           host.handleFrameMessage(endpoint, data),

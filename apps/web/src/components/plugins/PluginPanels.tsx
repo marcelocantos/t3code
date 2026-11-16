@@ -125,11 +125,15 @@ export function PluginPanels(props: {
                 defaultHeight={props.defaultHeight}
               >
                 {panel.kind === "web" ? (
-                  <PluginWebPanel
-                    environmentId={props.environmentId}
-                    pluginId={plugin.pluginId}
-                    panel={panel}
-                  />
+                  (onResize, height) => (
+                    <PluginWebPanel
+                      environmentId={props.environmentId}
+                      pluginId={plugin.pluginId}
+                      panel={panel}
+                      height={height}
+                      onResize={onResize}
+                    />
+                  )
                 ) : (
                   <PluginNativeList
                     environmentId={props.environmentId}
@@ -155,24 +159,25 @@ const clampPanelHeight = (height: number) =>
   Math.round(Math.min(PANEL_HEIGHT.max, Math.max(PANEL_HEIGHT.min, height)));
 
 /** Panel content whose bottom border drags to resize it; arrow keys do the same when focused. */
-function SizedPanel(props: {
+export function SizedPanel(props: {
   pluginId: string;
   panelId: string;
   title: string;
   defaultHeight: number;
-  children: ReactNode;
+  children: ReactNode | ((onResize: (height: number) => void, height: number | null) => ReactNode);
 }) {
   const [savedHeight, saveHeight] = usePluginPanelHeight(
     props.pluginId,
     props.panelId,
     props.defaultHeight,
   );
+  const [contentHeight, setContentHeight] = useState<number | null>(null);
   // While dragging, the height lives here and is saved once on release. The session sits in a
   // ref so a move that arrives before React re-renders still sees its pointerdown.
   const dragRef = useRef<{ pointerId: number; startY: number; startHeight: number } | null>(null);
   const [dragHeight, setDragHeight] = useState<number | null>(null);
   const contentRef = useRef<HTMLDivElement>(null);
-  const height = dragHeight ?? savedHeight;
+  const height = contentHeight ?? dragHeight ?? savedHeight;
   const dragging = dragHeight !== null;
   const heightAt = (event: PointerEvent<HTMLDivElement>) => {
     const session = dragRef.current;
@@ -197,62 +202,66 @@ function SizedPanel(props: {
         style={{
           height,
           maxHeight: "60vh",
-          minHeight: PANEL_HEIGHT.min,
+          minHeight: contentHeight === null ? PANEL_HEIGHT.min : undefined,
           overflow: "auto",
           // An embedded frame would otherwise swallow the pointer mid-drag.
           pointerEvents: dragging ? "none" : undefined,
         }}
       >
-        {props.children}
+        {typeof props.children === "function"
+          ? props.children(setContentHeight, contentHeight)
+          : props.children}
       </div>
-      <div
-        role="separator"
-        aria-orientation="horizontal"
-        aria-label={`Resize ${props.title}`}
-        aria-valuemin={PANEL_HEIGHT.min}
-        aria-valuemax={PANEL_HEIGHT.max}
-        aria-valuenow={height}
-        tabIndex={0}
-        className="group relative h-2 cursor-row-resize touch-none outline-none"
-        onPointerDown={(event) => {
-          if (event.button !== 0) return;
-          event.preventDefault();
-          try {
-            event.currentTarget.setPointerCapture(event.pointerId);
-          } catch {}
-          // Start from what is on screen, which the 60vh cap may hold below the saved height.
-          const shown = contentRef.current?.getBoundingClientRect().height ?? height;
-          dragRef.current = {
-            pointerId: event.pointerId,
-            startY: event.clientY,
-            startHeight: shown,
-          };
-          setDragHeight(clampPanelHeight(shown));
-        }}
-        onPointerMove={(event) => {
-          const next = heightAt(event);
-          if (next !== null) setDragHeight(next);
-        }}
-        onPointerUp={endDrag}
-        onPointerCancel={endDrag}
-        onKeyDown={(event) => {
-          const delta =
-            event.key === "ArrowDown"
-              ? PANEL_HEIGHT.keyStep
-              : event.key === "ArrowUp"
-                ? -PANEL_HEIGHT.keyStep
-                : 0;
-          if (delta === 0) return;
-          event.preventDefault();
-          saveHeight(clampPanelHeight(height + delta));
-        }}
-      >
+      {contentHeight === null && (
         <div
-          className={`absolute inset-x-0 top-1/2 h-px -translate-y-1/2 transition-colors group-hover:h-0.5 group-hover:bg-primary group-focus-visible:h-0.5 group-focus-visible:bg-primary ${
-            dragging ? "h-0.5 bg-primary" : "bg-border"
-          }`}
-        />
-      </div>
+          role="separator"
+          aria-orientation="horizontal"
+          aria-label={`Resize ${props.title}`}
+          aria-valuemin={PANEL_HEIGHT.min}
+          aria-valuemax={PANEL_HEIGHT.max}
+          aria-valuenow={height}
+          tabIndex={0}
+          className="group relative h-2 cursor-row-resize touch-none outline-none"
+          onPointerDown={(event) => {
+            if (event.button !== 0) return;
+            event.preventDefault();
+            try {
+              event.currentTarget.setPointerCapture(event.pointerId);
+            } catch {}
+            // Start from what is on screen, which the 60vh cap may hold below the saved height.
+            const shown = contentRef.current?.getBoundingClientRect().height ?? height;
+            dragRef.current = {
+              pointerId: event.pointerId,
+              startY: event.clientY,
+              startHeight: shown,
+            };
+            setDragHeight(clampPanelHeight(shown));
+          }}
+          onPointerMove={(event) => {
+            const next = heightAt(event);
+            if (next !== null) setDragHeight(next);
+          }}
+          onPointerUp={endDrag}
+          onPointerCancel={endDrag}
+          onKeyDown={(event) => {
+            const delta =
+              event.key === "ArrowDown"
+                ? PANEL_HEIGHT.keyStep
+                : event.key === "ArrowUp"
+                  ? -PANEL_HEIGHT.keyStep
+                  : 0;
+            if (delta === 0) return;
+            event.preventDefault();
+            saveHeight(clampPanelHeight(height + delta));
+          }}
+        >
+          <div
+            className={`absolute inset-x-0 top-1/2 h-px -translate-y-1/2 transition-colors group-hover:h-0.5 group-hover:bg-primary group-focus-visible:h-0.5 group-focus-visible:bg-primary ${
+              dragging ? "h-0.5 bg-primary" : "bg-border"
+            }`}
+          />
+        </div>
+      )}
     </div>
   );
 }

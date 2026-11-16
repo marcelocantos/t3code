@@ -10,11 +10,13 @@ import {
 describe("parsePluginBridgeMessage", () => {
   it("accepts each frame message the bridge defines", () => {
     for (const message of [
+      { type: "panel.resize", height: 144 },
       {
         type: "surface.open",
         requestId: "r1",
         surfaceId: "card",
         presentation: "popover",
+        hover: true,
         anchor: { x: 1, y: 2, width: 30, height: 10 },
         placement: "right-start",
         content: { kind: "structured", surface: { title: "Card", blocks: [] } },
@@ -38,6 +40,19 @@ describe("parsePluginBridgeMessage", () => {
   });
 
   it("rejects malformed, oversized, and non-JSON messages and keeps the request id", () => {
+    expect(
+      parsePluginBridgeMessage({
+        type: "surface.open",
+        requestId: "hover",
+        surfaceId: "h",
+        presentation: "popover",
+        hover: "yes",
+        content: { kind: "web", path: "card.html" },
+      }).ok,
+    ).toBe(false);
+    for (const height of [-1, 0, 15, 801, 1.5, Infinity, NaN, "100"]) {
+      expect(parsePluginBridgeMessage({ type: "panel.resize", height }).ok).toBe(false);
+    }
     expect(
       parsePluginBridgeMessage({
         type: "surface.open",
@@ -71,6 +86,7 @@ describe("resolvePluginWebPath", () => {
 
   it("resolves relative paths inside the gateway directory", () => {
     expect(resolvePluginWebPath(gateway, "dialog.html")).toBe(`${gateway}dialog.html`);
+    expect(resolvePluginWebPath(gateway, "?details=1")).toBe(`${gateway}?details=1`);
     expect(resolvePluginWebPath(gateway, "nested/view.html?mode=pick")).toBe(
       `${gateway}nested/view.html?mode=pick`,
     );
