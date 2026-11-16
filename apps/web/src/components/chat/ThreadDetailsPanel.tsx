@@ -22,7 +22,7 @@ import { OpenInPicker } from "./OpenInPicker";
 import { ThreadDetailsSection } from "./ThreadDetailsSection";
 import { ThreadAutomationsPanel } from "./ThreadAutomationsPanel";
 import { ThreadRelationshipsPanel } from "./ThreadRelationshipsControl";
-import { ThreadPluginPanels } from "./ThreadPluginPanels";
+import { ThreadPluginPanels, useThreadPluginPanels } from "./ThreadPluginPanels";
 import { ThreadServersPanel } from "./ThreadServersPanel";
 import {
   ThreadDetailsContext,
@@ -30,7 +30,12 @@ import {
   type ThreadDetailsUsageInput,
 } from "./ThreadDetailsUsage";
 import { ThreadDetailsItemsMenuItems } from "./ThreadDetailsItemsMenu";
-import { resolveThreadDetailsVisibility, THREAD_DETAILS_ITEMS } from "./threadDetailsItems";
+import {
+  applyReplacedThreadDetailsItems,
+  replacedThreadDetailsItems,
+  resolveThreadDetailsVisibility,
+  THREAD_DETAILS_ITEMS,
+} from "./threadDetailsItems";
 import { useClientSettings } from "../../hooks/useSettings";
 import { cn } from "../../lib/utils";
 import { SlidersHorizontalIcon } from "lucide-react";
@@ -88,11 +93,19 @@ interface ThreadDetailsPanelProps extends Pick<
 }
 
 export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
-  const visible = useClientSettings(resolveThreadDetailsVisibility);
+  const chosen = useClientSettings(resolveThreadDetailsVisibility);
+  const keepReplaced = useClientSettings((settings) => settings.threadDetailsKeepReplaced);
+  const pluginPanels = useThreadPluginPanels(
+    props.environmentId,
+    props.threadId,
+    props.draftId === undefined,
+  );
+  const replaced = replacedThreadDetailsItems(pluginPanels.snapshots);
+  const fullVisible = applyReplacedThreadDetailsItems(chosen, replaced, keepReplaced);
   const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null);
   const fileScripts = useT3ProjectFileScripts(
     props.environmentId,
-    props.activeProjectScripts && visible.scripts ? props.gitCwd : null,
+    props.activeProjectScripts && chosen.scripts ? props.gitCwd : null,
   );
   const activeThreadRef = { environmentId: props.environmentId, threadId: props.threadId };
   const branchToolbarProps = {
@@ -126,7 +139,7 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
       threadRef={{ environmentId: props.environmentId, threadId: props.threadId }}
       anchor={props.anchor}
       handle={props.handle}
-      contentKey={THREAD_DETAILS_ITEMS.filter((item) => visible[item.id])
+      contentKey={THREAD_DETAILS_ITEMS.filter((item) => fullVisible[item.id])
         .map((item) => item.id)
         .join(",")}
       onContextMenu={(event) => {
@@ -149,6 +162,8 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
       }}
     >
       {(density) => {
+        // Plugin panels only render at full density, so only then do they replace built-in items.
+        const visible = density === "full" ? fullVisible : chosen;
         // Section flags follow the rows that will render, so no empty section steals the divider rule.
         const show = {
           environment: density === "full" && visible.environment,
@@ -244,7 +259,11 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
               ) : null}
 
               {density === "full" && !props.draftId ? (
-                <ThreadPluginPanels environmentId={props.environmentId} threadId={props.threadId} />
+                <ThreadPluginPanels
+                  environmentId={props.environmentId}
+                  threadId={props.threadId}
+                  {...pluginPanels}
+                />
               ) : null}
 
               {density === "full" && !props.draftId && visible.automations ? (
@@ -305,7 +324,7 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
                 align="start"
                 side="bottom"
               >
-                <ThreadDetailsItemsMenuItems />
+                <ThreadDetailsItemsMenuItems replaced={replaced} />
               </MenuPopup>
             </Menu>
           </>
