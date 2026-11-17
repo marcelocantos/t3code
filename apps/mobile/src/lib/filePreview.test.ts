@@ -108,6 +108,16 @@ vi.mock("react-native", () => ({
     ),
 }));
 vi.mock("../components/PierreEntryIcon", () => ({ PierreEntryIcon: () => null }));
+// The fork's plugin link card loads react-native-webview, which jsdom cannot parse.
+vi.mock("../features/plugins/PluginLinkCard", () => ({
+  PluginLinkCardSheet: () => null,
+  usePluginLinkTakeover: () => ({
+    match: () => undefined,
+    hrefFor: (_link: unknown, url: string) => url,
+    textFor: () => undefined,
+    activate: async () => false,
+  }),
+}));
 vi.mock("../components/ui/AppText", () => ({
   AppText: ({ children }: { children?: ReactNode }) => createElement("span", null, children),
 }));
