@@ -37,7 +37,7 @@ import {
   pluginPlacementParts,
   resolvePluginWebPath,
   PLUGIN_BRIDGE_FEATURES,
-  PLUGIN_PANEL_RESIZE_FEATURE,
+  PLUGIN_PANEL_RESIZE_FEATURES,
   PLUGIN_SURFACE_HOVER_FEATURE,
   PLUGIN_BRIDGE_VERSION,
   type PluginBridgeContent,
@@ -817,6 +817,7 @@ function SurfaceNodeView({ node, blocked }: { node: PluginSurfaceNode; blocked: 
           align={node.align}
           sideOffset={6}
           padding="compact"
+          liveContent
           initialFocus={transientKey === undefined}
           finalFocus={false}
           aria-label={node.title}
@@ -959,7 +960,7 @@ function openBridge(
         ...PLUGIN_BRIDGE_FEATURES,
         ...(endpoint.nodeId === null ? ([PLUGIN_SURFACE_HOVER_FEATURE] as const) : []),
         ...(endpoint.nodeId === null && endpoint.onResize !== undefined
-          ? ([PLUGIN_PANEL_RESIZE_FEATURE] as const)
+          ? PLUGIN_PANEL_RESIZE_FEATURES
           : []),
       ],
       ...(endpoint.ownSurfaceId === undefined ? {} : { surfaceId: endpoint.ownSurfaceId }),

@@ -1,4 +1,4 @@
-import type { ClientSettings } from "@t3tools/contracts";
+import type { ClientSettings, PluginPanelSnapshot } from "@t3tools/contracts";
 
 // Ids are stored in client settings, so never rename one.
 export const THREAD_DETAILS_ITEMS = [
@@ -61,4 +61,40 @@ export function isDefaultThreadDetailsVisibility(visibility: ThreadDetailsVisibi
 export const RESET_THREAD_DETAILS_ITEMS = {
   threadDetailsItems: {},
   threadDetailsUsageEnabled: false,
+  threadDetailsKeepReplaced: [],
 } satisfies Partial<ClientSettings>;
+
+/**
+ * Items a connected plugin's thread panel replaces, each with that panel's title. A plugin that is
+ * down or erroring replaces nothing, so the built-in item comes back.
+ */
+export function replacedThreadDetailsItems(
+  snapshots: ReadonlyArray<PluginPanelSnapshot> | null,
+): ReadonlyMap<ThreadDetailsItemId, string> {
+  const replaced = new Map<ThreadDetailsItemId, string>();
+  for (const snapshot of snapshots ?? []) {
+    if (snapshot.status !== "connected") continue;
+    for (const panel of snapshot.panels) {
+      for (const id of panel.supersedes ?? []) {
+        const item = THREAD_DETAILS_ITEMS.find((candidate) => candidate.id === id);
+        if (item && !replaced.has(item.id)) replaced.set(item.id, panel.title);
+      }
+    }
+  }
+  return replaced;
+}
+
+/** Visibility after replacement. Items the user chose to keep stay as they are. */
+export function applyReplacedThreadDetailsItems(
+  visibility: ThreadDetailsVisibility,
+  replaced: ReadonlyMap<ThreadDetailsItemId, string>,
+  keep: ReadonlyArray<string>,
+): ThreadDetailsVisibility {
+  if (replaced.size === 0) return visibility;
+  return Object.fromEntries(
+    THREAD_DETAILS_ITEMS.map((item) => [
+      item.id,
+      visibility[item.id] && (!replaced.has(item.id) || keep.includes(item.id)),
+    ]),
+  ) as Record<ThreadDetailsItemId, boolean>;
+}

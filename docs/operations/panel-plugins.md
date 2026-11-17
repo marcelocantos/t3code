@@ -255,6 +255,14 @@ An empty `panels` array removes all panels for that subscription. IDs are scoped
 and thread; do not reuse panel or row IDs within a snapshot. Panels without a `kind` remain native lists for backwards compatibility.
 Use `kind: "web"` for the isolated SPA renderer described below.
 
+A thread panel of either kind may replace built-in thread details items with
+`"supersedes": ["usage"]`. The ids are the web client's item ids: `environment`, `openIn`,
+`scripts`, `branch`, `gitActions`, `changes`, `servers`, `automations`, `lineage`, `sideChats`,
+`usage` and `context`; unknown ids are ignored. The item is hidden only while the plugin is
+connected and its panel is shown, so it returns when the plugin stops. The thread details menu
+marks it "Replaced by <panel title>", and checking it there keeps it beside the panel. Mobile
+has no thread details items and ignores the field.
+
 Frames are limited to 1 MiB, snapshots to 20 panels, and panels to 2,000 rows. Malformed
 frames disconnect the plugin and show an error. Plugins should validate all incoming messages
 and bind locally unless deliberately deployed remotely. The example rejects browser Origins;
@@ -519,7 +527,9 @@ grace period. Leave `hover` unset for keyboard-opened or persistent surfaces.
 Mobile hosts keep their existing sheet behavior and do not advertise this feature.
 
 The `panel.resize` feature lets a panel report its content height with
-`{ "type": "panel.resize", "height": 144 }` over its port (integer 16–800 px).
+`{ "type": "panel.resize", "height": 144 }` over its port (integer 1–800 px; hosts
+that predate the `panel.collapse` feature accept 16–800). A panel with nothing to show can
+report 1 px and collapse to its sidebar heading.
 The host fits both the iframe and sidebar section to it and hides manual resize
 controls for that panel. Report only changes, for example with `ResizeObserver`
 on a content element whose height does not depend on the iframe viewport.

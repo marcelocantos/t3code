@@ -9,7 +9,14 @@ import * as Schema from "effect/Schema";
 export const PLUGIN_BRIDGE_VERSION = 1;
 /** Optional host abilities, listed in `t3.bridge.init` so a page can offer them only when present. */
 export const PLUGIN_BRIDGE_FEATURES = ["surface.maximize"] as const;
-export const PLUGIN_PANEL_RESIZE_FEATURE = "panel.resize";
+const PLUGIN_PANEL_RESIZE_FEATURE = "panel.resize";
+/** Listed with `panel.resize` when the host takes heights below 16 px: a panel with nothing to show collapses to its heading. */
+const PLUGIN_PANEL_COLLAPSE_FEATURE = "panel.collapse";
+/** Every resize ability a resizable panel is offered. */
+export const PLUGIN_PANEL_RESIZE_FEATURES = [
+  PLUGIN_PANEL_RESIZE_FEATURE,
+  PLUGIN_PANEL_COLLAPSE_FEATURE,
+] as const;
 export const PLUGIN_SURFACE_HOVER_FEATURE = "surface.hover";
 /** Serialized size limit for one frame message, results included. */
 export const PLUGIN_BRIDGE_MAX_MESSAGE_BYTES = 256 * 1024;
@@ -61,7 +68,7 @@ export type PluginBridgeContent = typeof PluginBridgeContent.Type;
 export const PluginBridgeInbound = Schema.Union([
   Schema.Struct({
     type: Schema.Literal("panel.resize"),
-    height: Schema.Int.check(Schema.isBetween({ minimum: 16, maximum: 800 })),
+    height: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 800 })),
   }),
   Schema.Struct({
     type: Schema.Literal("surface.open"),
@@ -108,7 +115,7 @@ export type PluginBridgeOutbound =
       readonly surfaceId?: string;
       readonly features: ReadonlyArray<
         | (typeof PLUGIN_BRIDGE_FEATURES)[number]
-        | typeof PLUGIN_PANEL_RESIZE_FEATURE
+        | (typeof PLUGIN_PANEL_RESIZE_FEATURES)[number]
         | typeof PLUGIN_SURFACE_HOVER_FEATURE
       >;
     }

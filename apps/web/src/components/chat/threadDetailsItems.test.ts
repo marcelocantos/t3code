@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vite-plus/test";
 
+import type { PluginPanelSnapshot } from "@t3tools/contracts";
+
 import {
+  applyReplacedThreadDetailsItems,
+  replacedThreadDetailsItems,
   resolveThreadDetailsVisibility,
   setThreadDetailsItem,
   THREAD_DETAILS_ITEMS,
@@ -32,5 +36,35 @@ describe("thread details items", () => {
 
     const hidden = { threadDetailsItems: { servers: false }, threadDetailsUsageEnabled: false };
     expect(setThreadDetailsItem(hidden, servers, true)).toEqual({});
+  });
+
+  it.each([
+    { status: "connected", supersedes: ["usage", "unknown"], usage: false, kept: true },
+    { status: "error", supersedes: ["usage"], usage: true, kept: true },
+    { status: "connected", supersedes: undefined, usage: true, kept: true },
+  ] as const)("a plugin panel replaces built-in items only while connected: %o", (row) => {
+    const snapshot: PluginPanelSnapshot = {
+      pluginId: "jevons",
+      status: row.status,
+      panels: [
+        {
+          kind: "web",
+          id: "usage",
+          title: "Jevons usage",
+          path: "/usage",
+          ...(row.supersedes ? { supersedes: row.supersedes } : {}),
+        },
+      ],
+    };
+    const replaced = replacedThreadDetailsItems([snapshot]);
+    expect([...replaced.keys()]).toEqual(row.usage ? [] : ["usage"]);
+
+    const chosen = resolveThreadDetailsVisibility({
+      threadDetailsItems: { usage: true },
+      threadDetailsUsageEnabled: false,
+    });
+    expect(applyReplacedThreadDetailsItems(chosen, replaced, []).usage).toBe(row.usage);
+    expect(applyReplacedThreadDetailsItems(chosen, replaced, ["usage"]).usage).toBe(row.kept);
+    expect(applyReplacedThreadDetailsItems(chosen, replaced, []).servers).toBe(true);
   });
 });
