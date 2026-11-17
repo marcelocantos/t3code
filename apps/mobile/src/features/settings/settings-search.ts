@@ -53,6 +53,10 @@ const SETTINGS_SEARCH_TERMS = {
   SettingsPlugins: ["plugins", "panels", "extensions", "discovered", "enable plugin"],
   SettingsProjectOverview: ["project", "overview", "checkouts", "delete project"],
   SettingsOrganization: [
+    "language",
+    "locale",
+    "translation",
+    "english",
     "project grouping",
     "group projects",
     "organization",
