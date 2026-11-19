@@ -24,7 +24,7 @@ export function ThreadHeader(props: {
   /** Absent while no plugin offers this thread a panel. */
   readonly onOpenPluginsInspector?: () => void;
 }) {
-  const goBack = useWorkspaceBackNavigation("threads");
+  const goBack = useWorkspaceBackNavigation();
   const { toggleAuxiliaryPane, startNewTask } = useAdaptiveWorkspaceLayout();
   const { panes } = useWorkspacePaneState();
   const gitMenu = useThreadGitMenuDefinition(props.gitControls);

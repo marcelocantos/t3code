@@ -177,7 +177,7 @@ export const PluginComposerIcon = Schema.Literals([
   "chart",
   "image",
   "document",
-  "sparkles",
+  "bot",
   "target",
 ]);
 export type PluginComposerIcon = typeof PluginComposerIcon.Type;

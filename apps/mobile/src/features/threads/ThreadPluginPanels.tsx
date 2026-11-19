@@ -136,7 +136,7 @@ const COMPOSER_SYMBOLS = {
   chart: "chart.bar.xaxis",
   image: "photo",
   document: "doc.text",
-  sparkles: "sparkles",
+  bot: "robot",
   target: "target",
 } as const satisfies Record<PluginComposerIcon, string>;
 

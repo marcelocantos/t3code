@@ -1,12 +1,12 @@
 import type { EnvironmentId, PluginComposerIcon, ThreadId } from "@t3tools/contracts";
 import {
+  BotIcon,
   ChartBarIcon,
   FileTextIcon,
   ImageIcon,
   PaintbrushIcon,
   PencilIcon,
   PencilRulerIcon,
-  SparklesIcon,
   TargetIcon,
   WorkflowIcon,
 } from "lucide-react";
@@ -30,7 +30,7 @@ const ICONS = {
   chart: ChartBarIcon,
   image: ImageIcon,
   document: FileTextIcon,
-  sparkles: SparklesIcon,
+  bot: BotIcon,
   target: TargetIcon,
 } satisfies Record<PluginComposerIcon, unknown>;
 
