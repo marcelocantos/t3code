@@ -184,7 +184,7 @@ it("hands the bridge again to a frame that asks after missing it", async () => {
   await vi.waitFor(() => expect(reports).toContain("bridge ready"));
 });
 
-it("opens a composer page in a modal that prompts the thread and closes itself", async () => {
+it("opens a composer page in a modal that sizes itself, prompts the thread and closes itself", async () => {
   host.confirm.mockClear();
   host.submit.mockClear();
   const reports: string[] = [];
@@ -227,8 +227,16 @@ it("opens a composer page in a modal that prompts the thread and closes itself",
   await screen.getByRole("button", { name: "Sketch" }).click();
   const modal = page.getByRole("dialog", { name: "Sketch" });
   await expect.element(modal).toBeVisible();
-  await vi.waitFor(() => expect(reports).toContain("opened #t3-composer surface.maximize"));
-  const sketch = page.frameLocator(page.getByTitle("Sketch", { exact: true }));
+  await vi.waitFor(() =>
+    expect(reports).toContain("opened #t3-composer surface.maximize,surface.resize"),
+  );
+  const sketchFrame = page.getByTitle("Sketch", { exact: true });
+  const sketch = page.frameLocator(sketchFrame);
+  // The page sets its own height, clamped to the viewport less its margins.
+  await sketch.getByRole("button", { name: "Short" }).click();
+  await vi.waitFor(() => expect(sketchFrame.element().clientHeight).toBe(300));
+  await sketch.getByRole("button", { name: "Tall" }).click();
+  await vi.waitFor(() => expect(sketchFrame.element().clientHeight).toBe(768));
   // The page maximizes its own surface: the modal fills the viewport less its margin.
   const before = modal.element().getBoundingClientRect().width;
   await sketch.getByRole("button", { name: "Maximize" }).click();

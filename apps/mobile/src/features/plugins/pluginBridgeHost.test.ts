@@ -88,7 +88,7 @@ describe("handlePluginBridgeRelay", () => {
     ]);
   });
 
-  it("lets a web surface maximize itself but never replace itself", () => {
+  it("lets a web surface maximize and resize itself but never replace itself", () => {
     const { tree, frame, receive } = setup();
     const panel = frame("panel");
     receive(panel, {
@@ -112,6 +112,11 @@ describe("handlePluginBridgeRelay", () => {
       maximized: false,
       content: { kind: "web", url: `${GATEWAY}editor.html` },
     });
+    // A side left out keeps its size; opened without one, that is the default.
+    receive(editor, { type: "surface.update", surfaceId: "editor", size: { height: 500 } });
+    expect(tree.nodes[0]?.size).toEqual({ width: 360, height: 500 });
+    receive(panel, { type: "surface.update", surfaceId: "editor", size: { width: 300 } });
+    expect(tree.nodes[0]?.size).toEqual({ width: 300, height: 500 });
     // Structured surfaces have no maximized state.
     receive(panel, {
       type: "surface.open",
@@ -122,6 +127,25 @@ describe("handlePluginBridgeRelay", () => {
       content: structured,
     });
     expect(tree.nodes.at(-1)?.maximized).toBe(false);
+  });
+
+  it("resizes a link card, which is not in the surface tree, only when it names itself", () => {
+    const { tree, sent, receive } = setup();
+    const sizes: Array<{ readonly width?: number; readonly height?: number }> = [];
+    const card = createPluginBridgeFrame({
+      nodeId: null,
+      ownSurfaceId: "link:pr",
+      gatewayUrl: GATEWAY,
+      panelTitle: "Link card",
+      agentKey: "link-card",
+      onSurfaceResize: (size) => sizes.push(size),
+    });
+    card.send = (message) => sent.push(["card", message]);
+    receive(card, { type: "surface.update", surfaceId: "link:pr", size: { height: 420 } });
+    receive(card, { type: "surface.update", surfaceId: "other", size: { height: 600 } });
+    expect(sizes).toEqual([{ height: 420 }]);
+    expect(tree.nodes).toEqual([]);
+    expect(sent).toEqual([["card", { type: "error", message: "That surface is not open." }]]);
   });
 
   it("rejects paths outside the panel, unknown parents and reused ids", () => {

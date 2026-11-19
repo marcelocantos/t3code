@@ -3,6 +3,8 @@
   <body>
     <button id="send">Send sketch</button>
     <button id="maximize">Maximize</button>
+    <button id="short">Short</button>
+    <button id="tall">Tall</button>
     <script>
       // A composer page: it knows its mode from the fragment, prompts the thread, then closes.
       const report = (text) => parent.postMessage({ fixtureLog: text }, "*");
@@ -20,6 +22,10 @@
           port.postMessage({ type: "agent.prompt", requestId: "1", prompt: "See my sketch." });
         document.querySelector("#maximize").onclick = () =>
           port.postMessage({ type: "surface.update", surfaceId, maximized: true });
+        document.querySelector("#short").onclick = () =>
+          port.postMessage({ type: "surface.update", surfaceId, size: { height: 300 } });
+        document.querySelector("#tall").onclick = () =>
+          port.postMessage({ type: "surface.update", surfaceId, size: { height: 5000 } });
       });
     </script>
   </body>

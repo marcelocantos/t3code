@@ -27,6 +27,7 @@ import {
   pluginBridgeHostHtml,
   pluginBridgeInjection,
   type PluginBridgeAgent,
+  DEFAULT_WEB_SURFACE_SIZE,
   type PluginBridgeFrame,
   type PluginBridgeSurfaceNode,
   type PluginBridgeTree,
@@ -35,7 +36,6 @@ import type { PluginAgentControls } from "./PluginPanels";
 import { SurfaceBlock, type SurfaceAction } from "./PluginSurfaceSheet";
 import { confirmAsync, usePluginRequests } from "./usePluginRequests";
 
-const DEFAULT_WEB_SIZE = { width: 360, height: 320 };
 const PAGE_SIZE = { width: 800, height: 720 };
 /** The sheet header, safe areas and padding a maximized page leaves room for. */
 const MAXIMIZED_CHROME_HEIGHT = 160;
@@ -139,6 +139,7 @@ export function useOpenPluginPage() {
  */
 export function PluginBridgeWebView(props: {
   readonly onResize?: (height: number) => void;
+  readonly onSurfaceResize?: (size: { readonly width?: number; readonly height?: number }) => void;
   readonly src: string;
   readonly height: number;
   readonly nodeId: string | null;
@@ -152,6 +153,7 @@ export function PluginBridgeWebView(props: {
   const [frame] = useState(() =>
     createPluginBridgeFrame({
       ...(props.onResize === undefined ? {} : { onResize: props.onResize }),
+      ...(props.onSurfaceResize === undefined ? {} : { onSurfaceResize: props.onSurfaceResize }),
       nodeId: props.nodeId,
       ownSurfaceId: props.ownSurfaceId,
       gatewayUrl: props.gatewayUrl,
@@ -256,7 +258,7 @@ function SurfaceBody({ node }: { node: PluginBridgeSurfaceNode }) {
   const { content } = node;
   if (content.kind === "structured")
     return <StructuredSurface node={node} surface={content.surface} />;
-  const size = clampPluginSurfaceSize(node.size ?? DEFAULT_WEB_SIZE, viewport);
+  const size = clampPluginSurfaceSize(node.size ?? DEFAULT_WEB_SURFACE_SIZE, viewport);
   return (
     <PluginBridgeWebView
       key={content.url}

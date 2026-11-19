@@ -589,10 +589,20 @@ function useHostApi(
           return;
         }
         const target = tree.get(id);
+        const web = target?.content.kind === "web";
         tree.update(id, {
-          ...(message.maximized === undefined || target?.content.kind !== "web"
+          ...(message.maximized === undefined || !web ? {} : { maximized: message.maximized }),
+          ...(message.size === undefined || !web
             ? {}
-            : { maximized: message.maximized }),
+            : {
+                size: clampPluginSurfaceSize(
+                  {
+                    width: message.size.width ?? target?.size?.width ?? DEFAULT_WEB_SIZE.width,
+                    height: message.size.height ?? target?.size?.height ?? DEFAULT_WEB_SIZE.height,
+                  },
+                  { width: window.innerWidth, height: window.innerHeight },
+                ),
+              }),
           ...(message.anchor === undefined || own !== undefined
             ? {}
             : { anchor: frameAnchor(frame, message.anchor) }),

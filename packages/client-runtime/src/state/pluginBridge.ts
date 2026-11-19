@@ -8,7 +8,7 @@ import * as Schema from "effect/Schema";
  */
 export const PLUGIN_BRIDGE_VERSION = 1;
 /** Optional host abilities, listed in `t3.bridge.init` so a page can offer them only when present. */
-export const PLUGIN_BRIDGE_FEATURES = ["surface.maximize"] as const;
+export const PLUGIN_BRIDGE_FEATURES = ["surface.maximize", "surface.resize"] as const;
 const PLUGIN_PANEL_RESIZE_FEATURE = "panel.resize";
 /** Listed with `panel.resize` when the host takes heights below 16 px: a panel with nothing to show collapses to its heading. */
 const PLUGIN_PANEL_COLLAPSE_FEATURE = "panel.collapse";
@@ -91,6 +91,10 @@ export const PluginBridgeInbound = Schema.Union([
     content: Schema.optional(PluginBridgeContent),
     /** Also accepted for the frame's own surface, so a web surface can maximize itself. */
     maximized: Schema.optional(Schema.Boolean),
+    /** Web content only, own surface included. A side left out keeps its size; the host clamps. */
+    size: Schema.optional(
+      Schema.Struct({ width: Schema.optional(Extent), height: Schema.optional(Extent) }),
+    ),
   }),
   Schema.Struct({
     type: Schema.Literal("surface.close"),

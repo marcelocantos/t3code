@@ -32,6 +32,7 @@ describe("parsePluginBridgeMessage", () => {
         content: { kind: "web", path: "dialog.html" },
       },
       { type: "surface.update", surfaceId: "card", anchor: { x: 0, y: 0, width: 1, height: 1 } },
+      { type: "surface.update", surfaceId: "card", size: { height: 420 } },
       { type: "surface.close", surfaceId: "pick", result: { chosen: ["a", 1] } },
       { type: "agent.prompt", requestId: "r3", prompt: "Run the tests" },
       { type: "agent.stop", requestId: "r4" },
