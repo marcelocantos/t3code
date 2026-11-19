@@ -37,9 +37,23 @@ jobs:
         if: github.event_name == 'pull_request'
         run: |
           set -euo pipefail
-          git fetch --no-tags --depth=64 origin main:refs/remotes/origin/main
+          # Full commit history without blobs (seconds), so ancestry below is exact.
+          git fetch --no-tags --unshallow --filter=blob:none origin main:refs/remotes/origin/main
+          # A PR that merges an upstream release brings in thousands of upstream
+          # files, and testing them all here cannot finish. Compare against the
+          # merged upstream commit instead, so the run covers the fork's footprint
+          # on top of the new upstream code. Upstream's own CI covers the rest.
+          # rev-list lists newest first, so the first match is the latest upstream merge.
+          base=origin/main
+          for parent in $(git rev-list --merges --parents origin/main..HEAD | cut -d' ' -f3-); do
+            if ! git merge-base --is-ancestor "$parent" origin/main; then
+              base=$parent
+              break
+            fi
+          done
+          echo "check:changed base: $base"
           node apps/web/node_modules/playwright/cli.js install --only-shell chromium
-          vp run check:changed
+          vp run check:changed "$base"
 
       - name: Verify architecture
         run: test "$(uname -m)" = arm64
