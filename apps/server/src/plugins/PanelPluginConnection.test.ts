@@ -7,6 +7,7 @@ import * as NodePath from "node:path";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import WebSocket, { WebSocketServer } from "ws";
 import { it, expect } from "@effect/vitest";
+import { vi } from "vite-plus/test";
 import * as Effect from "effect/Effect";
 import { ThreadId, type PluginPanelSnapshot } from "@t3tools/contracts";
 import {
@@ -489,80 +490,80 @@ const fileAppeared = (directory: string, file: string) =>
     }
   });
 
-it.live.skipIf(HostProcess.Platform.defaultValue() === "win32")(
-  "stopping a sidecar signals the grandchild, then ends it",
-  () =>
-    Effect.promise(async () => {
-      const directory = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-plugin-stop-"));
-      const hit = NodePath.join(directory, "hit");
-      const parentExit = NodePath.join(directory, "parent-exit");
-      const ready = NodePath.join(directory, "ready");
-      const grandchild = `
+for (const exitedFirst of [false, true]) {
+  it.live.skipIf(HostProcess.Platform.defaultValue() === "win32")(
+    `stopping a sidecar ends its grandchild (sidecar exited first: ${exitedFirst})`,
+    () =>
+      Effect.promise(async () => {
+        const directory = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-plugin-stop-"));
+        const ready = NodePath.join(directory, "ready");
+        const grandchild = `
       const fs = require("node:fs");
       const net = require("node:net");
       const server = net.createServer();
       server.listen(0, "127.0.0.1", () => {
         const address = server.address();
-        fs.writeFileSync(${JSON.stringify(ready)}, JSON.stringify({ pid: process.pid, port: address.port }));
+        fs.writeFileSync(${JSON.stringify(ready + ".tmp")}, JSON.stringify({ pid: process.pid, parent: process.ppid, port: address.port }));
+        fs.renameSync(${JSON.stringify(ready + ".tmp")}, ${JSON.stringify(ready)});
       });
       process.on("SIGHUP", () => {});
-      process.on("SIGTERM", () => fs.writeFileSync(${JSON.stringify(hit)}, "1"));
+      process.on("SIGTERM", () => {});
       setInterval(() => {}, 1e9);
     `;
-      const parent = `
-      const fs = require("node:fs");
+        const parent = `
       const { spawn } = require("node:child_process");
       spawn(process.execPath, ["--input-type=commonjs", "-e", ${JSON.stringify(grandchild)}], { stdio: "ignore" });
-      process.on("SIGTERM", () => {
-        setTimeout(() => {
-          fs.writeFileSync(${JSON.stringify(parentExit)}, "1");
-          process.exit(0);
-        }, 200);
-      });
       setInterval(() => {}, 1e9);
     `;
-      let grandchildPid = 0;
-      const connection = new PanelPluginConnection({
-        id: "sidecar",
-        connection: {
-          kind: "sidecar",
-          command: process.execPath,
-          args: ["--input-type=commonjs", "-e", parent],
-        },
-      });
-      try {
-        connection.subscribe({
-          target: { scope: "thread", threadId: ThreadId.make("thread-1"), cwd: "/tmp" },
-          filters: [],
-          emit: () => undefined,
+        let grandchildPid = 0;
+        const connection = new PanelPluginConnection({
+          id: "sidecar",
+          connection: {
+            kind: "sidecar",
+            command: process.execPath,
+            args: ["--input-type=commonjs", "-e", parent],
+          },
         });
-        await fileAppeared(directory, ready);
-        const info = JSON.parse(NodeFS.readFileSync(ready, "utf8")) as {
-          pid: number;
-          port: number;
-        };
-        grandchildPid = info.pid;
-        const socket = NodeNet.connect(info.port, "127.0.0.1");
-        const closed = new Promise<void>((resolve) => socket.once("close", () => resolve()));
-        await new Promise<void>((resolve) => socket.once("connect", () => resolve()));
-        connection.stop();
-        const outcome = await Promise.race([
-          fileAppeared(directory, hit).then(() => "hit" as const),
-          fileAppeared(directory, parentExit).then(() => "parent-exit" as const),
-        ]);
-        expect(outcome).toBe("hit");
-        await closed;
-        expect(socket.destroyed).toBe(true);
-      } finally {
-        connection.stop();
-        if (grandchildPid !== 0) {
-          try {
-            process.kill(grandchildPid, "SIGKILL");
-          } catch {
-            // Already gone.
+        const disconnected = Promise.withResolvers<void>();
+        try {
+          connection.subscribe({
+            target: { scope: "thread", threadId: ThreadId.make("thread-1"), cwd: "/tmp" },
+            filters: [],
+            emit: (snapshot) => {
+              if (snapshot.status === "disconnected") disconnected.resolve();
+            },
+          });
+          await fileAppeared(directory, ready);
+          const info = JSON.parse(NodeFS.readFileSync(ready, "utf8")) as {
+            pid: number;
+            parent: number;
+            port: number;
+          };
+          grandchildPid = info.pid;
+          const socket = NodeNet.connect(info.port, "127.0.0.1");
+          using _socket = { [Symbol.dispose]: () => socket.destroy() };
+          const closed = new Promise<void>((resolve) => socket.once("close", () => resolve()));
+          await new Promise<void>((resolve) => socket.once("connect", () => resolve()));
+          using kill = vi.spyOn(process, "kill");
+          if (exitedFirst) {
+            process.kill(info.parent, "SIGTERM");
+            await disconnected.promise;
           }
+          connection.stop();
+          expect(kill).toHaveBeenCalledWith(-info.parent, "SIGTERM");
+          await closed;
+          expect(kill).toHaveBeenCalledWith(-info.parent, "SIGKILL");
+        } finally {
+          connection.stop();
+          if (grandchildPid !== 0) {
+            try {
+              process.kill(grandchildPid, "SIGKILL");
+            } catch {
+              // Already gone.
+            }
+          }
+          NodeFS.rmSync(directory, { recursive: true, force: true });
         }
-        NodeFS.rmSync(directory, { recursive: true, force: true });
-      }
-    }),
-);
+      }),
+  );
+}

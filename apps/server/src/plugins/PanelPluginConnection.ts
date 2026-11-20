@@ -255,21 +255,29 @@ export class PanelPluginConnection {
 
   private signalGroup(pid: number, signal: NodeJS.Signals) {
     try {
-      if (WINDOWS) process.kill(pid, signal);
-      else signalProcessGroup(pid, signal);
+      signalProcessGroup(pid, signal);
+      return true;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
+      return false;
     }
   }
 
   private stopChild() {
     const child = this.child;
     this.child = undefined;
-    if (!child?.pid || child.exitCode !== null || child.signalCode !== null) return;
+    if (!child?.pid) return;
+    if (WINDOWS) {
+      if (child.exitCode !== null || child.signalCode !== null) return;
+      child.kill("SIGTERM");
+      const timer = setTimeout(() => child.kill("SIGKILL"), STOP_TIMEOUT_MS);
+      timer.unref();
+      child.once("exit", () => clearTimeout(timer));
+      return;
+    }
     const pid = child.pid;
-    // The direct child can exit on SIGTERM while a descendant ignores it.
-    // The SIGKILL still goes to the group.
-    this.signalGroup(pid, "SIGTERM");
+    // Descendants can still be alive after the session leader exits.
+    if (!this.signalGroup(pid, "SIGTERM")) return;
     const timer = setTimeout(() => this.signalGroup(pid, "SIGKILL"), STOP_TIMEOUT_MS);
     timer.unref();
   }
