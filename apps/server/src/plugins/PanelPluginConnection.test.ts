@@ -1,4 +1,5 @@
 // @effect-diagnostics nodeBuiltinImport:off -- Tests exercise real sockets and child-process readiness records.
+import * as NodeHttp from "node:http";
 import WebSocket, { WebSocketServer } from "ws";
 import { it, expect } from "@effect/vitest";
 import * as Effect from "effect/Effect";
@@ -17,15 +18,43 @@ it("converts HTTP base URLs without losing their path and rejects unsafe schemes
   expect(() => pluginSocketUrl("http://user:password@example.test")).toThrow();
 });
 
+/** HTTP identity answer plus the WebSocket the panel connection dials. */
+const servePlugin = (id: string) =>
+  new Promise<{ sockets: WebSocketServer; port: number; close: () => Promise<void> }>(
+    (resolve, reject) => {
+      const httpServer = NodeHttp.createServer((_request, response) => {
+        response
+          .writeHead(200, { "content-type": "application/json" })
+          .end(JSON.stringify({ protocol: 1, id, name: id }));
+      });
+      const sockets = new WebSocketServer({ server: httpServer });
+      httpServer.on("error", reject);
+      httpServer.listen(0, "127.0.0.1", () => {
+        const address = httpServer.address();
+        if (!address || typeof address === "string") {
+          reject(new Error("No socket address"));
+          return;
+        }
+        resolve({
+          sockets,
+          port: address.port,
+          close: () =>
+            new Promise((done) => {
+              for (const socket of sockets.clients) socket.terminate();
+              sockets.close(() => httpServer.close(() => done()));
+            }),
+        });
+      });
+    },
+  );
+
 it.live("multiplexes threads, replaces panels, and rejects malformed frames", () =>
   Effect.promise(async () => {
-    const server = new WebSocketServer({ host: "127.0.0.1", port: 0 });
-    await new Promise<void>((resolve) => server.once("listening", resolve));
-    const address = server.address();
-    if (typeof address === "string" || !address) throw new Error("No socket address");
+    const plugin = await servePlugin("test");
+    const server = plugin.sockets;
     const connection = new PanelPluginConnection({
       id: "test",
-      connection: { kind: "server", baseUrl: `http://127.0.0.1:${address.port}` },
+      connection: { kind: "server", baseUrl: `http://127.0.0.1:${plugin.port}` },
     });
     const first: PluginPanelSnapshot[] = [];
     const second: PluginPanelSnapshot[] = [];
@@ -90,8 +119,7 @@ it.live("multiplexes threads, replaces panels, and rejects malformed frames", ()
       expect([...replayedThreads].sort()).toEqual(["first", "second"]);
     } finally {
       connection.stop();
-      for (const socket of server.clients) socket.terminate();
-      await new Promise<void>((resolve) => server.close(() => resolve()));
+      await plugin.close();
     }
   }),
 );
@@ -174,13 +202,11 @@ it.live("reports sidecars that fail before readiness and can be disposed", () =>
 
 it.live("sends environment frames, re-targets in place, and correlates results", () =>
   Effect.promise(async () => {
-    const server = new WebSocketServer({ host: "127.0.0.1", port: 0 });
-    await new Promise<void>((resolve) => server.once("listening", resolve));
-    const address = server.address();
-    if (typeof address === "string" || !address) throw new Error("No socket address");
+    const plugin = await servePlugin("env");
+    const server = plugin.sockets;
     const connection = new PanelPluginConnection({
       id: "env",
-      connection: { kind: "server", baseUrl: `http://127.0.0.1:${address.port}` },
+      connection: { kind: "server", baseUrl: `http://127.0.0.1:${plugin.port}` },
       scopes: ["environment"],
     });
     const outcome = (send: (settle: (outcome: PluginRequestOutcome) => void) => void) =>
@@ -289,21 +315,17 @@ it.live("sends environment frames, re-targets in place, and correlates results",
       expect(statuses).toContain("error");
     } finally {
       connection.stop();
-      for (const socket of server.clients) socket.terminate();
-      await new Promise<void>((resolve) => server.close(() => resolve()));
+      await plugin.close();
     }
   }),
 );
 
 it.live("bounds requests waiting on one plugin and fails them when it goes away", () =>
   Effect.promise(async () => {
-    const server = new WebSocketServer({ host: "127.0.0.1", port: 0 });
-    await new Promise<void>((resolve) => server.once("listening", resolve));
-    const address = server.address();
-    if (typeof address === "string" || !address) throw new Error("No socket address");
+    const plugin = await servePlugin("silent");
     const connection = new PanelPluginConnection({
       id: "silent",
-      connection: { kind: "server", baseUrl: `http://127.0.0.1:${address.port}` },
+      connection: { kind: "server", baseUrl: `http://127.0.0.1:${plugin.port}` },
     });
     const connected = Promise.withResolvers<void>();
     const target = { scope: "thread", threadId: "thread", cwd: "/tmp" } as const;
@@ -341,8 +363,97 @@ it.live("bounds requests waiting on one plugin and fails them when it goes away"
       }
     } finally {
       connection.stop();
-      for (const socket of server.clients) socket.terminate();
-      await new Promise<void>((resolve) => server.close(() => resolve()));
+      await plugin.close();
+    }
+  }),
+);
+
+/** `id` undefined: the port accepts sockets but does not answer the identity probe. */
+const listenPlugin = (port: number, id: string | undefined) =>
+  new Promise<{
+    port: number;
+    leaked: Promise<string>;
+    probed: Promise<void>;
+    close: () => Promise<void>;
+  }>((resolve, reject) => {
+    let probes = 0;
+    let markProbed: () => void = () => undefined;
+    const probed = new Promise<void>((done) => {
+      markProbed = done;
+    });
+    let markLeaked: (body: string) => void = () => undefined;
+    const leaked = new Promise<string>((done) => {
+      markLeaked = done;
+    });
+    const server = NodeHttp.createServer((_request, response) => {
+      probes += 1;
+      if (probes >= 2) markProbed();
+      if (id === undefined) {
+        response.writeHead(404).end();
+        return;
+      }
+      response
+        .writeHead(200, { "content-type": "application/json" })
+        .end(JSON.stringify({ protocol: 1, id, name: "Panels" }));
+    });
+    const wss = new WebSocketServer({ server });
+    wss.on("connection", (socket) => {
+      socket.on("message", (raw: Buffer) => markLeaked(raw.toString()));
+    });
+    server.on("error", reject);
+    server.listen(port, "127.0.0.1", () => {
+      const address = server.address();
+      if (!address || typeof address === "string") {
+        reject(new Error("No socket address"));
+        return;
+      }
+      resolve({
+        port: address.port,
+        leaked,
+        probed,
+        close: () =>
+          new Promise((done) => {
+            for (const socket of wss.clients) socket.terminate();
+            wss.close(() => server.close(() => done()));
+          }),
+      });
+    });
+  });
+
+it.live("does not send a workspace to whoever binds a server plugin's port next", () =>
+  Effect.promise(async () => {
+    const id = "github.com/acme/panels";
+    const first = await listenPlugin(0, id);
+    const connection = new PanelPluginConnection({
+      id,
+      connection: { kind: "server", baseUrl: `http://127.0.0.1:${first.port}/plugins/t3` },
+    });
+    const opened: Array<{ close: () => Promise<void> }> = [first];
+    try {
+      connection.subscribe({
+        target: { scope: "thread", threadId: ThreadId.make("thread-1"), cwd: "/secret/worktree" },
+        filters: [],
+        emit: () => undefined,
+      });
+      expect(JSON.parse(await first.leaked)).toMatchObject({
+        cwd: "/secret/worktree",
+        threadId: "thread-1",
+      });
+      await first.close();
+      const impostor = await listenPlugin(first.port, undefined);
+      opened.push(impostor);
+      const outcome = await Promise.race([
+        impostor.leaked.then((body) => ({ kind: "leaked" as const, body })),
+        impostor.probed.then(() => ({ kind: "probed" as const })),
+      ]);
+      expect(outcome.kind).toBe("probed");
+      await impostor.close();
+      const restored = await listenPlugin(first.port, id);
+      opened.push(restored);
+      expect(JSON.parse(await restored.leaked)).toMatchObject({ cwd: "/secret/worktree" });
+    } finally {
+      connection.stop();
+      for (const server of opened) await server.close();
     }
   }),
 );

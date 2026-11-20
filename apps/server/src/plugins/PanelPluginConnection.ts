@@ -1,6 +1,8 @@
 // @effect-diagnostics nodeBuiltinImport:off globalTimers:off -- Node socket/process adapter owns callback resources and timers.
 import * as NodeChildProcess from "node:child_process";
 import * as NodeCrypto from "node:crypto";
+import * as NodeHttp from "node:http";
+import * as NodeHttps from "node:https";
 import WebSocket from "ws";
 import * as Schema from "effect/Schema";
 import {
@@ -24,6 +26,80 @@ const MAX_FRAME_BYTES = 1024 * 1024;
 const START_TIMEOUT_MS = 10_000;
 const RECONNECT_MS = 1_000;
 const STOP_TIMEOUT_MS = 2_000;
+const PROBE_TIMEOUT_MS = 2_000;
+const MAX_PROBE_BYTES = 48 * 1024;
+
+/**
+ * A fresh GET of `baseUrl` must name this plugin. Redirects are not followed.
+ * Anything but a small JSON body with the same id is not the plugin.
+ */
+function probePluginId(baseUrl: string, id: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const settle = (ok: boolean) => {
+      if (settled) return;
+      settled = true;
+      resolve(ok);
+    };
+    let url: URL;
+    try {
+      url = new URL(baseUrl);
+    } catch {
+      settle(false);
+      return;
+    }
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      settle(false);
+      return;
+    }
+    const requestFn = url.protocol === "https:" ? NodeHttps.request : NodeHttp.request;
+    try {
+      const request = requestFn(
+        url,
+        {
+          method: "GET",
+          headers: { accept: "application/json" },
+          agent: false,
+          signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+        },
+        (response) => {
+          const contentType = response.headers["content-type"] ?? "";
+          if (response.statusCode !== 200 || !/^application\/json\s*(;|$)/i.test(contentType)) {
+            response.resume();
+            settle(false);
+            return;
+          }
+          const chunks: Array<Buffer> = [];
+          let size = 0;
+          response.on("data", (chunk: Buffer) => {
+            size += chunk.length;
+            if (size > MAX_PROBE_BYTES) {
+              response.destroy();
+              settle(false);
+              return;
+            }
+            chunks.push(chunk);
+          });
+          response.on("end", () => {
+            try {
+              const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as {
+                id?: unknown;
+              };
+              settle(body.id === id);
+            } catch {
+              settle(false);
+            }
+          });
+          response.on("error", () => settle(false));
+        },
+      );
+      request.on("error", () => settle(false));
+      request.end();
+    } catch {
+      settle(false);
+    }
+  });
+}
 
 export interface PluginProject {
   readonly projectId: string;
@@ -111,6 +187,9 @@ export class PanelPluginConnection {
   private idleTimer: ReturnType<typeof setTimeout> | undefined;
   private readinessTimer: ReturnType<typeof setTimeout> | undefined;
   private stopped = false;
+  /** Invalidates an identity probe that returns after a newer start, retry, or stop. */
+  private probeToken = 0;
+  private probing = false;
   /** Holders keep the socket open without a subscription, as link cards need. */
   private holders = new Set<(status: PluginPanelSnapshot["status"]) => void>();
   private status: PluginPanelSnapshot["status"] = "connecting";
@@ -140,7 +219,7 @@ export class PanelPluginConnection {
     const holder = (status: PluginPanelSnapshot["status"]) => onStatus(status);
     this.holders.add(holder);
     onStatus(this.status);
-    if (!this.socket && !this.child && !this.timer) this.start();
+    if (!this.socket && !this.child && !this.timer && !this.probing) this.start();
     return () => {
       if (this.holders.delete(holder)) this.idleIfUnused();
     };
@@ -166,7 +245,7 @@ export class PanelPluginConnection {
     this.subscriptions.set(id, subscription);
     subscription.emit({ pluginId: this.config.id, panels: [], status: this.status });
     if (this.socket?.readyState === WebSocket.OPEN) this.send(id, subscription);
-    else if (!this.socket && !this.child && !this.timer) this.start();
+    else if (!this.socket && !this.child && !this.timer && !this.probing) this.start();
     return {
       close: () => {
         if (!this.subscriptions.delete(id)) return;
@@ -217,6 +296,8 @@ export class PanelPluginConnection {
 
   stop() {
     this.stopped = true;
+    this.probeToken += 1;
+    this.probing = false;
     this.failPending();
     clearTimeout(this.idleTimer);
     clearTimeout(this.readinessTimer);
@@ -260,6 +341,8 @@ export class PanelPluginConnection {
 
   private retry = () => {
     if (this.stopped || this.timer) return;
+    this.probeToken += 1;
+    this.probing = false;
     this.failPending();
     clearTimeout(this.readinessTimer);
     this.socket?.terminate();
@@ -277,7 +360,18 @@ export class PanelPluginConnection {
     this.publish("connecting");
     const connection = this.config.connection;
     if (connection.kind === "server") {
-      this.connect(connection.baseUrl);
+      const token = ++this.probeToken;
+      this.probing = true;
+      void probePluginId(connection.baseUrl, this.config.id).then((ok) => {
+        if (token !== this.probeToken) return;
+        this.probing = false;
+        if (this.stopped) return;
+        if (!ok) {
+          this.retry();
+          return;
+        }
+        this.connect(connection.baseUrl);
+      });
       return;
     }
     const child = NodeChildProcess.spawn(connection.command, [...connection.args], {

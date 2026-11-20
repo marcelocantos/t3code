@@ -195,7 +195,10 @@ To connect to an existing plugin server, replace `connection` with:
 ```
 
 The base URL identifies the WebSocket endpoint itself: the path and query are preserved,
-`http` becomes `ws`, and `https` becomes `wss`. There is no appended discovery path.
+`http` becomes `ws`, and `https` becomes `wss`. There is no appended discovery path. The
+socket opens only after a fresh GET of that same URL returns JSON whose `id` is this
+plugin's id. Redirects are not followed, and a failed check waits a second and tries
+again without sending a workspace.
 Existing servers remain running after T3 disconnects. Remove the configuration entry to
 remove the plugin on the next subscription.
 
