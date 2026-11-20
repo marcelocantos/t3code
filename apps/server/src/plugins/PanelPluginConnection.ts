@@ -1,8 +1,6 @@
 // @effect-diagnostics nodeBuiltinImport:off globalTimers:off -- Node socket/process adapter owns callback resources and timers.
 import * as NodeChildProcess from "node:child_process";
 import * as NodeCrypto from "node:crypto";
-import * as NodeHttp from "node:http";
-import * as NodeHttps from "node:https";
 import { signalProcessGroup } from "@t3tools/provider-core/server/processGroup";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import WebSocket from "ws";
@@ -19,90 +17,21 @@ import {
   type PluginPanelSnapshot,
   type SubscribePluginPanelsInput,
 } from "@t3tools/contracts";
+import { readPluginProbe } from "./PluginManifests.ts";
 
 const decodeReady = Schema.decodeUnknownSync(PluginSidecarReady);
 const decodeMessage = Schema.decodeUnknownSync(PluginInboundMessage);
+const decodeProbeIdentity = Schema.decodeUnknownOption(
+  Schema.fromJsonString(Schema.Struct({ id: Schema.String })),
+);
+
 const IDLE_GRACE_MS = 250;
 const MAX_PENDING_REQUESTS = 64;
 const MAX_FRAME_BYTES = 1024 * 1024;
 const START_TIMEOUT_MS = 10_000;
 const RECONNECT_MS = 1_000;
 const STOP_TIMEOUT_MS = 2_000;
-const PROBE_TIMEOUT_MS = 2_000;
-const MAX_PROBE_BYTES = 48 * 1024;
 const WINDOWS = HostProcess.Platform.defaultValue() === "win32";
-
-/**
- * A fresh GET of `baseUrl` must name this plugin. Redirects are not followed.
- * Anything but a small JSON body with the same id is not the plugin.
- */
-function probePluginId(baseUrl: string, id: string): Promise<boolean> {
-  return new Promise((resolve) => {
-    let settled = false;
-    const settle = (ok: boolean) => {
-      if (settled) return;
-      settled = true;
-      resolve(ok);
-    };
-    let url: URL;
-    try {
-      url = new URL(baseUrl);
-    } catch {
-      settle(false);
-      return;
-    }
-    if (url.protocol !== "http:" && url.protocol !== "https:") {
-      settle(false);
-      return;
-    }
-    const requestFn = url.protocol === "https:" ? NodeHttps.request : NodeHttp.request;
-    try {
-      const request = requestFn(
-        url,
-        {
-          method: "GET",
-          headers: { accept: "application/json" },
-          agent: false,
-          signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
-        },
-        (response) => {
-          const contentType = response.headers["content-type"] ?? "";
-          if (response.statusCode !== 200 || !/^application\/json\s*(;|$)/i.test(contentType)) {
-            response.resume();
-            settle(false);
-            return;
-          }
-          const chunks: Array<Buffer> = [];
-          let size = 0;
-          response.on("data", (chunk: Buffer) => {
-            size += chunk.length;
-            if (size > MAX_PROBE_BYTES) {
-              response.destroy();
-              settle(false);
-              return;
-            }
-            chunks.push(chunk);
-          });
-          response.on("end", () => {
-            try {
-              const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as {
-                id?: unknown;
-              };
-              settle(body.id === id);
-            } catch {
-              settle(false);
-            }
-          });
-          response.on("error", () => settle(false));
-        },
-      );
-      request.on("error", () => settle(false));
-      request.end();
-    } catch {
-      settle(false);
-    }
-  });
-}
 
 export interface PluginProject {
   readonly projectId: string;
@@ -376,11 +305,12 @@ export class PanelPluginConnection {
     if (connection.kind === "server") {
       const token = ++this.probeToken;
       this.probing = true;
-      void probePluginId(connection.baseUrl, this.config.id).then((ok) => {
+      void readPluginProbe(connection.baseUrl).then((body) => {
         if (token !== this.probeToken) return;
         this.probing = false;
         if (this.stopped) return;
-        if (!ok) {
+        const identity = decodeProbeIdentity(body);
+        if (identity._tag === "None" || identity.value.id !== this.config.id) {
           this.retry();
           return;
         }

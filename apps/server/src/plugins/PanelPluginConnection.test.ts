@@ -429,20 +429,29 @@ it.live("does not send a workspace to whoever binds a server plugin's port next"
   Effect.promise(async () => {
     const id = "github.com/acme/panels";
     const first = await listenPlugin(0, id);
+    const disconnected = Promise.withResolvers<void>();
     const connection = new PanelPluginConnection({
       id,
-      connection: { kind: "server", baseUrl: `http://127.0.0.1:${first.port}/plugins/t3` },
+      connection: { kind: "server", baseUrl: `ws://127.0.0.1:${first.port}/plugins/t3` },
     });
     const opened: Array<{ close: () => Promise<void> }> = [first];
     try {
       connection.subscribe({
         target: { scope: "thread", threadId: ThreadId.make("thread-1"), cwd: "/secret/worktree" },
         filters: [],
-        emit: () => undefined,
+        emit: (snapshot) => {
+          if (snapshot.status === "disconnected") disconnected.resolve();
+        },
       });
-      expect(JSON.parse(await first.leaked)).toMatchObject({
-        cwd: "/secret/worktree",
-        threadId: "thread-1",
+      const initial = await Promise.race([
+        first.leaked.then((body) => ({ frame: JSON.parse(body) })),
+        disconnected.promise.then(() => ({ status: "disconnected" })),
+      ]);
+      expect(initial).toMatchObject({
+        frame: {
+          cwd: "/secret/worktree",
+          threadId: "thread-1",
+        },
       });
       await first.close();
       const impostor = await listenPlugin(first.port, undefined);

@@ -1,6 +1,7 @@
 // @effect-diagnostics nodeBuiltinImport:off globalTimers:off -- Node fs/http adapter: guarded manifest reads and a bounded loopback probe.
 import * as NodeFS from "node:fs";
 import * as NodeHttp from "node:http";
+import * as NodeHttps from "node:https";
 import * as NodePath from "node:path";
 import {
   PluginIdentity,
@@ -159,22 +160,25 @@ export function readManifests(directory: string): ReadonlyArray<PluginCandidate>
   return found;
 }
 
-/**
- * Context-free compatibility check: a plain GET of the endpoint, with no thread, workspace or
- * upgrade, must name the same plugin. Redirects are not followed, and anything but a small JSON
- * answer counts as not compatible.
- */
-function probePlugin(candidate: PluginCandidate): Promise<PluginCandidate | undefined> {
+/** A context-free GET of the endpoint with a bounded JSON response and no redirects. */
+export function readPluginProbe(baseUrl: string): Promise<string | undefined> {
   return new Promise((resolve) => {
-    let settled = false;
-    const settle = (value: PluginCandidate | undefined) => {
-      if (settled) return;
-      settled = true;
-      resolve(value);
-    };
     try {
-      const request = NodeHttp.request(
-        candidate.baseUrl,
+      const url = new URL(baseUrl);
+      if (url.protocol === "ws:") url.protocol = "http:";
+      else if (url.protocol === "wss:") url.protocol = "https:";
+      if (
+        (url.protocol !== "http:" && url.protocol !== "https:") ||
+        url.hash ||
+        url.username ||
+        url.password
+      ) {
+        resolve(undefined);
+        return;
+      }
+      const requestHttp = url.protocol === "https:" ? NodeHttps.request : NodeHttp.request;
+      const request = requestHttp(
+        url,
         {
           method: "GET",
           headers: { accept: "application/json" },
@@ -185,7 +189,7 @@ function probePlugin(candidate: PluginCandidate): Promise<PluginCandidate | unde
           const contentType = response.headers["content-type"] ?? "";
           if (response.statusCode !== 200 || !/^application\/json\s*(;|$)/i.test(contentType)) {
             response.resume();
-            settle(undefined);
+            resolve(undefined);
             return;
           }
           const chunks: Array<Buffer> = [];
@@ -194,40 +198,36 @@ function probePlugin(candidate: PluginCandidate): Promise<PluginCandidate | unde
             size += chunk.length;
             if (size > MAX_PROBE_BYTES) {
               response.destroy();
-              settle(undefined);
+              resolve(undefined);
               return;
             }
             chunks.push(chunk);
           });
-          response.on("end", () => {
-            const body = decodeProbe(Buffer.concat(chunks).toString("utf8"));
-            if (
-              body._tag === "None" ||
-              body.value.id !== candidate.id ||
-              body.value.name !== candidate.name
-            ) {
-              settle(undefined);
-              return;
-            }
-            const declared = body.value.scopes;
-            const scopes = declared && [...new Set(declared.filter(isPluginPanelScope))];
-            const links = body.value.links?.filter(isPluginLinkPattern);
-            const linkIds = new Set(links?.map((link) => link.id));
-            settle({
-              ...candidate,
-              ...(scopes ? { scopes } : {}),
-              ...(links && links.length > 0 && linkIds.size === links.length ? { links } : {}),
-            });
-          });
-          response.on("error", () => settle(undefined));
+          response.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+          response.on("error", () => resolve(undefined));
         },
       );
-      request.on("error", () => settle(undefined));
+      request.on("error", () => resolve(undefined));
       request.end();
     } catch {
-      settle(undefined);
+      resolve(undefined);
     }
   });
+}
+
+async function probePlugin(candidate: PluginCandidate): Promise<PluginCandidate | undefined> {
+  const body = decodeProbe(await readPluginProbe(candidate.baseUrl));
+  if (body._tag === "None" || body.value.id !== candidate.id || body.value.name !== candidate.name)
+    return undefined;
+  const declared = body.value.scopes;
+  const scopes = declared && [...new Set(declared.filter(isPluginPanelScope))];
+  const links = body.value.links?.filter(isPluginLinkPattern);
+  const linkIds = new Set(links?.map((link) => link.id));
+  return {
+    ...candidate,
+    ...(scopes ? { scopes } : {}),
+    ...(links && links.length > 0 && linkIds.size === links.length ? { links } : {}),
+  };
 }
 
 /**
