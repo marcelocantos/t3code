@@ -206,8 +206,10 @@ const RESOLUTION_CACHE_LIMIT = 500;
 export function createPluginLinkResolutions() {
   const values = new Map<string, PluginLinkResolution>();
   const requested = new Set<string>();
+  const generation = new Map<string, number>();
   const listeners = new Set<() => void>();
   let version = 0;
+  let epoch = 0;
   return {
     /** Changes whenever an answer arrives, for renderers that read many links at once. */
     version: () => version,
@@ -227,12 +229,15 @@ export function createPluginLinkResolutions() {
         if (oldest !== undefined) {
           requested.delete(oldest);
           values.delete(oldest);
+          generation.delete(oldest);
         }
       }
+      const token = ++epoch;
+      generation.set(key, token);
       requested.add(key);
       void lookup().then(
         (resolution) => {
-          if (!requested.has(key)) return;
+          if (generation.get(key) !== token) return;
           values.set(key, resolution ?? {});
           version += 1;
           for (const listener of listeners) listener();

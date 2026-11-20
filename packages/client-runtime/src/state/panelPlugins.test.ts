@@ -2,6 +2,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import { pluginLinkMatches, type PluginLink } from "@t3tools/contracts";
 import {
+  createPluginLinkResolutions,
   matchPluginLink,
   pluginDateChoices,
   pluginLinkHref,
@@ -150,5 +151,50 @@ describe("pluginLinkHref", () => {
     ],
   ])("%s", (_name, declared, resolution, expected) => {
     expect(pluginLinkHref(declared, url, resolution)).toBe(expected);
+  });
+});
+
+describe("createPluginLinkResolutions", () => {
+  const fillUntil = (
+    resolutions: ReturnType<typeof createPluginLinkResolutions>,
+    prefix: string,
+  ) => {
+    for (let index = 0; index < 500; index++) {
+      resolutions.request(`${prefix}${index}`, () =>
+        Promise.resolve({ href: "https://filler.example/" }),
+      );
+    }
+  };
+
+  it("keeps the latest lookup when an older one finishes after the key was evicted", async () => {
+    const resolutions = createPluginLinkResolutions();
+    let releaseFirst: (value: { href: string }) => void = () => undefined;
+    const first = new Promise<{ href: string }>((resolve) => {
+      releaseFirst = resolve;
+    });
+    resolutions.request("A", () => first);
+    fillUntil(resolutions, "k");
+    resolutions.request("A", () => Promise.resolve({ href: "https://new.example/ok" }));
+    await Promise.resolve();
+    releaseFirst({ href: "https://old.example/stale" });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(resolutions.read("A")).toEqual({ href: "https://new.example/ok" });
+  });
+
+  it("does not let an evicted empty answer erase a newer lookup", async () => {
+    const resolutions = createPluginLinkResolutions();
+    let releaseFirst: (value: undefined) => void = () => undefined;
+    const first = new Promise<undefined>((resolve) => {
+      releaseFirst = resolve;
+    });
+    resolutions.request("A", () => first);
+    fillUntil(resolutions, "k");
+    resolutions.request("A", () => Promise.resolve({ href: "https://new.example/ok" }));
+    await Promise.resolve();
+    releaseFirst(undefined);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(resolutions.read("A")).toEqual({ href: "https://new.example/ok" });
   });
 });
