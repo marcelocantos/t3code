@@ -3,6 +3,8 @@ import * as NodeChildProcess from "node:child_process";
 import * as NodeCrypto from "node:crypto";
 import * as NodeHttp from "node:http";
 import * as NodeHttps from "node:https";
+import { signalProcessGroup } from "@t3tools/provider-core/server/processGroup";
+import * as HostProcess from "@t3tools/shared/HostProcess";
 import WebSocket from "ws";
 import * as Schema from "effect/Schema";
 import {
@@ -28,6 +30,7 @@ const RECONNECT_MS = 1_000;
 const STOP_TIMEOUT_MS = 2_000;
 const PROBE_TIMEOUT_MS = 2_000;
 const MAX_PROBE_BYTES = 48 * 1024;
+const WINDOWS = HostProcess.Platform.defaultValue() === "win32";
 
 /**
  * A fresh GET of `baseUrl` must name this plugin. Redirects are not followed.
@@ -321,14 +324,25 @@ export class PanelPluginConnection {
     settle(outcome);
   }
 
+  private signalGroup(pid: number, signal: NodeJS.Signals) {
+    try {
+      if (WINDOWS) process.kill(pid, signal);
+      else signalProcessGroup(pid, signal);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
+    }
+  }
+
   private stopChild() {
     const child = this.child;
     this.child = undefined;
-    if (!child || child.exitCode !== null || child.signalCode !== null) return;
-    child.kill("SIGTERM");
-    const timer = setTimeout(() => child.kill("SIGKILL"), STOP_TIMEOUT_MS);
+    if (!child?.pid || child.exitCode !== null || child.signalCode !== null) return;
+    const pid = child.pid;
+    // The direct child can exit on SIGTERM while a descendant ignores it.
+    // The SIGKILL still goes to the group.
+    this.signalGroup(pid, "SIGTERM");
+    const timer = setTimeout(() => this.signalGroup(pid, "SIGKILL"), STOP_TIMEOUT_MS);
     timer.unref();
-    child.once("exit", () => clearTimeout(timer));
   }
 
   private publish(status: PluginPanelSnapshot["status"]) {
@@ -376,6 +390,8 @@ export class PanelPluginConnection {
     }
     const child = NodeChildProcess.spawn(connection.command, [...connection.args], {
       stdio: ["ignore", "pipe", "pipe"],
+      // Its own session, so stop can signal the group without reaching this server.
+      detached: !WINDOWS,
     });
     this.child = child;
     let buffer = "";

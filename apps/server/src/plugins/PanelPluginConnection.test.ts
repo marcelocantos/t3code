@@ -1,5 +1,10 @@
 // @effect-diagnostics nodeBuiltinImport:off -- Tests exercise real sockets and child-process readiness records.
+import * as NodeFS from "node:fs";
 import * as NodeHttp from "node:http";
+import * as NodeNet from "node:net";
+import * as NodeOS from "node:os";
+import * as NodePath from "node:path";
+import * as HostProcess from "@t3tools/shared/HostProcess";
 import WebSocket, { WebSocketServer } from "ws";
 import { it, expect } from "@effect/vitest";
 import * as Effect from "effect/Effect";
@@ -456,4 +461,99 @@ it.live("does not send a workspace to whoever binds a server plugin's port next"
       for (const server of opened) await server.close();
     }
   }),
+);
+
+const fileAppeared = (directory: string, file: string) =>
+  new Promise<void>((resolve) => {
+    if (NodeFS.existsSync(file)) {
+      resolve();
+      return;
+    }
+    const watcher = NodeFS.watch(directory, () => {
+      if (!NodeFS.existsSync(file)) return;
+      watcher.close();
+      resolve();
+    });
+    if (NodeFS.existsSync(file)) {
+      watcher.close();
+      resolve();
+    }
+  });
+
+it.live.skipIf(HostProcess.Platform.defaultValue() === "win32")(
+  "stopping a sidecar signals the grandchild, then ends it",
+  () =>
+    Effect.promise(async () => {
+      const directory = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-plugin-stop-"));
+      const hit = NodePath.join(directory, "hit");
+      const parentExit = NodePath.join(directory, "parent-exit");
+      const ready = NodePath.join(directory, "ready");
+      const grandchild = `
+      const fs = require("node:fs");
+      const net = require("node:net");
+      const server = net.createServer();
+      server.listen(0, "127.0.0.1", () => {
+        const address = server.address();
+        fs.writeFileSync(${JSON.stringify(ready)}, JSON.stringify({ pid: process.pid, port: address.port }));
+      });
+      process.on("SIGHUP", () => {});
+      process.on("SIGTERM", () => fs.writeFileSync(${JSON.stringify(hit)}, "1"));
+      setInterval(() => {}, 1e9);
+    `;
+      const parent = `
+      const fs = require("node:fs");
+      const { spawn } = require("node:child_process");
+      spawn(process.execPath, ["--input-type=commonjs", "-e", ${JSON.stringify(grandchild)}], { stdio: "ignore" });
+      process.on("SIGTERM", () => {
+        setTimeout(() => {
+          fs.writeFileSync(${JSON.stringify(parentExit)}, "1");
+          process.exit(0);
+        }, 200);
+      });
+      setInterval(() => {}, 1e9);
+    `;
+      let grandchildPid = 0;
+      const connection = new PanelPluginConnection({
+        id: "sidecar",
+        connection: {
+          kind: "sidecar",
+          command: process.execPath,
+          args: ["--input-type=commonjs", "-e", parent],
+        },
+      });
+      try {
+        connection.subscribe({
+          target: { scope: "thread", threadId: ThreadId.make("thread-1"), cwd: "/tmp" },
+          filters: [],
+          emit: () => undefined,
+        });
+        await fileAppeared(directory, ready);
+        const info = JSON.parse(NodeFS.readFileSync(ready, "utf8")) as {
+          pid: number;
+          port: number;
+        };
+        grandchildPid = info.pid;
+        const socket = NodeNet.connect(info.port, "127.0.0.1");
+        const closed = new Promise<void>((resolve) => socket.once("close", () => resolve()));
+        await new Promise<void>((resolve) => socket.once("connect", () => resolve()));
+        connection.stop();
+        const outcome = await Promise.race([
+          fileAppeared(directory, hit).then(() => "hit" as const),
+          fileAppeared(directory, parentExit).then(() => "parent-exit" as const),
+        ]);
+        expect(outcome).toBe("hit");
+        await closed;
+        expect(socket.destroyed).toBe(true);
+      } finally {
+        connection.stop();
+        if (grandchildPid !== 0) {
+          try {
+            process.kill(grandchildPid, "SIGKILL");
+          } catch {
+            // Already gone.
+          }
+        }
+        NodeFS.rmSync(directory, { recursive: true, force: true });
+      }
+    }),
 );
