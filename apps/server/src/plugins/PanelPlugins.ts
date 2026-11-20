@@ -519,7 +519,8 @@ const make = Effect.gen(function* () {
         );
       const base = new URL(endpoint);
       base.protocol = base.protocol === "wss:" ? "https:" : "http:";
-      const root = new URL("/", base).href;
+      // The card's own directory, the same bound a panel snapshot's path already has.
+      const root = new URL("./", new URL(web.path, base)).href;
       let grant = linkGrants.get(key);
       if (grant?.root !== root) {
         grant?.revoke();

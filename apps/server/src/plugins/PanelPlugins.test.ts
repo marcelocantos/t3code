@@ -14,6 +14,8 @@ import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 import { ThreadId, type PluginLink, type PluginPanelSnapshot } from "@t3tools/contracts";
+import { HttpRouter } from "effect/http";
+import * as ServerHttp from "../http.ts";
 import * as ServerConfig from "../config.ts";
 import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
 import * as OrchestrationEventStore from "../persistence/OrchestrationEventStore.ts";
@@ -21,6 +23,7 @@ import * as ProjectService from "../project/ProjectService.ts";
 import * as PanelPlugins from "./PanelPlugins.ts";
 import * as PluginDiscovery from "./PluginDiscovery.ts";
 import * as PluginGateway from "./PluginGateway.ts";
+import * as PluginGatewayHttp from "./PluginGatewayHttp.ts";
 import { PLUGIN_GATEWAY_PREFIX } from "./PluginGatewaySessions.ts";
 
 /** A plugin: probe answer on plain GET, panel snapshots on the same route's WebSocket. */
@@ -35,15 +38,25 @@ const startPlugin = Effect.acquireRelease(
     const connected = new Array<Deferred.Deferred<void>>();
     const closed = new Array<Deferred.Deferred<void>>();
     const frames = new Array<Frame>();
+    const hits = new Array<string>();
     const frameWaiters = new Array<{
       test: (frame: Frame) => boolean;
       done: Deferred.Deferred<Frame>;
     }>();
-    const server = NodeHttp.createServer((_request, response) =>
+    const probeId = (url: string) => {
+      if (url.startsWith("/plugins/environment")) return "environment-plugin";
+      if (url.startsWith("/plugins/thread")) return "thread-plugin";
+      if (url.startsWith("/plugins/unscoped")) return "unscoped";
+      if (url.startsWith("/plugins/viewer")) return "viewer";
+      return ALPHA;
+    };
+    const server = NodeHttp.createServer((request, response) => {
+      const url = request.url ?? "";
+      hits.push(url);
       response
         .writeHead(200, { "content-type": "application/json" })
-        .end(JSON.stringify({ protocol: 1, id: ALPHA, name: "Alpha" })),
-    );
+        .end(JSON.stringify({ protocol: 1, id: probeId(url), name: "Alpha" }));
+    });
     const wss = new WebSocketServer({ server });
     wss.on("connection", (socket, request) => {
       const path = request.url ?? "";
@@ -121,6 +134,7 @@ const startPlugin = Effect.acquireRelease(
       baseUrl: `http://127.0.0.1:${address.port}/plugins/alpha`,
       sockets,
       frames,
+      hits,
       /** The first frame, past or future, that passes `test`. */
       frame: (test: (frame: Frame) => boolean) => {
         const done = Deferred.makeUnsafe<Frame>();
@@ -598,6 +612,82 @@ it.live("serves link cards only for declared prefixes of plugins with the links 
         plugin.frames.some((frame) => frame.path === "/plugins/unscoped"),
         false,
       );
+    }).pipe(Effect.provide(layer));
+  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);
+
+it.live("a link card token reaches only the card's directory", () =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const baseDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3code-panel-plugins-" });
+    const manifestDirectory = path.join(baseDir, "plugins");
+    yield* fs.makeDirectory(manifestDirectory, { recursive: true, mode: 0o700 });
+    yield* fs.makeDirectory(path.join(baseDir, "userdata"), { recursive: true });
+    const plugin = yield* startPlugin;
+    yield* fs.writeFileString(
+      path.join(baseDir, "userdata", "panel-plugins.json"),
+      JSON.stringify([
+        {
+          id: "viewer",
+          connection: { kind: "server", baseUrl: `${plugin.origin}/plugins/viewer` },
+          scopes: ["links"],
+          links: [{ id: "page", prefix: "https://viewer.example/page/" }],
+        },
+      ]),
+    );
+    const layer = testLayer(
+      baseDir,
+      manifestDirectory,
+      { current: [] },
+      yield* Queue.unbounded<unknown>(),
+    );
+    yield* Effect.gen(function* () {
+      const panels = yield* PanelPlugins.PanelPlugins;
+      const gateway = yield* PluginGateway.PluginGateway;
+      const connected = plugin.nextConnection();
+      const seen = yield* Queue.unbounded<ReadonlyArray<PluginLink>>();
+      yield* panels.subscribeLinks().pipe(
+        Stream.runForEach((value) => Queue.offer(seen, value)),
+        Effect.forkScoped,
+      );
+      yield* Deferred.await(connected);
+      yield* Stream.fromQueue(seen).pipe(
+        Stream.filter((value) => value.length > 0),
+        Stream.runHead,
+      );
+      const card = yield* panels.linkCard(
+        { pluginId: "viewer", linkId: "page", url: "https://viewer.example/page/1" },
+        { allowWeb: true },
+      );
+      if (!("webUrl" in card)) throw new Error("expected a web card");
+      const token = card.webUrl.slice(PLUGIN_GATEWAY_PREFIX.length).split("/")[0];
+      const { handler, dispose } = HttpRouter.toWebHandler(
+        Layer.merge(
+          PluginGatewayHttp.layer,
+          ServerHttp.layerBrowserApiCors.pipe(
+            Layer.provide(ServerConfig.layerTest(process.cwd(), { prefix: "plugin-card-" })),
+            Layer.provide(NodeServices.layer),
+          ),
+        ).pipe(Layer.provideMerge(Layer.succeed(PluginGateway.PluginGateway, gateway))),
+        { disableLogger: true },
+      );
+      try {
+        const cardStatus = yield* Effect.promise(() =>
+          handler(new Request(`http://t3.test${card.webUrl}`)).then((response) => response.status),
+        );
+        yield* Effect.promise(() =>
+          handler(new Request(`http://t3.test${PLUGIN_GATEWAY_PREFIX}${token}/admin/secret`)),
+        );
+        assert.equal(cardStatus, 200);
+        assert.equal(
+          plugin.hits.some((hit) => hit.startsWith("/cards/")),
+          true,
+        );
+        assert.equal(plugin.hits.includes("/admin/secret"), false);
+      } finally {
+        yield* Effect.promise(() => dispose());
+      }
     }).pipe(Effect.provide(layer));
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
