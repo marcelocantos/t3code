@@ -109,6 +109,9 @@ for (const name of [
   delete buildEnv[name];
 
 const dmg = NodePath.join(repoRoot, `release/T3-Code-${version}-arm64.dmg`);
+// Checksums are written last, from the stapled DMG, so a stale file never survives a rerun.
+const sums = NodePath.join(repoRoot, "release/SHA256SUMS");
+NodeFS.rmSync(sums, { force: true });
 const sha256 = (file: string) => run("shasum", ["-a", "256", file]).split(" ")[0] ?? "";
 // Notarization can take hours. A rerun after an interruption waits on the same submission
 // instead of rebuilding, as long as the DMG is the one that was submitted.
@@ -197,7 +200,10 @@ try {
   NodeFS.rmSync(mount, { recursive: true, force: true });
 }
 
-const sums = NodePath.join(repoRoot, "release/SHA256SUMS");
+if (!notarize) {
+  console.log(`\nSigned but not notarized, so not for release. No SHA256SUMS written: ${dmg}`);
+  process.exit(0);
+}
 NodeFS.writeFileSync(
   sums,
   NodeChildProcess.execFileSync("shasum", ["-a", "256", NodePath.basename(dmg)], {
@@ -205,4 +211,4 @@ NodeFS.writeFileSync(
     encoding: "utf8",
   }),
 );
-console.log(`\n${notarize ? "Signed, notarized and stapled" : "Signed"}: ${dmg}\n${sums}`);
+console.log(`\nSigned, notarized and stapled: ${dmg}\n${sums}`);
