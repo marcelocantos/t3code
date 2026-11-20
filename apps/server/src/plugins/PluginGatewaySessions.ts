@@ -20,6 +20,7 @@ export function pluginRelativePath(path: string): boolean {
 
 export interface PluginGatewayGrant {
   readonly upstreamRoot: string;
+  readonly resolveFromOrigin: boolean;
   /** Absent for environment panels, which belong to no single thread or workspace. */
   readonly threadId: string | undefined;
   readonly cwd: string | undefined;
@@ -84,6 +85,7 @@ export class PluginGatewaySessions {
               panels.set(panel.id, entry);
               this.grants.set(token, {
                 upstreamRoot,
+                resolveFromOrigin: false,
                 threadId,
                 cwd,
                 abort: new AbortController(),
@@ -97,11 +99,12 @@ export class PluginGatewaySessions {
     };
   }
 
-  /** A grant outside any panel snapshot, such as a link card page; it lives until `revoke`. */
-  grant(upstreamRoot: string) {
+  /** Card URLs keep their origin-relative path for relative assets. */
+  grantCard(upstreamRoot: string) {
     const token = crypto.randomUUID();
     this.grants.set(token, {
       upstreamRoot,
+      resolveFromOrigin: true,
       threadId: undefined,
       cwd: undefined,
       abort: new AbortController(),

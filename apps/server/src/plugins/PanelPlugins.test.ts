@@ -53,6 +53,10 @@ const startPlugin = Effect.acquireRelease(
     const server = NodeHttp.createServer((request, response) => {
       const url = request.url ?? "";
       hits.push(url);
+      if (url.startsWith("/cards/")) {
+        response.writeHead(url === "/cards/msg.html" ? 200 : 404).end();
+        return;
+      }
       response
         .writeHead(200, { "content-type": "application/json" })
         .end(JSON.stringify({ protocol: 1, id: probeId(url), name: "Alpha" }));
@@ -680,10 +684,7 @@ it.live("a link card token reaches only the card's directory", () =>
           handler(new Request(`http://t3.test${PLUGIN_GATEWAY_PREFIX}${token}/admin/secret`)),
         );
         assert.equal(cardStatus, 200);
-        assert.equal(
-          plugin.hits.some((hit) => hit.startsWith("/cards/")),
-          true,
-        );
+        assert.include(plugin.hits, "/cards/msg.html");
         assert.equal(plugin.hits.includes("/admin/secret"), false);
       } finally {
         yield* Effect.promise(() => dispose());

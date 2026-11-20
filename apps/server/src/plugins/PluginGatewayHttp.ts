@@ -188,7 +188,8 @@ const handler = Effect.gen(function* () {
   if (request.method === "OPTIONS") return HttpServerResponse.empty({ status: 204, headers });
   if (grant.active >= ACTIVE_LIMIT) return HttpServerResponse.empty({ status: 429, headers });
   const relative = suffix.slice(slash + 1);
-  const upstream = new URL(relative + parsed.value.search, grant.upstreamRoot);
+  const base = grant.resolveFromOrigin ? new URL("/", grant.upstreamRoot) : grant.upstreamRoot;
+  const upstream = new URL(relative + parsed.value.search, base);
   if (!upstream.href.startsWith(grant.upstreamRoot))
     return HttpServerResponse.empty({ status: 400 });
   yield* Effect.acquireRelease(

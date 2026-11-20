@@ -524,7 +524,7 @@ const make = Effect.gen(function* () {
       let grant = linkGrants.get(key);
       if (grant?.root !== root) {
         grant?.revoke();
-        grant = { root, ...gateway.grant(root) };
+        grant = { root, ...gateway.grantCard(root) };
         linkGrants.set(key, grant);
       }
       return {
