@@ -8,7 +8,7 @@ import {
 } from "@t3tools/contracts";
 import { resolvePathLinkTarget } from "@t3tools/shared/fileLinks";
 import { parseMarkdownFileLink } from "@t3tools/shared/markdownLinks";
-import { isAbsolutePath } from "@t3tools/shared/path";
+import { isAbsolutePath, isWindowsAbsolutePath } from "@t3tools/shared/path";
 import { Atom } from "effect/reactivity";
 import type { EnvironmentRegistry } from "../connection/registry.ts";
 import {
@@ -138,10 +138,12 @@ export function pluginLinkTarget(
       : undefined;
   if (path === undefined) return undefined;
   // Same slash form as `pluginLinkMatches`. A Windows path that still climbs is not a target.
-  const canonical = /^[A-Za-z]:[\\/]|^\\\\/.test(path) ? path.replaceAll("\\", "/") : path;
-  if (canonical !== path && /(^|\/)\.\.?(\/|$)/.test(canonical)) return undefined;
+  if (isWindowsAbsolutePath(path)) {
+    const canonical = path.replaceAll("\\", "/");
+    return /(^|\/)\.\.?(\/|$)/.test(canonical) ? undefined : canonical;
+  }
   const segments: string[] = [];
-  for (const segment of canonical.split("/")) {
+  for (const segment of path.split("/")) {
     if (segment === "..") {
       if (segments.length > 1) segments.pop();
     } else if (segment !== ".") segments.push(segment);

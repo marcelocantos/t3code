@@ -95,12 +95,16 @@ describe("matchPluginLink", () => {
     const climbed = "C:\\Users\\me\\proj\\..\\..\\Windows\\secret.md";
     expect(pluginLinkMatches(link, climbed)).toBe(false);
     expect(pluginLinkMatches(link, "C:\\Users\\me\\proj\\readme.md")).toBe(true);
+    expect(pluginLinkMatches(link, "C:/Users/me/proj/readme.md")).toBe(true);
     expect(
       pluginLinkMatches(
         { pluginId: "p", linkId: "files", glob: "C:/Users/me/proj/**" },
         "C:/Users/me/proj/../../Windows/secret.md",
       ),
     ).toBe(false);
+    expect(
+      pluginLinkMatches({ pluginId: "p", linkId: "files", glob: "/repo/a\\b.md" }, "/repo/a\\b.md"),
+    ).toBe(true);
   });
 });
 
@@ -117,9 +121,9 @@ describe("pluginLinkTarget", () => {
   });
 
   it("does not keep a Windows path that climbs out of its directory", () => {
-    expect(pluginLinkTarget("C:\\Users\\me\\proj\\..\\..\\Windows\\secret.md", null)).toBe(
-      undefined,
-    );
+    const climbed = "C:\\Users\\me\\proj\\..\\..\\Windows\\secret.md";
+    expect(pluginLinkTarget(climbed, null)).toBeUndefined();
+    expect(pluginLinkTarget(climbed.replaceAll("\\", "/"), null)).toBeUndefined();
     expect(pluginLinkTarget("C:\\Users\\me\\proj\\readme.md", null)).toBe(
       "C:/Users/me/proj/readme.md",
     );
