@@ -15,9 +15,16 @@ import {
 } from "@t3tools/client-runtime/state/pluginSurfaceTree";
 import type { PluginSurface } from "@t3tools/contracts";
 
+/** A web surface's size when its opener gave none. */
+export const DEFAULT_WEB_SURFACE_SIZE = { width: 360, height: 320 };
+
+type SurfaceSizeUpdate = { readonly width?: number; readonly height?: number };
+
 /** One WebView's end of the bridge. Mutable: it follows the frame across loads. */
 export interface PluginBridgeFrame {
   readonly onResize?: (height: number) => void;
+  /** Set for a surface shown outside the tree, such as a link card, so it can resize itself. */
+  readonly onSurfaceResize?: (size: SurfaceSizeUpdate) => void;
   /** The surface showing this frame; null for a panel frame. */
   readonly nodeId: string | null;
   /** The id this frame's opener gave its surface. */
@@ -64,6 +71,7 @@ export type PluginBridgeAgent = (
 
 export function createPluginBridgeFrame(input: {
   readonly onResize?: (height: number) => void;
+  readonly onSurfaceResize?: (size: SurfaceSizeUpdate) => void;
   readonly nodeId: string | null;
   readonly ownSurfaceId: string | undefined;
   readonly gatewayUrl: string;
@@ -211,6 +219,15 @@ export function handlePluginBridgeRelay(
     }
     case "surface.update": {
       const opened = frame.surfaces.get(message.surfaceId);
+      if (
+        opened === undefined &&
+        frame.nodeId === null &&
+        frame.onSurfaceResize !== undefined &&
+        frame.ownSurfaceId === message.surfaceId
+      ) {
+        if (message.size !== undefined) frame.onSurfaceResize(message.size);
+        return;
+      }
       // A frame may change only its own surface's size, never replace itself.
       const own =
         opened === undefined && frame.nodeId !== null && frame.ownSurfaceId === message.surfaceId
@@ -229,8 +246,18 @@ export function handlePluginBridgeRelay(
         });
         return;
       }
-      if (message.maximized !== undefined && tree.get(id)?.content.kind === "web") {
+      const target = tree.get(id);
+      if (target?.content.kind === "web" && message.maximized !== undefined) {
         tree.update(id, { maximized: message.maximized });
+      }
+      // Stored as asked; the sheet clamps to the screen it renders on.
+      if (target?.content.kind === "web" && message.size !== undefined) {
+        tree.update(id, {
+          size: {
+            width: message.size.width ?? target.size?.width ?? DEFAULT_WEB_SURFACE_SIZE.width,
+            height: message.size.height ?? target.size?.height ?? DEFAULT_WEB_SURFACE_SIZE.height,
+          },
+        });
       }
       // Sheets have no anchor, so only content changes apply.
       if (content !== undefined) {

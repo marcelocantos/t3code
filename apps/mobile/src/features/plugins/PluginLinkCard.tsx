@@ -5,9 +5,10 @@ import {
   pluginLinkHref,
   pluginLinkTarget,
 } from "@t3tools/client-runtime/state/panelPlugins";
+import { clampPluginSurfaceSize } from "@t3tools/client-runtime/state/pluginBridge";
 import type { EnvironmentId, PluginLink, PluginLinkCard } from "@t3tools/contracts";
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { ScrollView, View } from "react-native";
+import { ScrollView, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppText as Text } from "../../components/ui/AppText";
@@ -143,7 +144,7 @@ export function PluginLinkCardSheet(props: {
             />
           ))
         ) : (
-          <WebCard environmentId={environmentId} card={card} />
+          <WebCard environmentId={environmentId} linkId={link.linkId} card={card} />
         )}
         <View className="flex-row">
           <Button label="Open link" tone="primary" size="compact" onPress={props.onOpenLink} />
@@ -155,18 +156,25 @@ export function PluginLinkCardSheet(props: {
 
 function WebCard(props: {
   readonly environmentId: EnvironmentId;
+  readonly linkId: string;
   readonly card: Extract<PluginLinkCard, { webUrl: string }>;
 }) {
   const connection = usePreparedConnection(props.environmentId);
+  const viewport = useWindowDimensions();
+  // The declared height until the page sizes itself with `surface.update`.
+  const [height, setHeight] = useState(props.card.height ?? WEB_CARD_HEIGHT);
   if (connection._tag === "None") return null;
   const src = new URL(props.card.webUrl, connection.value.httpBaseUrl).href;
   return (
     <PluginBridgeHost environmentId={props.environmentId} agent={undefined}>
       <PluginBridgeWebView
         src={src}
-        height={props.card.height ?? WEB_CARD_HEIGHT}
+        height={clampPluginSurfaceSize({ width: viewport.width, height }, viewport).height}
+        onSurfaceResize={(size) => {
+          if (size.height !== undefined) setHeight(size.height);
+        }}
         nodeId={null}
-        ownSurfaceId={undefined}
+        ownSurfaceId={`link:${props.linkId}`}
         gatewayUrl={src}
         panelTitle="Link card"
         agentKey="link-card"

@@ -380,7 +380,8 @@ On hover T3 sends a request with no thread or projects, after checking the URL a
 
 Answer with a structured `surface`, or with `"web": { "path": "/cards/msg/42", "height"?: 160 }`, a
 page on the plugin's own origin that T3 shows in a sandboxed frame through the gateway (heights
-80–800 px). Card pages receive neither `x-t3-thread-id` nor `x-t3-workspace`, the path cannot carry
+80–800 px). `height` is the card's starting size; the page can then size itself to its content
+with the bridge's `surface.resize` feature. Card pages receive neither `x-t3-thread-id` nor `x-t3-workspace`, the path cannot carry
 a query, and assets should be relative or inline. Web cards need `orchestration:operate`; structured
 cards need only `orchestration:read`. Cards are read-only: actions in them are not run. Clients
 cache a URL's card for the page session.
@@ -499,7 +500,7 @@ does not accept IPv6 literal hosts in the gateway’s path-restricted CSP source
 ### Host bridge
 
 A web panel cannot draw outside its iframe, so T3 offers a narrow bridge for hover cards, dialogs
-and agent requests. After each load T3 posts `{ "type": "t3.bridge.init", "version": 1, "features": ["surface.maximize"] }` with a
+and agent requests. After each load T3 posts `{ "type": "t3.bridge.init", "version": 1, "features": ["surface.maximize", "surface.resize"] }` with a
 `MessagePort` (`event.ports[0]`); talk only over that port. A script that starts listening late,
 for example after a top-level `await`, can post `{ "type": "t3.bridge.hello" }` to `parent` and T3 sends
 a fresh init (closing anything opened over the previous port). Messages are JSON, at most 256 KiB, and
@@ -508,7 +509,7 @@ validated; an invalid one gets an `error` reply.
 | Panel → T3                                                                                                               | Meaning                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | ------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `surface.open { requestId, surfaceId, parentSurfaceId?, presentation, anchor?, placement?, size?, content, maximized? }` | `presentation` is `popover`, `dialog` or `modal`. `anchor` is a `{ x, y, width, height }` rectangle from `getBoundingClientRect()` in the panel's viewport; T3 translates and clamps it. `placement` is `left`, `right`, `top` or `bottom`, optionally with `-start` or `-end`. `content` is `{ "kind": "structured", "surface": {…} }` or `{ "kind": "web", "path": "./card.html" }`; a web path is relative and must stay inside the panel's directory. Sizes are clamped to 160–800 × 80–900 px; `maximized: true` (web content only) ignores `size`. |
-| `surface.update { surfaceId, anchor?, content?, maximized? }`                                                            | Move or refresh a surface this frame opened. A web surface may send its own `surfaceId` with only `maximized`.                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `surface.update { surfaceId, anchor?, content?, maximized?, size? }`                                                     | Move or refresh a surface this frame opened. A web surface may send its own `surfaceId` with only `maximized` or `size`.                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | `surface.close { surfaceId, result? }`                                                                                   | Close a surface this frame opened, or the frame's own surface.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | `agent.prompt { requestId, prompt }`, `agent.stop { requestId }`                                                         | Ask to send a message to the thread, or stop a run this panel started. T3 asks the user first.                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 
@@ -535,6 +536,13 @@ controls for that panel. Report only changes, for example with `ResizeObserver`
 on a content element whose height does not depend on the iframe viewport.
 Web surfaces cannot resize sidebar panels. Hosts without the feature keep the
 configured height and manual controls.
+
+The `surface.resize` feature lets a web surface take a new size with
+`{ "type": "surface.update", "surfaceId": "<its id>", "size": { "height": 420 } }`, sent by the page
+itself (its id is in its init; a link card's is `link:<linkId>`) or by the frame that opened it.
+`size` takes `width` and `height`; a side left out keeps its size. Hosts clamp it to 160–800 px wide
+and 80–900 px tall, within the window less a 16 px margin. Mobile sheets use only the height.
+Structured surfaces size to their content and ignore it.
 
 A web surface shown
 `maximized` fills the window less a 1rem margin on web and desktop, whose dialogs with web content
