@@ -13,6 +13,7 @@ import type {
   PluginPanelRow,
   SubscribeEnvironmentPluginPanelsInput,
 } from "@t3tools/contracts";
+import { msg, T, useGT, useMessages, Var } from "gt-react-native";
 import { useState } from "react";
 import { Pressable, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -27,10 +28,10 @@ import { environmentPluginPanels, pluginErrorMessage } from "./pluginAtoms";
 import { PluginPanels } from "./PluginPanels";
 
 const ACTIVITY_LABEL: Record<PluginNavigationActivity, string> = {
-  approval: "Needs approval",
-  input: "Needs input",
-  working: "Working",
-  idle: "Idle",
+  approval: msg("Needs approval"),
+  input: msg("Needs input"),
+  working: msg("Working", { $context: "thread activity" }),
+  idle: msg("Idle", { $context: "thread activity" }),
 };
 
 interface NavigationProps {
@@ -63,6 +64,7 @@ type Chooser = {
 function EnvironmentPanels(props: NavigationProps & { readonly environmentId: EnvironmentId }) {
   const [filters, setFilters] = useState<SubscribeEnvironmentPluginPanelsInput["filters"]>([]);
   const [chooser, setChooser] = useState<Chooser | null>(null);
+  const gt = useGT();
   const query = useEnvironmentQuery(
     environmentPluginPanels({ environmentId: props.environmentId, input: { filters } }),
   );
@@ -99,8 +101,8 @@ function EnvironmentPanels(props: NavigationProps & { readonly environmentId: En
       }
       case "none":
         Dialog.alert(
-          "No matching project",
-          "None of this item's projects are in this environment.",
+          gt("No matching project"),
+          gt("None of this item's projects are in this environment."),
         );
     }
   };
@@ -110,7 +112,9 @@ function EnvironmentPanels(props: NavigationProps & { readonly environmentId: En
     <>
       {query.error ? (
         <Text className="text-sm text-foreground-muted">
-          Plugin panels unavailable: {pluginErrorMessage(query.failure)}
+          <T>
+            Plugin panels unavailable: <Var>{pluginErrorMessage(query.failure)}</Var>
+          </T>
         </Text>
       ) : null}
       <PluginPanels
@@ -150,17 +154,19 @@ function ThreadChooserSheet(props: {
   readonly onProject: (projectId: string) => void;
 }) {
   const insets = useSafeAreaInsets();
+  const gt = useGT();
+  const m = useMessages();
   const entries = [
     ...props.chooser.threads.map((thread) => ({
       key: `thread:${thread.threadId}`,
       label: thread.title,
-      detail: ACTIVITY_LABEL[thread.activity],
+      detail: m(ACTIVITY_LABEL[thread.activity]),
       icon: "bubble.left.and.bubble.right" as const,
       onPress: () => props.onThread(thread.threadId),
     })),
     ...props.chooser.projects.map((project) => ({
       key: `project:${project.projectId}`,
-      label: `New thread in ${project.title}`,
+      label: gt("New thread in {title}", { title: project.title }),
       detail: undefined,
       icon: "plus" as const,
       onPress: () => props.onProject(project.projectId),

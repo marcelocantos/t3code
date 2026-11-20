@@ -6,6 +6,7 @@ import {
   type PluginDiscoveryChoice,
 } from "@t3tools/client-runtime/state/pluginDiscovery";
 import type { EnvironmentId, PluginDiscoveryItem } from "@t3tools/contracts";
+import { msg, T, useGT, useMessages } from "gt-react-native";
 import { useState } from "react";
 import { View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -24,14 +25,16 @@ import { SettingsScreen } from "./components/SettingsScreen";
 import { SettingsSection } from "./components/SettingsSection";
 import { useSettingsEnvironmentFilter } from "./settings-environment-filter";
 
-const EXPLANATION =
-  "T3 Code found these plugins running on this machine. Enabled plugins can add panels to your threads and sidebar. Select the ones you want.";
+const EXPLANATION = msg(
+  "T3 Code found these plugins running on this machine. Enabled plugins can add panels to your threads and sidebar. Select the ones you want.",
+);
 
 export function SettingsPluginsRouteScreen() {
   const insets = useSafeAreaInsets();
   const { selectedTargets } = useSettingsEnvironmentFilter();
+  const gt = useGT();
   return (
-    <SettingsScreen title="Plugins">
+    <SettingsScreen title={gt("Plugins")}>
       <ScrollView
         contentInsetAdjustmentBehavior="automatic"
         showsVerticalScrollIndicator={false}
@@ -48,7 +51,7 @@ export function SettingsPluginsRouteScreen() {
         ))}
         {selectedTargets.length === 0 ? (
           <Text className="px-2 text-sm text-foreground-muted">
-            Connect an environment to manage its plugins.
+            <T>Connect an environment to manage its plugins.</T>
           </Text>
         ) : null}
       </ScrollView>
@@ -72,6 +75,8 @@ function EnvironmentPlugins(props: {
   const offered = plugins.filter((item) => item.state === "offered");
   const moved = plugins.filter((item) => item.state === "enabled" && pluginNeedsDecision(item));
   const settled = plugins.filter((item) => !offered.includes(item) && !moved.includes(item));
+  const gt = useGT();
+  const m = useMessages();
 
   const apply = async (choices: ReadonlyArray<PluginDiscoveryChoice>) => {
     setBusy(true);
@@ -79,19 +84,24 @@ function EnvironmentPlugins(props: {
       const result = await act({ environmentId: props.environmentId, input: choice.input });
       if (result._tag === "Failure") {
         setBusy(false);
-        Dialog.alert(`Could not ${choice.label.toLowerCase()}`, pluginFailureMessage(result.cause));
+        Dialog.alert(
+          gt("Could not {action}", { action: choice.label.toLowerCase() }),
+          pluginFailureMessage(result.cause),
+        );
         return;
       }
     }
     setBusy(false);
   };
   const choice = (item: PluginDiscoveryItem, action: PluginDiscoveryChoice["input"]["action"]) =>
-    pluginDiscoveryChoices(item).find((candidate) => candidate.input.action === action);
+    pluginDiscoveryChoices(item, m).find((candidate) => candidate.input.action === action);
 
   if (query.error) {
     return (
       <Text className="px-2 text-sm text-foreground-muted">
-        {props.label ? `${props.label}: ` : ""}Plugins unavailable: {query.error}
+        {props.label
+          ? gt("{label}: Plugins unavailable: {error}", { label: props.label, error: query.error })
+          : gt("Plugins unavailable: {error}", { error: query.error })}
       </Text>
     );
   }
@@ -99,8 +109,10 @@ function EnvironmentPlugins(props: {
     return (
       <SettingsSection title={props.label}>
         <ListRowLayout
-          label={query.isPending ? "Looking for plugins…" : "No plugins found"}
-          description={query.isPending ? undefined : "Plugins running on this machine appear here."}
+          label={query.isPending ? gt("Looking for plugins…") : gt("No plugins found")}
+          description={
+            query.isPending ? undefined : gt("Plugins running on this machine appear here.")
+          }
         />
       </SettingsSection>
     );
@@ -113,16 +125,16 @@ function EnvironmentPlugins(props: {
         </Text>
       ) : null}
       {(offered.length > 0 && !deferred) || moved.length > 0 ? (
-        <Text className="px-2 text-sm text-foreground-muted">{EXPLANATION}</Text>
+        <Text className="px-2 text-sm text-foreground-muted">{m(EXPLANATION)}</Text>
       ) : null}
       {offered.length > 0 && !deferred ? (
-        <SettingsSection title="New plugins">
+        <SettingsSection title={gt("New plugins")}>
           {offered.map((item, index) => (
             <SelectionRow
               key={item.id}
               role="checkbox"
               title={item.name}
-              subtitle={describePluginDiscoveryItem(item)}
+              subtitle={describePluginDiscoveryItem(item, m)}
               selected={checked.has(item.id)}
               disabled={!canDecide || busy}
               isFirst={index === 0}
@@ -141,7 +153,7 @@ function EnvironmentPlugins(props: {
       {offered.length > 0 && !deferred && canDecide ? (
         <View className="flex-row flex-wrap gap-2 px-2">
           <Button
-            label="Enable selected"
+            label={gt("Enable selected")}
             tone="primary"
             size="compact"
             loading={busy}
@@ -155,7 +167,7 @@ function EnvironmentPlugins(props: {
             }
           />
           <Button
-            label="Not now"
+            label={gt("Not now")}
             size="compact"
             disabled={busy}
             onPress={() => setDeferred(true)}
@@ -163,12 +175,12 @@ function EnvironmentPlugins(props: {
         </View>
       ) : null}
       {moved.length > 0 ? (
-        <SettingsSection title="Changed plugins">
+        <SettingsSection title={gt("Changed plugins")}>
           {moved.map((item) => (
             <View key={item.id} className="gap-2 px-4 py-3">
               <Text className="text-foreground">{item.name}</Text>
               <Text className="text-sm text-foreground-muted">
-                {describePluginDiscoveryItem(item)}
+                {describePluginDiscoveryItem(item, m)}
               </Text>
               {canDecide ? (
                 <View className="flex-row flex-wrap gap-2">
@@ -194,7 +206,7 @@ function EnvironmentPlugins(props: {
         </SettingsSection>
       ) : null}
       {settled.length > 0 ? (
-        <SettingsSection title="Plugins">
+        <SettingsSection title={gt("Plugins")}>
           {settled.map((item, index) => (
             <SettledPlugin
               key={item.id}
@@ -219,14 +231,15 @@ function SettledPlugin(props: {
   readonly onChoose: (choice: PluginDiscoveryChoice) => void;
 }) {
   const { item } = props;
-  const choices = pluginDiscoveryChoices(item);
+  const m = useMessages();
+  const choices = pluginDiscoveryChoices(item, m);
   const toggle = choices.find((choice) =>
     item.state === "enabled" ? choice.input.action === "disable" : choice.input.action === "enable",
   );
   const secondary = choices.filter(
     (choice) => choice.input.action !== "enable" && choice.input.action !== "disable",
   );
-  const description = describePluginDiscoveryItem(item);
+  const description = describePluginDiscoveryItem(item, m);
   return (
     <View className={props.separated ? "border-t border-border-subtle" : undefined}>
       {props.canDecide && item.state !== "manual" ? (

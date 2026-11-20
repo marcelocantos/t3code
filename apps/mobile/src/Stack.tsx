@@ -191,6 +191,7 @@ const ROUTE_TITLES: Readonly<Record<string, string>> = {
   SettingsKeyboard: msg("Keyboard"),
   SettingsVoice: msg("Voice"),
   SettingsFollowUp: msg("Chat", { $context: "noun, settings page title" }),
+  SettingsPlugins: msg("Plugins"),
   SettingsScheduledTasks: msg("Scheduled tasks"),
   SettingsScheduledTaskNew: msg("New scheduled task"),
   SettingsScheduledTaskEdit: msg("Edit scheduled task"),
@@ -367,7 +368,7 @@ const SETTINGS_SCREENS = {
   SettingsPlugins: createNativeStackScreen({
     screen: SettingsPluginsRouteScreen,
     linking: "settings/plugins",
-    options: settingsPage("Plugins"),
+    options: settingsPage(),
   }),
   SettingsScheduledTasks: createNativeStackScreen({
     screen: SettingsScheduledTasksRouteScreen,

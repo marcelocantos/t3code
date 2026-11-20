@@ -38,7 +38,7 @@ export function ThreadHeader(props: {
   const pluginsAction: AppBarAction[] = props.onOpenPluginsInspector
     ? [
         {
-          accessibilityLabel: pluginsVisible ? "Close plugins" : "Open plugins",
+          accessibilityLabel: pluginsVisible ? gt("Close plugins") : gt("Open plugins"),
           icon: "square.grid.2x2",
           selected: pluginsVisible,
           separateBackground: false,

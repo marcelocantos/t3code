@@ -1,4 +1,4 @@
-import { useAtomSet, useAtomValue } from "@effect/atom-react";
+import { useAtomValue } from "@effect/atom-react";
 import type {
   EnvironmentId,
   PluginAction,
@@ -10,6 +10,7 @@ import type {
   RunId,
 } from "@t3tools/contracts";
 import { AsyncResult } from "effect/reactivity";
+import { T, useGT, useMessages } from "gt-react-native";
 import { useState, type ReactNode } from "react";
 import { Pressable, ScrollView, View } from "react-native";
 
@@ -20,7 +21,8 @@ import { IconButton } from "../../components/ui/IconButton";
 import { Menu } from "../../components/ui/Menu";
 import { useNowMinuteMs } from "../../lib/clock";
 import { cn } from "../../lib/cn";
-import { mobilePreferencesAtom, updateMobilePreferencesAtom } from "../../state/preferences";
+import { mobilePreferencesAtom, saveMobilePreferences } from "../../state/preferences";
+import { useAtomCommand } from "../../state/use-atom-command";
 import { PluginBridgeHost } from "./PluginBridge";
 import { PluginWebPanel } from "./PluginWebPanel";
 import {
@@ -60,13 +62,13 @@ const WEB_PANEL_DEFAULT_HEIGHT = 420;
 
 function usePluginPanelHeight(key: string, fallback: number) {
   const preferences = useAtomValue(mobilePreferencesAtom);
-  const save = useAtomSet(updateMobilePreferencesAtom);
+  const save = useAtomCommand(saveMobilePreferences);
   const stored = AsyncResult.isSuccess(preferences)
     ? preferences.value.pluginPanelHeights?.[key]
     : undefined;
   const height = pluginPanelHeight(stored, fallback);
   const resize = (delta: number) =>
-    save({
+    void save({
       transform: (current) => ({
         pluginPanelHeights: {
           ...current.pluginPanelHeights,
@@ -89,6 +91,7 @@ export function PluginPanels(props: {
   /** A row with `navigate` was tapped (environment panels). */
   readonly onNavigate?: (row: PluginPanelRow) => void;
 }) {
+  const gt = useGT();
   const [sheet, setSheet] = useState<{
     readonly scope: PluginRowScope;
     readonly root: PluginSurfaceEntry;
@@ -103,12 +106,11 @@ export function PluginPanels(props: {
       {props.snapshots.map((plugin) =>
         plugin.status !== "connected" ? (
           <Text key={plugin.pluginId} className="text-sm text-foreground-muted">
-            {plugin.pluginId}:{" "}
             {plugin.status === "connecting"
-              ? "Connecting…"
+              ? gt("{plugin}: Connecting…", { plugin: plugin.pluginId })
               : plugin.status === "error"
-                ? "Check the plugin configuration."
-                : "Disconnected. Reconnecting…"}
+                ? gt("{plugin}: Check the plugin configuration.", { plugin: plugin.pluginId })
+                : gt("{plugin}: Disconnected. Reconnecting…", { plugin: plugin.pluginId })}
           </Text>
         ) : (
           plugin.panels.map((panel) => (
@@ -171,6 +173,7 @@ function PanelFrame(props: {
 }) {
   const { height, resize } = usePluginPanelHeight(props.heightKey, props.fallbackHeight);
   const [contentHeight, setContentHeight] = useState<number | null>(null);
+  const gt = useGT();
   return (
     <View className={cn("gap-2", !props.web && "rounded-xl bg-grouped-card p-3")}>
       <View className="flex-row items-center gap-2">
@@ -180,7 +183,7 @@ function PanelFrame(props: {
         {contentHeight === null && (
           <IconButton
             icon="minus"
-            accessibilityLabel={`Shorten ${props.title}`}
+            accessibilityLabel={gt("Shorten {title}", { title: props.title })}
             disabled={height <= PLUGIN_PANEL_HEIGHT.min}
             onPress={() => resize(-PLUGIN_PANEL_HEIGHT.step)}
           />
@@ -188,7 +191,7 @@ function PanelFrame(props: {
         {contentHeight === null && (
           <IconButton
             icon="plus"
-            accessibilityLabel={`Lengthen ${props.title}`}
+            accessibilityLabel={gt("Lengthen {title}", { title: props.title })}
             disabled={height >= PLUGIN_PANEL_HEIGHT.max}
             onPress={() => resize(PLUGIN_PANEL_HEIGHT.step)}
           />
@@ -273,7 +276,9 @@ function ListPanelBody(props: {
           />
         ))}
         {panel.rows.length === 0 ? (
-          <Text className="text-sm text-foreground-muted">No items.</Text>
+          <Text className="text-sm text-foreground-muted">
+            <T>No items.</T>
+          </Text>
         ) : null}
       </ScrollView>
     </>
@@ -290,6 +295,8 @@ function PanelRow(props: {
   readonly onOpenSurface: (scope: PluginRowScope, root: PluginSurfaceEntry) => void;
 }) {
   const { row, scope, agent } = props;
+  const gt = useGT();
+  const m = useMessages();
   const requests = usePluginRequests(scope.environmentId);
   const [busy, setBusy] = useState(false);
   const rowKey = pluginRowKey(scope.pluginId, scope.panelId, row.id);
@@ -302,6 +309,7 @@ function PanelRow(props: {
         primaryActionId: row.primaryActionId,
         agentActions,
         now: new Date(props.nowMs),
+        resolve: m,
       })
     : null;
 
@@ -361,7 +369,7 @@ function PanelRow(props: {
         <Pressable
           accessibilityRole={navigable ? "button" : undefined}
           accessibilityLabel={row.label}
-          accessibilityHint={openHover ? "Long-press for details" : undefined}
+          accessibilityHint={openHover ? gt("Long-press for details") : undefined}
           className="min-w-0 flex-1 active:opacity-70"
           onPress={navigable ? () => props.onNavigate?.(row) : undefined}
           onLongPress={openHover}
@@ -375,7 +383,7 @@ function PanelRow(props: {
         <IconButton
           icon="stop.fill"
           variant="danger"
-          accessibilityLabel={`Stop ${row.label}`}
+          accessibilityLabel={gt("Stop {label}", { label: row.label })}
           disabled={run.kind !== "active"}
           onPress={run.kind === "active" ? () => void agent?.stop(run.runId) : undefined}
         />
@@ -393,7 +401,7 @@ function PanelRow(props: {
       {openHover ? (
         <IconButton
           icon="info.circle"
-          accessibilityLabel={`Details for ${row.label}`}
+          accessibilityLabel={gt("Details for {label}", { label: row.label })}
           disabled={busy}
           onPress={openHover}
         />
@@ -427,6 +435,7 @@ function PrimaryAction(props: {
   readonly onCustomDate: (action: Extract<PluginLeafAction, { kind: "date" }>) => void;
 }) {
   const { action } = props;
+  const m = useMessages();
   switch (action.kind) {
     case "agent":
       return props.agentActions ? (
@@ -451,6 +460,7 @@ function PrimaryAction(props: {
       const menu = pluginRowMenu(action.items, {
         agentActions: props.agentActions,
         now: new Date(props.nowMs),
+        resolve: m,
       });
       return menu.actions.length ? (
         <Menu

@@ -4,6 +4,7 @@ import type {
   PluginSurface,
   PluginSurfaceBlock,
 } from "@t3tools/contracts";
+import { useGT, useMessages } from "gt-react-native";
 import { useState } from "react";
 import { Pressable, ScrollView, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -76,6 +77,7 @@ export function PluginSurfaceSheet(props: {
   readonly onClose: () => void;
 }) {
   const insets = useSafeAreaInsets();
+  const gt = useGT();
   const requests = usePluginRequests(props.scope.environmentId);
   const [stack, setStack] = useState<ReadonlyArray<PluginSurfaceEntry>>([props.root]);
   const [busy, setBusy] = useState(false);
@@ -118,6 +120,7 @@ export function PluginSurfaceSheet(props: {
     else void run(action, value);
   };
 
+  const previous = stack[level - 1];
   return (
     <Sheet title={top.surface.title} onClose={props.onClose}>
       <ScrollView
@@ -129,12 +132,16 @@ export function PluginSurfaceSheet(props: {
         {level > 0 ? (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={`Back to ${stack[level - 1]?.surface.title ?? "previous"}`}
+            accessibilityLabel={
+              previous === undefined
+                ? gt("Back to previous")
+                : gt("Back to {title}", { title: previous.surface.title })
+            }
             className="min-h-11 flex-row items-center gap-1 self-start active:opacity-70"
             onPress={() => setStack((current) => current.slice(0, -1))}
           >
             <SymbolView name="chevron.left" size={16} tintColorClassName="accent-primary-text" />
-            <Text className="text-primary-text">{stack[level - 1]?.surface.title}</Text>
+            <Text className="text-primary-text">{previous?.surface.title}</Text>
           </Pressable>
         ) : null}
         {top.surface.blocks.map((block, index) => (
@@ -287,7 +294,12 @@ export function DateActionMenu(props: {
   readonly onChoose: (value: string | null) => void;
   readonly onCustom: () => void;
 }) {
-  const menu = pluginRowMenu([props.action], { agentActions: false, now: props.now });
+  const m = useMessages();
+  const menu = pluginRowMenu([props.action], {
+    agentActions: false,
+    now: props.now,
+    resolve: m,
+  });
   return (
     <Menu
       accessible
@@ -317,6 +329,7 @@ function SurfaceForm(props: {
   readonly busy: boolean;
   readonly onSubmit: (form: FormBlock, values: Record<string, string>) => void;
 }) {
+  const gt = useGT();
   const [values, setValues] = useState<Record<string, string>>(() =>
     Object.fromEntries(props.form.fields.map((field) => [field.id, field.value ?? ""])),
   );
@@ -324,11 +337,13 @@ function SurfaceForm(props: {
     for (const field of props.form.fields) {
       const value = (values[field.id] ?? "").trim();
       if (field.required && value === "") {
-        Dialog.alert(`${field.label} is required`);
+        Dialog.alert(gt("{label} is required", { label: field.label }));
         return;
       }
       if (field.kind === "date" && value !== "" && parsePluginCalendarDate(value) === null) {
-        Dialog.alert(`${field.label} must be a date as YYYY-MM-DD`);
+        Dialog.alert(
+          gt("{label} must be a date as {format}", { label: field.label, format: "YYYY-MM-DD" }),
+        );
         return;
       }
     }
@@ -346,6 +361,7 @@ function SurfaceForm(props: {
             accessibilityLabel={field.label}
             value={values[field.id] ?? ""}
             onChangeText={(text) => setValues((current) => ({ ...current, [field.id]: text }))}
+            // oxlint-disable-next-line t3code/no-untranslated-copy -- the ISO date format the field parses, not a sentence
             placeholder={field.placeholder ?? (field.kind === "date" ? "YYYY-MM-DD" : undefined)}
             placeholderTextColorClassName="accent-foreground-muted"
             multiline={field.kind === "textarea"}

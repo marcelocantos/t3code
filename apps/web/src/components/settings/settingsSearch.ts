@@ -1462,16 +1462,16 @@ export const SETTINGS_SEARCH_ITEMS = [
   },
   {
     id: "plugins",
-    title: "Plugins",
+    title: msg("Plugins"),
     to: "/settings/plugins",
-    searchTerms: ["panel plugins extensions discovered enable disable sidebar thread details"],
+    searchTerms: [msg("panel plugins extensions discovered enable disable sidebar thread details")],
   },
   {
     id: "plugins-found",
-    title: "Plugins found",
+    title: msg("Plugins found"),
     to: "/settings/plugins",
     targetId: "plugins-found",
-    searchTerms: ["new plugin running local service enable selected not now switch endpoint"],
+    searchTerms: [msg("new plugin running local service enable selected not now switch endpoint")],
   },
   {
     id: "archive",

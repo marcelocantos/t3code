@@ -11,8 +11,10 @@ import {
 import { EnvironmentId } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import { AsyncResult, Atom } from "effect/reactivity";
+import { msg } from "gt-react-native";
 
 import { connectionAtomRuntime } from "../../connection/runtime";
+import { m } from "../../i18n/messages";
 
 export const threadPluginPanels = createPanelPluginAtoms(connectionAtomRuntime);
 export const environmentPluginPanels = createEnvironmentPanelPluginAtoms(connectionAtomRuntime);
@@ -53,5 +55,5 @@ export function pluginErrorMessage(error: unknown): string {
   const tag =
     typeof error === "object" && error !== null && "_tag" in error ? String(error._tag) : "";
   if (tag && message) return `${tag}: ${message}`;
-  return message || tag || "The plugin request failed.";
+  return message || tag || m(msg("The plugin request failed."));
 }
