@@ -137,10 +137,14 @@ export function pluginLinkTarget(
       ? resolvePathLinkTarget(file.path, workspaceRoot)
       : undefined;
   if (path === undefined) return undefined;
+  // Same slash form as `pluginLinkMatches`. A Windows path that still climbs is not a target.
+  const canonical = /^[A-Za-z]:[\\/]|^\\\\/.test(path) ? path.replaceAll("\\", "/") : path;
+  if (canonical !== path && /(^|\/)\.\.?(\/|$)/.test(canonical)) return undefined;
   const segments: string[] = [];
-  for (const segment of path.split("/")) {
-    if (segment === "..") segments.length > 1 && segments.pop();
-    else if (segment !== ".") segments.push(segment);
+  for (const segment of canonical.split("/")) {
+    if (segment === "..") {
+      if (segments.length > 1) segments.pop();
+    } else if (segment !== ".") segments.push(segment);
   }
   return segments.join("/");
 }

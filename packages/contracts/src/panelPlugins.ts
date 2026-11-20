@@ -349,15 +349,40 @@ export const PluginLink = Schema.Union([
 ]);
 export type PluginLink = typeof PluginLink.Type;
 
+/** Drive and UNC paths use `/`, so `..` is one segment. A `\` anywhere else is a name. */
+const pluginLinkPath = (value: string): string =>
+  /^[A-Za-z]:[\\/]|^\\\\/.test(value) ? value.replaceAll("\\", "/") : value;
+
+const DOT_SEGMENT = /(^|\/)\.\.?(\/|$)/;
+
+const normalizedHttpHref = (target: string): string | undefined => {
+  if (!/^https?:\/\//i.test(target)) return undefined;
+  try {
+    const url = new URL(target);
+    return url.protocol === "http:" || url.protocol === "https:" ? url.href : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+/** A prefix without a trailing slash ends at a path segment, not inside the next name. */
+const prefixClaims = (prefix: string, target: string): boolean => {
+  if (!target.startsWith(prefix)) return false;
+  if (prefix.endsWith("/")) return true;
+  const next = target.charAt(prefix.length);
+  return next === "" || next === "/" || next === "?" || next === "#";
+};
+
 const globCache = new Map<string, RegExp>();
 const globRegExp = (glob: string) => {
-  let compiled = globCache.get(glob);
+  const key = pluginLinkPath(glob);
+  let compiled = globCache.get(key);
   if (compiled !== undefined) return compiled;
   let source = "";
   let inBraces = false;
-  for (let index = 0; index < glob.length; index++) {
-    const char = glob[index]!;
-    if (char === "*" && glob[index + 1] === "*") {
+  for (let index = 0; index < key.length; index++) {
+    const char = key[index]!;
+    if (char === "*" && key[index + 1] === "*") {
       source += ".*";
       index++;
     } else if (char === "*") source += "[^/]*";
@@ -368,7 +393,7 @@ const globRegExp = (glob: string) => {
     else source += char.replace(/[.+^$()|[\]\\]/g, "\\$&");
   }
   compiled = new RegExp(`^${source}$`);
-  globCache.set(glob, compiled);
+  globCache.set(key, compiled);
   return compiled;
 };
 
@@ -377,14 +402,20 @@ export const pluginLinkStem = (link: PluginLink): string =>
   "prefix" in link ? link.prefix : link.glob.slice(0, link.glob.search(/[*?{]/));
 
 /**
- * Whether `target` (an http(s) URL, or a file link's absolute path) is claimed by `link`. A path
- * must already be normalized, so `..` cannot walk a link out of the directory a glob names.
+ * Whether `target` (an http(s) URL, or a file link's absolute path) is claimed by `link`.
+ * `http(s)` targets are matched after URL normalization, so `..` and `%2e%2e` cannot walk out of
+ * the path a pattern names. Any other path that still contains a `.` or `..` segment matches nothing.
  */
-export const pluginLinkMatches = (link: PluginLink, target: string): boolean =>
-  "prefix" in link
-    ? target.startsWith(link.prefix)
-    : globRegExp(link.glob).test(target) &&
-      (/^https?:\/\//i.test(target) || !/(^|\/)\.\.?(\/|$)/.test(target));
+export const pluginLinkMatches = (link: PluginLink, target: string): boolean => {
+  const http = normalizedHttpHref(target);
+  if (http !== undefined) {
+    if (DOT_SEGMENT.test(new URL(http).pathname)) return false;
+    return "prefix" in link ? prefixClaims(link.prefix, http) : globRegExp(link.glob).test(http);
+  }
+  const path = pluginLinkPath(target);
+  if (DOT_SEGMENT.test(path)) return false;
+  return "prefix" in link ? false : globRegExp(link.glob).test(path);
+};
 
 export const PluginLinksState = Schema.Array(PluginLink).check(Schema.isMaxLength(320));
 

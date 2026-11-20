@@ -1,5 +1,6 @@
 // @effect-diagnostics globalDate:off - Fixtures are local calendar days.
 import { describe, expect, it } from "vite-plus/test";
+import { pluginLinkMatches, type PluginLink } from "@t3tools/contracts";
 import {
   matchPluginLink,
   pluginDateChoices,
@@ -54,12 +55,51 @@ describe("matchPluginLink", () => {
     ["/repo/README.mdx", undefined],
     // An unnormalized path matches nothing, so `..` cannot escape a glob's directory.
     ["/Users/me/notes/../../../etc/passwd.md", undefined],
+    // `..` and its percent-encoded form leave the directory the pattern names.
+    ["https://viewer.example/msg/../admin", undefined],
+    ["https://viewer.example/msg/%2e%2e/admin", undefined],
     // `*` and `?` stop at a slash; regex characters in a glob are literal.
     ["https://en.wiki.example/a/Page", "page"],
     ["https://en.wiki.example/ab/Page", undefined],
     ["https://evil.example/x.wiki.example/a/Page", undefined],
   ])("matches %s", (href, linkId) => {
     expect(matchPluginLink(links, href)?.linkId).toBe(linkId);
+  });
+
+  it("does not let a prefix claim a sibling whose name only starts with the prefix", () => {
+    const link = { pluginId: "p", linkId: "repo", prefix: "https://github.com/org/repo" };
+    expect(pluginLinkMatches(link, "https://github.com/org/repo-private")).toBe(false);
+    expect(pluginLinkMatches(link, "https://github.com/org/repo/secret")).toBe(true);
+    expect(pluginLinkMatches(link, "https://github.com/org/repo")).toBe(true);
+    expect(pluginLinkMatches(link, "https://github.com/org/repo?tab=readme")).toBe(true);
+  });
+
+  it("does not let a glob claim an http URL that normalizes out of its directory", () => {
+    const link: PluginLink = {
+      pluginId: "p",
+      linkId: "message",
+      glob: "https://viewer.example/msg/**",
+    };
+    expect(pluginLinkMatches(link, "https://viewer.example/msg/../admin")).toBe(false);
+    expect(pluginLinkMatches(link, "https://viewer.example/msg/%2e%2e/admin")).toBe(false);
+    expect(pluginLinkMatches(link, "https://viewer.example/msg/pacs/008")).toBe(true);
+  });
+
+  it("does not let a Windows glob claim a path that climbs out with backslashes", () => {
+    const link: PluginLink = {
+      pluginId: "p",
+      linkId: "files",
+      glob: "C:\\Users\\me\\proj\\**",
+    };
+    const climbed = "C:\\Users\\me\\proj\\..\\..\\Windows\\secret.md";
+    expect(pluginLinkMatches(link, climbed)).toBe(false);
+    expect(pluginLinkMatches(link, "C:\\Users\\me\\proj\\readme.md")).toBe(true);
+    expect(
+      pluginLinkMatches(
+        { pluginId: "p", linkId: "files", glob: "C:/Users/me/proj/**" },
+        "C:/Users/me/proj/../../Windows/secret.md",
+      ),
+    ).toBe(false);
   });
 });
 
@@ -73,6 +113,15 @@ describe("pluginLinkTarget", () => {
     ["#section", undefined],
   ])("%s", (href, expected) => {
     expect(pluginLinkTarget(href, "/repo")).toBe(expected);
+  });
+
+  it("does not keep a Windows path that climbs out of its directory", () => {
+    expect(pluginLinkTarget("C:\\Users\\me\\proj\\..\\..\\Windows\\secret.md", null)).toBe(
+      undefined,
+    );
+    expect(pluginLinkTarget("C:\\Users\\me\\proj\\readme.md", null)).toBe(
+      "C:/Users/me/proj/readme.md",
+    );
   });
 });
 
