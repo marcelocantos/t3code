@@ -1,0 +1,52 @@
+name: Plugin release verify
+
+# Checks what users download from a published release: the DMG matches SHA256SUMS,
+# carries a stapled notarization ticket, and Gatekeeper accepts it and the app inside.
+on:
+  release:
+    types: [published, edited]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to verify
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    if: github.repository == 'marcelocantos/t3code'
+    runs-on: macos-15
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+    steps:
+      - name: Download assets
+        run: gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir assets
+
+      - name: Checksums
+        working-directory: assets
+        run: |
+          set -euo pipefail
+          ls -l
+          # Every DMG must be listed, and every listed file must match.
+          for dmg in *.dmg; do grep -q " $dmg\$" SHA256SUMS || { echo "$dmg missing from SHA256SUMS"; exit 1; }; done
+          shasum -a 256 -c SHA256SUMS
+
+      - name: Notarization
+        working-directory: assets
+        run: |
+          set -euo pipefail
+          for dmg in *.dmg; do
+            xcrun stapler validate "$dmg"
+            spctl --assess --type open --context context:primary-signature -vv "$dmg" 2>&1 | tee spctl.txt
+            grep -q "source=Notarized Developer ID" spctl.txt
+            mount="$RUNNER_TEMP/verify-${dmg%.dmg}"
+            hdiutil attach -nobrowse -readonly -mountpoint "$mount" "$dmg"
+            app=$(find "$mount" -maxdepth 1 -name '*.app' -print -quit)
+            spctl --assess --type execute -vv "$app" 2>&1 | tee spctl.txt
+            hdiutil detach "$mount"
+            grep -q "source=Notarized Developer ID" spctl.txt
+          done
