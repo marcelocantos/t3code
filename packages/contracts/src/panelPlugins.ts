@@ -354,16 +354,8 @@ const pluginLinkPath = (value: string): string =>
   /^[A-Za-z]:[\\/]|^\\\\/.test(value) ? value.replaceAll("\\", "/") : value;
 
 const DOT_SEGMENT = /(^|\/)\.\.?(\/|$)/;
-
-const normalizedHttpHref = (target: string): string | undefined => {
-  if (!/^https?:\/\//i.test(target)) return undefined;
-  try {
-    const url = new URL(target);
-    return url.protocol === "http:" || url.protocol === "https:" ? url.href : undefined;
-  } catch {
-    return undefined;
-  }
-};
+const HTTP_SCHEME = /^https?:\/\//i;
+const HTTP_WRITTEN_PATH = /^https?:\/\/[^/?#\\\s]+(\/[^?#\\]*)?(?:[?#]|$)/i;
 
 /** A prefix without a trailing slash ends at a path segment, not inside the next name. */
 const prefixClaims = (prefix: string, target: string): boolean => {
@@ -407,10 +399,19 @@ export const pluginLinkStem = (link: PluginLink): string =>
  * the path a pattern names. Any other path that still contains a `.` or `..` segment matches nothing.
  */
 export const pluginLinkMatches = (link: PluginLink, target: string): boolean => {
-  const http = normalizedHttpHref(target);
-  if (http !== undefined) {
-    if (DOT_SEGMENT.test(new URL(http).pathname)) return false;
-    return "prefix" in link ? prefixClaims(link.prefix, http) : globRegExp(link.glob).test(http);
+  if (HTTP_SCHEME.test(target)) {
+    let url: URL;
+    try {
+      url = new URL(target);
+    } catch {
+      return false;
+    }
+    const matches = (href: string) =>
+      "prefix" in link ? prefixClaims(link.prefix, href) : globRegExp(link.glob).test(href);
+    if (matches(url.href)) return true;
+    // A literal pattern can name an authority with different casing or an explicit default port.
+    const written = HTTP_WRITTEN_PATH.exec(target);
+    return written !== null && (written[1] ?? "/") === url.pathname && matches(target);
   }
   const path = pluginLinkPath(target);
   if (DOT_SEGMENT.test(path)) return false;

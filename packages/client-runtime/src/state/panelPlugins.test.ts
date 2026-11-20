@@ -86,6 +86,14 @@ describe("matchPluginLink", () => {
     expect(pluginLinkMatches(link, "https://viewer.example/msg/pacs/008")).toBe(true);
   });
 
+  it.each([
+    { prefix: "https://VIEWER.example:443/msg/" },
+    { glob: "https://VIEWER.example:443/msg/**" },
+  ])("matches the declared authority spelling when the URL path stays the same (%o)", (pattern) => {
+    const link = { pluginId: "p", linkId: "message", ...pattern };
+    expect(pluginLinkMatches(link, "https://VIEWER.example:443/msg/pacs/008")).toBe(true);
+  });
+
   it("does not let a Windows glob claim a path that climbs out with backslashes", () => {
     const link: PluginLink = {
       pluginId: "p",
