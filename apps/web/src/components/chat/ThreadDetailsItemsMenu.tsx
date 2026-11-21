@@ -1,3 +1,4 @@
+import { T, useGT, useMessages } from "gt-react";
 import {
   getClientSettings,
   updateClientSettings,
@@ -22,10 +23,14 @@ export function ThreadDetailsItemsMenuItems(props: {
 }) {
   const visibility = useClientSettings(resolveThreadDetailsVisibility);
   const keepReplaced = useClientSettings((settings) => settings.threadDetailsKeepReplaced);
+  const m = useMessages();
+  const gt = useGT();
   return (
     <>
       <MenuGroup>
-        <MenuGroupLabel>Show in thread details</MenuGroupLabel>
+        <MenuGroupLabel>
+          <T>Show in thread details</T>
+        </MenuGroupLabel>
         {THREAD_DETAILS_ITEMS.map((item) => {
           const replacedBy = props.replaced?.get(item.id);
           const kept = keepReplaced.includes(item.id);
@@ -54,10 +59,10 @@ export function ThreadDetailsItemsMenuItems(props: {
                 );
               }}
             >
-              {item.label}
+              {m(item.label)}
               {replacedBy !== undefined && !kept ? (
                 <span className="ml-auto truncate pl-3 text-muted-foreground">
-                  Replaced by {replacedBy}
+                  {gt("Replaced by {name}", { name: replacedBy })}
                 </span>
               ) : null}
             </MenuCheckboxItem>
@@ -69,7 +74,7 @@ export function ThreadDetailsItemsMenuItems(props: {
         disabled={isDefaultThreadDetailsVisibility(visibility) && keepReplaced.length === 0}
         onClick={() => updateClientSettings(RESET_THREAD_DETAILS_ITEMS)}
       >
-        Reset to default
+        <T>Reset to default</T>
       </MenuItem>
     </>
   );
