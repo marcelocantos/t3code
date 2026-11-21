@@ -303,6 +303,91 @@
       ],
       "notes": "Backfilled from git merge-tree after the fact; causes were not recorded.",
       "followUps": []
+    },
+    {
+      "tag": "v0.1.11",
+      "date": "2026-11-21",
+      "upstreamCommits": 643,
+      "conflicts": [
+        {
+          "file": "apps/desktop/package.json",
+          "cause": "version-line",
+          "resolution": "Kept the fork's 0.6.0; took upstream's side of every other line (desktop gt/gt-i18n and i18n:generate, server dev script and issue-tracker-linear)."
+        },
+        {
+          "file": "apps/mobile/src/features/settings/SettingsRouteScreen.tsx",
+          "cause": "adjacent-edit",
+          "resolution": "Kept the fork's plugin imports beside upstream's gt-react-native import; dropped the local I18nProvider wrappers, which upstream moved to App.tsx."
+        },
+        {
+          "file": "apps/mobile/src/features/settings/settings-search.ts",
+          "cause": "inline-registry",
+          "resolution": "Re-added the fork's SettingsPlugins keywords in upstream's new msg(..., { $context }) form."
+        },
+        {
+          "file": "apps/mobile/src/features/threads/ThreadNavigationSidebar.tsx",
+          "cause": "adjacent-edit",
+          "resolution": "Kept both first-line imports (EnvironmentPluginPanels and gt-react-native)."
+        },
+        {
+          "file": "apps/mobile/src/persistence/mobile-preferences.ts",
+          "cause": "adjacent-edit",
+          "resolution": "Both sides appended preference fields at the same spot; kept pluginPanelHeights and upstream's saved views in all three places (interface, parsed shape, parser)."
+        },
+        {
+          "file": "apps/server/package.json",
+          "cause": "version-line",
+          "resolution": "Kept the fork's 0.6.0; took upstream's side of every other line (desktop gt/gt-i18n and i18n:generate, server dev script and issue-tracker-linear)."
+        },
+        {
+          "file": "apps/server/src/http.ts",
+          "cause": "upstream-refactor",
+          "resolution": "Moved the fork's PLUGIN_GATEWAY_PREFIX into upstream's new isSignedUrlRequest, so gateway paths (token in path) stay untraced and are now also unlogged."
+        },
+        {
+          "file": "apps/web/package.json",
+          "cause": "version-line",
+          "resolution": "Kept the fork's 0.6.0; took upstream's side of every other line (desktop gt/gt-i18n and i18n:generate, server dev script and issue-tracker-linear)."
+        },
+        {
+          "file": "apps/web/src/components/ChatMarkdown.tsx",
+          "cause": "adjacent-edit",
+          "resolution": "Kept the fork's href: writtenHref destructure and upstream's useGT() line below it."
+        },
+        {
+          "file": "apps/web/src/components/chat/ThreadDetailsItemsMenu.tsx",
+          "cause": "upstream-refactor",
+          "resolution": "Kept the fork's replaced-item toggle logic and rewrote its copy in upstream's i18n form (<T>, m(item.label), gt(\"Replaced by {name}\"))."
+        },
+        {
+          "file": "apps/web/src/components/chat/ThreadDetailsPanel.tsx",
+          "cause": "adjacent-edit",
+          "resolution": "Kept the fork's plugin-panel visibility block and upstream's useGT() line."
+        },
+        {
+          "file": "apps/web/src/components/chat/threadDetailsItems.ts",
+          "cause": "adjacent-edit",
+          "resolution": "Kept the fork's PluginPanelSnapshot type import and upstream's msg import."
+        },
+        {
+          "file": "apps/web/src/components/settings/settingsSearch.ts",
+          "cause": "inline-registry",
+          "resolution": "Kept the fork's /settings/plugins label beside upstream's renamed \"Source control & issues\"; c409166607 later moved the fork's search items to msg()."
+        },
+        {
+          "file": "packages/contracts/package.json",
+          "cause": "version-line",
+          "resolution": "Kept the fork's 0.6.0; took upstream's side of every other line (desktop gt/gt-i18n and i18n:generate, server dev script and issue-tracker-linear)."
+        }
+      ],
+      "notes": "Most non-version conflicts came from upstream's one-time i18n sweep (#37893), which rewrote copy on lines next to fork edits. Upstream's no-untranslated-copy lint then failed the fork's plugin code with 123 errors, fixed in c409166607. ced1d3d425 (release checksum guard) is unrelated to the merge. All resolutions keep both sides' intent. The i18n follow-up missed two template-literal strings the lint rule does not catch: apps/mobile/src/features/settings/SettingsRouteScreen.tsx (`${pluginDecisions} new`) and apps/web/src/components/plugins/SidebarPluginsNotice.tsx (New plugin / N new plugins labels).",
+      "followUps": [
+        "version-line repeats every merge (4 package.json files, also in v0.1.10) but cannot move: apps/server reads its package.json version at runtime (cli/*, serverVersion drives ServerUpdateAction's release-track check). Instead, have the merge step resolve it mechanically: a fork-only merge driver script (scripts/) registered per clone in .git/info/attributes for **/package.json that runs git merge-file and then restores the fork's version line. Keep it out of the committed .gitattributes, which is upstream's file.",
+        "apps/web/src/components/settings/settingsSearch.ts is a repeat (v0.1.10, top hotFile, 17 fork lines). Move the two plugin SETTINGS_SEARCH_ITEMS entries into an as-const array in a fork-only apps/web/src/components/plugins/pluginSettingsSearch.ts (type-only import of SettingsSearchItem, no cycle) and spread it as the last element of SETTINGS_SEARCH_ITEMS in one line. The four Record<SettingsPath, ...>/union/nav-group entries must stay inline because the Records are exhaustive over SettingsPath, but put each at the end of its structure rather than alphabetically among upstream's lines, where they collided this time.",
+        "apps/mobile/src/features/settings/SettingsRouteScreen.tsx is a repeat (v0.1.10). Move the plugin row (pluginDecisionCountAtom read plus the page(\"SettingsPlugins\", ...) entry) into a usePluginsSettingsRow(selectedTargets) hook in features/plugins; upstream's file then keeps one import, one hook call and one array entry instead of nine lines. The row's `${n} new` value gets translated in the move.",
+        "apps/web/src/components/ChatMarkdown.tsx is not a repeat yet but sits high in hotFiles with 51 fork lines in upstream's most-churned rendering file. Candidate: wrap MarkdownAnchor in a fork-only withPluginLinks() (takeover href/text, PluginLinkHover) so CHAT_MARKDOWN_COMPONENTS.a changes in one line, and route the file-link chip wrap through one call. Feasibility depends on exporting ChatMarkdownRendererContext and computing canUseShellActions outside useChatMarkdownState; revisit if it conflicts again.",
+        "One-off, no follow-up: ThreadNavigationSidebar.tsx and http.ts (repeats, but one import line and one predicate line, cheap to resolve), mobile settings-search.ts, mobile-preferences.ts and the three ThreadDetails* files (caused by the one-time i18n sweep or an end-of-struct append collision)."
+      ]
     }
   ]
 }
