@@ -52,7 +52,7 @@ Push the branch and open a PR titled `Merge upstream <tag>`. In the body, put:
 
 Mark it **merge commit, not squash**.
 
-The agent context budget check fails whenever upstream's prompts or MCP tools grew. When `apps/server/src/provider/agentContextBudget.json` on the branch matches the tag's copy (`git diff <tag> HEAD -- <that file>` is empty), the growth is upstream's alone. Add the `agent-context-increase` label to the PR and rerun the check. If the fork's code added to the budget too, say so in the PR and leave the label for the maintainer.
+The agent context budget check fails whenever upstream's prompts or MCP tools grew. When `apps/server/src/provider/agentContextBudget.json` on the branch matches the tag's copy (`git diff <tag> HEAD -- <that file>` is empty), the growth is upstream's alone. Add the `agent-context-increase` label to the PR. Do not rerun the failed check: a rerun replays the event from before the label and fails again. The label event starts its own run. If the fork's code added to the budget too, say so in the PR and leave the label for the maintainer.
 
 The agent stops here.
 
