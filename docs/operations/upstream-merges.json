@@ -1,0 +1,308 @@
+{
+  "merges": [
+    {
+      "tag": "v0.1.10",
+      "date": "2026-11-17",
+      "upstreamCommits": 2117,
+      "conflicts": [
+        {
+          "file": ".github/scripts/mobile-preview-comment.cjs",
+          "cause": "unrecorded",
+          "resolution": "unrecorded"
+        },
+        {
+          "file": ".github/scripts/mobile-preview-comment.test.cjs",
+          "cause": "unrecorded",
+          "resolution": "unrecorded"
+        },
+        {
+          "file": ".github/workflows/ci.yml",
+          "cause": "unrecorded",
+          "resolution": "unrecorded"
+        },
+        {
+          "file": ".github/workflows/mobile-dev-client.yml",
+          "cause": "unrecorded",
+          "resolution": "unrecorded"
+        },
+        {
+          "file": ".github/workflows/mobile-eas-preview-fork.yml",
+          "cause": "unrecorded",
+          "resolution": "unrecorded"
+        },
+        {
+          "file": ".github/workflows/mobile-eas-preview.yml",
+          "cause": "unrecorded",
+          "resolution": "unrecorded"
+        },
+        {
+          "file": ".github/workflows/mobile-eas-production.yml",
+          "cause": "unrecorded",
+          "resolution": "unrecorded"
+        },
+        {
+          "file": "README.md",
+          "cause": "unrecorded",
+          "resolution": "unrecorded"
+        },
+        {
+          "file": "apps/desktop/package.json",
+          "cause": "unrecorded",
+          "resolution": "unrecorded"
+        },
+        {
+          "file": "apps/desktop/src/electron/ElectronShell.test.ts",
+          "cause": "unrecorded",
+          "resolution": "unrecorded"
+        },
+        {
+          "file": "apps/desktop/src/electron/ElectronShell.ts",
+          "cause": "unrecorded",
+          "resolution": "unrecorded"
+        },
+        {
+          "file": "apps/desktop/src/updates/DesktopUpdates.ts",
+          "cause": "unrecorded",
+          "resolution": "unrecorded"
+        },
+        {
+          "file": "apps/mobile/app.config.ts",
+          "cause": "unrecorded",
+          "resolution": "unrecorded"
+        },
+        {
+          "file": "apps/mobile/src/Stack.tsx",
+          "cause": "unrecorded",
+          "resolution": "unrecorded"
+        },
+        {
+          "file": "apps/mobile/src/features/home/HomeScreen.tsx",
+          "cause": "unrecorded",
+          "resolution": "unrecorded"
+        },
+        {
+          "file": "apps/mobile/src/features/layout/AdaptiveWorkspaceLayout.tsx",
+          "cause": "unrecorded",
+          "resolution": "unrecorded"
+        },
+        {
+          "file": "apps/mobile/src/features/settings/SettingsRouteScreen.tsx",
+          "cause": "unrecorded",
+          "resolution": "unrecorded"
+        },
+        {
+          "file": "apps/mobile/src/features/threads/ThreadComposer.tsx",
+          "cause": "unrecorded",
+          "resolution": "unrecorded"
+        },
+        {
+          "file": "apps/mobile/src/features/threads/ThreadDetailScreen.tsx",
+          "cause": "unrecorded",
+          "resolution": "unrecorded"
+        },
+        {
+          "file": "apps/mobile/src/features/threads/ThreadFeed.tsx",
+          "cause": "unrecorded",
+          "resolution": "unrecorded"
+        },
+        {
+          "file": "apps/mobile/src/features/threads/ThreadHeader.tsx",
+          "cause": "unrecorded",
+          "resolution": "unrecorded"
+        },
+        {
+          "file": "apps/mobile/src/features/threads/ThreadNavigationSidebar.tsx",
+          "cause": "unrecorded",
+          "resolution": "unrecorded"
+        },
+        {
+          "file": "apps/mobile/src/features/threads/ThreadRouteScreen.tsx",
+          "cause": "unrecorded",
+          "resolution": "unrecorded"
+        },
+        {
+          "file": "apps/mobile/src/features/threads/thread-list-v2-items.tsx",
+          "cause": "unrecorded",
+          "resolution": "unrecorded"
+        },
+        {
+          "file": "apps/server/package.json",
+          "cause": "unrecorded",
+          "resolution": "unrecorded"
+        },
+        {
+          "file": "apps/server/src/auth/EnvironmentAuth.test.ts",
+          "cause": "unrecorded",
+          "resolution": "unrecorded"
+        },
+        {
+          "file": "apps/server/src/auth/McpOAuth.test.ts",
+          "cause": "unrecorded",
+          "resolution": "unrecorded"
+        },
+        {
+          "file": "apps/server/src/environment/ServerEnvironment.ts",
+          "cause": "unrecorded",
+          "resolution": "unrecorded"
+        },
+        {
+          "file": "apps/server/src/http.ts",
+          "cause": "unrecorded",
+          "resolution": "unrecorded"
+        },
+        {
+          "file": "apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts",
+          "cause": "unrecorded",
+          "resolution": "unrecorded"
+        },
+        {
+          "file": "apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts",
+          "cause": "unrecorded",
+          "resolution": "unrecorded"
+        },
+        {
+          "file": "apps/server/src/preview/ServerBrowser.test.ts",
+          "cause": "unrecorded",
+          "resolution": "unrecorded"
+        },
+        {
+          "file": "apps/server/src/provider/Drivers/antigravityUsageReader.ts",
+          "cause": "unrecorded",
+          "resolution": "unrecorded"
+        },
+        {
+          "file": "apps/server/src/provider/agentContextBudget.json",
+          "cause": "unrecorded",
+          "resolution": "unrecorded"
+        },
+        {
+          "file": "apps/web/package.json",
+          "cause": "unrecorded",
+          "resolution": "unrecorded"
+        },
+        {
+          "file": "apps/web/src/components/auth/ApproveAgentSurface.tsx",
+          "cause": "unrecorded",
+          "resolution": "unrecorded"
+        },
+        {
+          "file": "apps/web/src/components/chat/BackgroundWorkDetails.tsx",
+          "cause": "unrecorded",
+          "resolution": "unrecorded"
+        },
+        {
+          "file": "apps/web/src/components/chat/ChatComposer.tsx",
+          "cause": "unrecorded",
+          "resolution": "unrecorded"
+        },
+        {
+          "file": "apps/web/src/components/chat/ChatHeader.browser.test.tsx",
+          "cause": "unrecorded",
+          "resolution": "unrecorded"
+        },
+        {
+          "file": "apps/web/src/components/chat/ThreadActivityBanners.tsx",
+          "cause": "unrecorded",
+          "resolution": "unrecorded"
+        },
+        {
+          "file": "apps/web/src/components/diffs/AnnotatableCodeView.tsx",
+          "cause": "unrecorded",
+          "resolution": "unrecorded"
+        },
+        {
+          "file": "apps/web/src/components/mcp/UseInAnotherAppDialog.tsx",
+          "cause": "unrecorded",
+          "resolution": "unrecorded"
+        },
+        {
+          "file": "apps/web/src/components/mcp/mcpApps.test.ts",
+          "cause": "unrecorded",
+          "resolution": "unrecorded"
+        },
+        {
+          "file": "apps/web/src/components/mcp/mcpApps.ts",
+          "cause": "unrecorded",
+          "resolution": "unrecorded"
+        },
+        {
+          "file": "apps/web/src/components/pullRequest/PullRequestCodeTab.tsx",
+          "cause": "unrecorded",
+          "resolution": "unrecorded"
+        },
+        {
+          "file": "apps/web/src/components/settings/settingsSearch.ts",
+          "cause": "unrecorded",
+          "resolution": "unrecorded"
+        },
+        {
+          "file": "apps/web/src/components/ui/dialog.tsx",
+          "cause": "unrecorded",
+          "resolution": "unrecorded"
+        },
+        {
+          "file": "apps/web/src/lib/workspaceFocus.browser.test.ts",
+          "cause": "unrecorded",
+          "resolution": "unrecorded"
+        },
+        {
+          "file": "apps/web/src/lib/workspaceFocus.ts",
+          "cause": "unrecorded",
+          "resolution": "unrecorded"
+        },
+        {
+          "file": "apps/web/src/shortcuts/chatRouteCommands.test.ts",
+          "cause": "unrecorded",
+          "resolution": "unrecorded"
+        },
+        {
+          "file": "packages/contracts/package.json",
+          "cause": "unrecorded",
+          "resolution": "unrecorded"
+        },
+        {
+          "file": "packages/provider-core/src/server/orchestrationInstructions.ts",
+          "cause": "unrecorded",
+          "resolution": "unrecorded"
+        },
+        {
+          "file": "packages/provider-cursor/src/server/accountUsage.ts",
+          "cause": "unrecorded",
+          "resolution": "unrecorded"
+        },
+        {
+          "file": "packages/provider-opencode/src/server/usage.test.ts",
+          "cause": "unrecorded",
+          "resolution": "unrecorded"
+        },
+        {
+          "file": "packages/provider-opencode/src/server/usage.ts",
+          "cause": "unrecorded",
+          "resolution": "unrecorded"
+        },
+        {
+          "file": "packages/shared/src/observability.test.ts",
+          "cause": "unrecorded",
+          "resolution": "unrecorded"
+        },
+        {
+          "file": "pnpm-lock.yaml",
+          "cause": "unrecorded",
+          "resolution": "unrecorded"
+        },
+        {
+          "file": "pnpm-workspace.yaml",
+          "cause": "unrecorded",
+          "resolution": "unrecorded"
+        },
+        {
+          "file": "scripts/mobile-native-client.test.ts",
+          "cause": "unrecorded",
+          "resolution": "unrecorded"
+        }
+      ],
+      "notes": "Backfilled from git merge-tree after the fact; causes were not recorded.",
+      "followUps": []
+    }
+  ]
+}

@@ -30,8 +30,9 @@
         "fixtures/*/*.js",
         "knip-schemas.ts",
         "linux-after-pack.ts",
-        // The maintainer runs the plugin build's signed release by path; see panel-plugins.md.
+        // The maintainer runs these fork scripts by path; see panel-plugins.md and upstream-merges.md.
         "release-plugin-desktop.ts",
+        "upstream-merge-report.ts",
         "mobile-behavior/run.ts",
         "mobile-native-client.ts",
         // e2e loads its config and the scenarios by path, and starts the app script.
