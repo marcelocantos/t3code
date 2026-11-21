@@ -9,6 +9,7 @@ import type {
   PluginDiscoveryActionInput,
   PluginDiscoveryItem,
 } from "@t3tools/contracts";
+import { msg, T, useGT, useMessages } from "gt-react";
 import { useState } from "react";
 import { useEnvironmentQuery } from "../../state/query";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -18,8 +19,9 @@ import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
 import { pluginDiscovery } from "./pluginState";
 
-export const PLUGINS_FOUND_EXPLANATION =
-  "T3 Code found these plugins running on this machine. Enabled plugins can add panels to your threads and sidebar. Select the ones you want.";
+export const PLUGINS_FOUND_EXPLANATION = msg(
+  "T3 Code found these plugins running on this machine. Enabled plugins can add panels to your threads and sidebar. Select the ones you want.",
+);
 
 export function PluginsSettingsPanel() {
   const { environment } = useSettingsScope();
@@ -27,7 +29,9 @@ export function PluginsSettingsPanel() {
   // Selections and the "not now" choice belong to one environment.
   return environmentId === null ? (
     <SettingsPageContainer>
-      <p className="text-sm text-muted-foreground">Choose an environment to manage its plugins.</p>
+      <p className="text-sm text-muted-foreground">
+        <T>Choose an environment to manage its plugins.</T>
+      </p>
     </SettingsPageContainer>
   ) : (
     <PluginsSettingsBody key={environmentId} environmentId={environmentId} />
@@ -51,12 +55,14 @@ function PluginsSettingsBody({ environmentId }: { environmentId: EnvironmentId }
     setBusy(false);
   };
   const disabled = !canDecide || busy;
+  const gt = useGT();
+  const m = useMessages();
 
   return (
     <SettingsPageContainer>
       {offered.length > 0 || moved.length > 0 ? (
-        <SettingsSection title="Plugins found" id="plugins-found">
-          <p className="px-4 pt-3 text-sm text-muted-foreground">{PLUGINS_FOUND_EXPLANATION}</p>
+        <SettingsSection title={gt("Plugins found")} id="plugins-found">
+          <p className="px-4 pt-3 text-sm text-muted-foreground">{m(PLUGINS_FOUND_EXPLANATION)}</p>
           {offered.length > 0 ? (
             <>
               <ul className="flex flex-col">
@@ -64,7 +70,7 @@ function PluginsSettingsBody({ environmentId }: { environmentId: EnvironmentId }
                   <li key={item.id}>
                     <label className="flex cursor-pointer items-start gap-3 px-4 py-3">
                       <Checkbox
-                        aria-label={`Enable ${item.name}`}
+                        aria-label={gt("Enable {name}", { name: item.name })}
                         checked={selected.has(item.id)}
                         disabled={disabled}
                         onCheckedChange={(checked) =>
@@ -88,7 +94,7 @@ function PluginsSettingsBody({ environmentId }: { environmentId: EnvironmentId }
                   disabled={busy}
                   onClick={() => setDeferred(true)}
                 >
-                  Not now
+                  <T>Not now</T>
                 </Button>
                 <Button
                   size="sm"
@@ -103,7 +109,7 @@ function PluginsSettingsBody({ environmentId }: { environmentId: EnvironmentId }
                     )
                   }
                 >
-                  Enable selected
+                  <T>Enable selected</T>
                 </Button>
               </div>
             </>
@@ -114,7 +120,7 @@ function PluginsSettingsBody({ environmentId }: { environmentId: EnvironmentId }
                 <li key={item.id} className="flex flex-wrap items-start gap-3 px-4 py-3">
                   <PluginSummary item={item} />
                   <div className="flex gap-2">
-                    {pluginDiscoveryChoices(item)
+                    {pluginDiscoveryChoices(item, m)
                       .filter((choice) => choice.input.action !== "disable")
                       .map((choice, index) => (
                         <Button
@@ -134,19 +140,19 @@ function PluginsSettingsBody({ environmentId }: { environmentId: EnvironmentId }
           ) : null}
         </SettingsSection>
       ) : null}
-      <SettingsSection title="Plugins" id="plugins">
+      <SettingsSection title={gt("Plugins")} id="plugins">
         {settled.length === 0 ? (
           <p className="px-4 py-3 text-sm text-muted-foreground">
             {query.data === undefined
-              ? "Looking for plugins…"
+              ? gt("Looking for plugins…")
               : plugins.length > 0
-                ? "No plugins enabled yet."
-                : "No plugins found on this environment."}
+                ? gt("No plugins enabled yet.")
+                : gt("No plugins found on this environment.")}
           </p>
         ) : (
           <ul className="flex flex-col">
             {settled.map((item) => {
-              const choices = pluginDiscoveryChoices(item);
+              const choices = pluginDiscoveryChoices(item, m);
               const toggle = choices.find(
                 (choice) =>
                   choice.input.action === (item.state === "enabled" ? "disable" : "enable"),
@@ -156,7 +162,7 @@ function PluginsSettingsBody({ environmentId }: { environmentId: EnvironmentId }
                 <li key={item.id} className="flex flex-wrap items-start gap-3 px-4 py-3">
                   <label className="flex min-w-0 flex-1 cursor-pointer items-start gap-3">
                     <Checkbox
-                      aria-label={`${item.name} enabled`}
+                      aria-label={gt("{name} enabled", { name: item.name })}
                       checked={item.state === "enabled" || item.state === "manual"}
                       disabled={disabled || toggle === undefined}
                       onCheckedChange={() => {
@@ -183,7 +189,7 @@ function PluginsSettingsBody({ environmentId }: { environmentId: EnvironmentId }
         )}
         {canDecide ? null : (
           <p className="border-t px-4 py-3 text-xs text-muted-foreground">
-            You can see this environment's plugins but not change them.
+            <T>You can see this environment's plugins but not change them.</T>
           </p>
         )}
       </SettingsSection>
@@ -192,11 +198,12 @@ function PluginsSettingsBody({ environmentId }: { environmentId: EnvironmentId }
 }
 
 function PluginSummary({ item }: { item: PluginDiscoveryItem }) {
+  const m = useMessages();
   return (
     <div className="min-w-0 flex-1 text-sm">
       <div className="font-medium text-foreground">{item.name}</div>
       <div className="break-words text-xs text-muted-foreground">
-        {describePluginDiscoveryItem(item)}
+        {describePluginDiscoveryItem(item, m)}
       </div>
     </div>
   );

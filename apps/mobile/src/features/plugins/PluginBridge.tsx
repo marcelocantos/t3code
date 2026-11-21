@@ -8,6 +8,7 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from "react";
+import { useGT } from "gt-react-native";
 import { Pressable, ScrollView, View, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { WebView } from "react-native-webview";
@@ -64,28 +65,39 @@ export function PluginBridgeHost(props: {
 }) {
   const [tree] = useState(createPluginBridgeTree);
   const { canOperate } = usePluginRequests(props.environmentId);
+  const gt = useGT();
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- the surfaces live exactly as long as this host
   useEffect(() => () => tree.dispose(), [tree]);
 
   const agent: PluginBridgeAgent = async (frame, request) => {
     const controls = props.agent;
+    // oxlint-disable-next-line t3code/no-untranslated-copy -- agent.result error for the plugin's code
     if (controls === undefined) return "Agent requests work only in thread panels.";
+    // oxlint-disable-next-line t3code/no-untranslated-copy -- agent.result error for the plugin's code
     if (!canOperate) return "This device may not operate this thread.";
     if (request.kind === "stop") {
       const run = controls.stateOf(frame.agentKey);
+      // oxlint-disable-next-line t3code/no-untranslated-copy -- agent.result error for the plugin's code
       if (run.kind !== "active") return "No run this plugin started is active.";
       const approved = await confirmAsync(
-        "Stop the agent?",
-        `The plugin panel ${frame.panelTitle} asks to stop the run it started.`,
-        "Stop",
+        gt("Stop the agent?"),
+        gt("The plugin panel {panel} asks to stop the run it started.", {
+          panel: frame.panelTitle,
+        }),
+        gt("Stop", { $context: "verb, stops an agent run" }),
       );
+      // oxlint-disable-next-line t3code/no-untranslated-copy -- agent.result error for the plugin's code
       return approved ? controls.stop(run.runId) : "Declined by the user.";
     }
     const approved = await confirmAsync(
-      `Send from ${frame.panelTitle}?`,
-      `The plugin panel ${frame.panelTitle} asks to send this message to the agent:\n\n${request.prompt}`,
-      "Send",
+      gt("Send from {panel}?", { panel: frame.panelTitle }),
+      gt("The plugin panel {panel} asks to send this message to the agent:\n\n{prompt}", {
+        panel: frame.panelTitle,
+        prompt: request.prompt,
+      }),
+      gt("Send", { $context: "verb, sends a message to the agent" }),
     );
+    // oxlint-disable-next-line t3code/no-untranslated-copy -- agent.result error for the plugin's code
     return approved ? controls.start(frame.agentKey, request.prompt) : "Declined by the user.";
   };
 
@@ -210,6 +222,7 @@ export function PluginBridgeWebView(props: {
  */
 function PluginBridgeSheet() {
   const host = usePluginBridgeHost();
+  const gt = useGT();
   const insets = useSafeAreaInsets();
   const nodes = useSyncExternalStore(host.tree.subscribe, host.tree.read);
   const top = nodes.at(-1);
@@ -231,7 +244,7 @@ function PluginBridgeSheet() {
         {previous ? (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={`Back to ${previous.title}`}
+            accessibilityLabel={gt("Back to {title}", { title: previous.title })}
             className="min-h-11 flex-row items-center gap-1 self-start active:opacity-70"
             onPress={() => host.tree.close(top.id, "dismissed")}
           >

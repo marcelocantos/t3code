@@ -12,6 +12,9 @@ import type {
   PluginLeafAction,
   RunId,
 } from "@t3tools/contracts";
+import { msg } from "gt-react-native";
+
+import { m, type MessageResolver } from "../../i18n/messages";
 
 type DateAction = Extract<PluginLeafAction, { kind: "date" }>;
 
@@ -37,15 +40,17 @@ export function pluginRowMenu(
     readonly agentActions: boolean;
     readonly now: Date;
     readonly locale?: string;
+    readonly resolve?: MessageResolver;
   },
 ): PluginRowMenu {
+  const resolve = options.resolve ?? m;
   const selections = new Map<string, PluginRowSelection>();
   const add = (selection: PluginRowSelection) => {
     const id = `entry-${selections.size}`;
     selections.set(id, selection);
     return id;
   };
-  const choices = pluginDateChoices(options.now, options.locale);
+  const choices = pluginDateChoices(options.now, options.locale, resolve);
   const leaf = (action: PluginLeafAction): MenuAction | null => {
     switch (action.kind) {
       case "agent":
@@ -74,13 +79,15 @@ export function pluginRowMenu(
               subtitle: choice.hint,
               ...(choice.value === action.value ? { state: "on" as const } : {}),
             })),
-            { id: add({ kind: "custom-date", action }), title: "Custom…" },
+            { id: add({ kind: "custom-date", action }), title: resolve(msg("Custom…")) },
             ...(action.value === undefined
               ? []
               : [
                   {
                     id: add({ kind: "run", action, value: null }),
-                    title: action.clearLabel ?? "Clear",
+                    title:
+                      action.clearLabel ??
+                      resolve(msg("Clear", { $context: "verb, removes a date" })),
                     attributes: { destructive: true },
                   },
                 ]),

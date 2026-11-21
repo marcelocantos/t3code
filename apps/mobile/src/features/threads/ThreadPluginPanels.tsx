@@ -7,6 +7,7 @@ import {
   type SubscribePluginPanelsInput,
 } from "@t3tools/contracts";
 import { Atom } from "effect/reactivity";
+import { T, useGT, Var } from "gt-react-native";
 import { useState } from "react";
 import { Pressable, View } from "react-native";
 
@@ -45,6 +46,7 @@ function useThreadAgentControls(threadRef: ScopedThreadRef): PluginAgentControls
   const queued = useThreadOutboxMessages()[threadKey] ?? [];
   const queuedMessageIds = new Set(queued.map((message) => message.messageId));
   const interruptTurn = useAtomCommand(threadEnvironment.interruptTurn, "plugin agent stop");
+  const gt = useGT();
   return {
     stateOf: (rowKey) => pluginAgentRunState({ messageId: sent?.[rowKey], queuedMessageIds, runs }),
     start: (rowKey, prompt) => {
@@ -66,7 +68,8 @@ function useThreadAgentControls(threadRef: ScopedThreadRef): PluginAgentControls
       }).then(
         () => null,
         () => {
-          Dialog.alert("Could not send the plugin's prompt");
+          Dialog.alert(gt("Could not send the plugin's prompt"));
+          // oxlint-disable-next-line t3code/no-untranslated-copy -- agent.result error for the plugin's code
           return "Could not send the message.";
         },
       );
@@ -77,7 +80,8 @@ function useThreadAgentControls(threadRef: ScopedThreadRef): PluginAgentControls
         input: { threadId: threadRef.threadId, runId },
       }).then((result) => {
         if (result._tag !== "Failure") return null;
-        Dialog.alert("Could not stop the agent");
+        Dialog.alert(gt("Could not stop the agent"));
+        // oxlint-disable-next-line t3code/no-untranslated-copy -- agent.result error for the plugin's code
         return "Could not stop the run.";
       }),
   };
@@ -109,7 +113,9 @@ export function ThreadPluginPanels({ threadRef }: { threadRef: ScopedThreadRef }
     <View className="gap-3 px-4 py-2">
       {query.error ? (
         <Text className="text-sm text-foreground-muted">
-          Plugin panels unavailable: {pluginErrorMessage(query.failure)}
+          <T>
+            Plugin panels unavailable: <Var>{pluginErrorMessage(query.failure)}</Var>
+          </T>
         </Text>
       ) : null}
       <PluginPanels

@@ -2,7 +2,9 @@ import { useAtomValue } from "@effect/atom-react";
 import { planPluginSurfacing } from "@t3tools/client-runtime/state/pluginDiscovery";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
+import { msg } from "gt-react";
 import { useEffect } from "react";
+import { m } from "~/i18n/messages";
 import { useEnvironments } from "../../state/environments";
 import { useEnvironmentQuery } from "../../state/query";
 import { toastManager } from "../ui/toast";
@@ -58,8 +60,11 @@ function EnvironmentDiscoveryWatch({ environmentId }: { environmentId: Environme
     for (const item of plan.announce) {
       toastManager.add({
         type: "info",
-        title: `New plugin found: ${item.name}`,
-        actionProps: { children: "Review", onClick: review },
+        title: m(msg("New plugin found: {name}", { name: item.name })),
+        actionProps: {
+          children: m(msg("Review", { $context: "verb, opens plugin settings" })),
+          onClick: review,
+        },
       });
     }
   }, [plugins, canDecide, environmentId, navigate]);

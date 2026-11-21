@@ -7,6 +7,7 @@ import {
 } from "@t3tools/client-runtime/state/panelPlugins";
 import { clampPluginSurfaceSize } from "@t3tools/client-runtime/state/pluginBridge";
 import type { EnvironmentId, PluginLink, PluginLinkCard } from "@t3tools/contracts";
+import { T, useGT } from "gt-react-native";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { ScrollView, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -95,6 +96,7 @@ export function PluginLinkCardSheet(props: {
   readonly onClose: () => void;
 }) {
   const insets = useSafeAreaInsets();
+  const gt = useGT();
   const fetchCard = useAtomCommand(pluginLinks.card, { reportFailure: false });
   const [card, setCard] = useState<PluginLinkCard | { readonly error: string } | null>(null);
   const { environmentId, link, url } = props;
@@ -114,7 +116,7 @@ export function PluginLinkCardSheet(props: {
       live = false;
     };
   }, [fetchCard, environmentId, link.pluginId, link.linkId, url]);
-  const readOnly = () => Dialog.alert("Not available here", "Link cards are read-only.");
+  const readOnly = () => Dialog.alert(gt("Not available here"), gt("Link cards are read-only."));
   const title = card !== null && "surface" in card ? card.surface.title : url;
 
   return (
@@ -125,7 +127,9 @@ export function PluginLinkCardSheet(props: {
         contentContainerStyle={{ paddingBottom: Math.max(20, insets.bottom) }}
       >
         {card === null ? (
-          <Text className="text-sm text-foreground-muted">Loading…</Text>
+          <Text className="text-sm text-foreground-muted">
+            <T>Loading…</T>
+          </Text>
         ) : "error" in card ? (
           <Text className="text-sm text-foreground-muted">{card.error}</Text>
         ) : "surface" in card ? (
@@ -147,7 +151,12 @@ export function PluginLinkCardSheet(props: {
           <WebCard environmentId={environmentId} linkId={link.linkId} card={card} />
         )}
         <View className="flex-row">
-          <Button label="Open link" tone="primary" size="compact" onPress={props.onOpenLink} />
+          <Button
+            label={gt("Open link")}
+            tone="primary"
+            size="compact"
+            onPress={props.onOpenLink}
+          />
         </View>
       </ScrollView>
     </Sheet>
@@ -161,6 +170,7 @@ function WebCard(props: {
 }) {
   const connection = usePreparedConnection(props.environmentId);
   const viewport = useWindowDimensions();
+  const gt = useGT();
   // The declared height until the page sizes itself with `surface.update`.
   const [height, setHeight] = useState(props.card.height ?? WEB_CARD_HEIGHT);
   if (connection._tag === "None") return null;
@@ -176,7 +186,7 @@ function WebCard(props: {
         nodeId={null}
         ownSurfaceId={`link:${props.linkId}`}
         gatewayUrl={src}
-        panelTitle="Link card"
+        panelTitle={gt("Link card")}
         agentKey="link-card"
       />
     </PluginBridgeHost>

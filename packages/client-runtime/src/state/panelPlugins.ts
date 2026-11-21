@@ -10,6 +10,8 @@ import { resolvePathLinkTarget } from "@t3tools/shared/fileLinks";
 import { parseMarkdownFileLink } from "@t3tools/shared/markdownLinks";
 import { isAbsolutePath } from "@t3tools/shared/path";
 import { Atom } from "effect/reactivity";
+import { mFallback, msg } from "gt-i18n";
+import type { MFunctionType } from "gt-i18n/types";
 import type { EnvironmentRegistry } from "../connection/registry.ts";
 import {
   createEnvironmentRpcCommand,
@@ -177,7 +179,11 @@ export function formatCalendarDate(value: string, locale?: string): string {
  * Date shortcuts for a plugin date action, resolved in the user's local calendar. "Next week" is
  * the coming Monday; on a Sunday that is tomorrow's date, which is still what people mean by it.
  */
-export function pluginDateChoices(now: Date, locale?: string): ReadonlyArray<PluginDateChoice> {
+export function pluginDateChoices(
+  now: Date,
+  locale?: string,
+  resolve: MFunctionType = mFallback,
+): ReadonlyArray<PluginDateChoice> {
   const tomorrow = addDays(now, 1);
   const dayAfter = addDays(now, 2);
   const daysToMonday = (8 - now.getDay()) % 7 || 7;
@@ -187,9 +193,9 @@ export function pluginDateChoices(now: Date, locale?: string): ReadonlyArray<Plu
     return { id, label, value, hint: formatCalendarDate(value, locale) };
   };
   return [
-    choice("tomorrow", "Tomorrow", tomorrow),
+    choice("tomorrow", resolve(msg("Tomorrow")), tomorrow),
     choice("day-after", dayAfter.toLocaleDateString(locale, { weekday: "long" }), dayAfter),
-    choice("next-week", "Next week", nextWeek),
+    choice("next-week", resolve(msg("Next week")), nextWeek),
   ];
 }
 

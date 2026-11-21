@@ -134,8 +134,10 @@ export function decodePluginBridgeRelay(text: string): PluginBridgeRelay | null 
       ...(typeof relay.requestId === "string" ? { requestId: relay.requestId } : {}),
       message:
         relay.rejected === "json"
-          ? "Bridge messages must be JSON data."
-          : "Bridge message is too large.",
+          ? // oxlint-disable-next-line t3code/no-untranslated-copy -- bridge error for the plugin's code
+            "Bridge messages must be JSON data."
+          : // oxlint-disable-next-line t3code/no-untranslated-copy -- bridge error for the plugin's code
+            "Bridge message is too large.",
     };
   }
   return null;
@@ -173,6 +175,7 @@ export function handlePluginBridgeRelay(
   switch (message.type) {
     case "panel.resize": {
       if (frame.nodeId === null && frame.onResize !== undefined) frame.onResize(message.height);
+      // oxlint-disable-next-line t3code/no-untranslated-copy -- bridge error for the plugin's code
       else frame.send({ type: "error", message: "This frame cannot resize a panel." });
       return;
     }
@@ -242,6 +245,7 @@ export function handlePluginBridgeRelay(
         frame.send({
           type: "error",
           message:
+            // oxlint-disable-next-line t3code/no-untranslated-copy -- bridge error for the plugin's code
             id === undefined ? "That surface is not open." : "That path is outside this plugin.",
         });
         return;
@@ -273,7 +277,10 @@ export function handlePluginBridgeRelay(
       if (id !== undefined) tree.close(id, "closed", message.result);
       else if (frame.nodeId !== null && frame.ownSurfaceId === message.surfaceId) {
         tree.close(frame.nodeId, "closed", message.result);
-      } else frame.send({ type: "error", message: "That surface is not open." });
+      } else {
+        // oxlint-disable-next-line t3code/no-untranslated-copy -- bridge error for the plugin's code
+        frame.send({ type: "error", message: "That surface is not open." });
+      }
       return;
     }
     case "agent.prompt":

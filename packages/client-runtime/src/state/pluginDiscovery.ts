@@ -5,6 +5,8 @@ import {
   type PluginDiscoveryItem,
 } from "@t3tools/contracts";
 import { Atom } from "effect/reactivity";
+import { mFallback, msg } from "gt-i18n";
+import type { MFunctionType } from "gt-i18n/types";
 import type { EnvironmentRegistry } from "../connection/registry.ts";
 import {
   createEnvironmentRpcCommand,
@@ -47,65 +49,97 @@ export const pluginNeedsDecision = (item: PluginDiscoveryItem) =>
   (item.state === "enabled" &&
     (item.discoveredBaseUrl !== undefined || item.pendingScopes !== undefined));
 
-export function describePluginDiscoveryItem(item: PluginDiscoveryItem): string {
+export function describePluginDiscoveryItem(
+  item: PluginDiscoveryItem,
+  resolve: MFunctionType = mFallback,
+): string {
   switch (item.state) {
     case "offered":
-      return `Running at ${host(item.baseUrl ?? "")}`;
+      return resolve(msg("Running at {host}", { host: host(item.baseUrl ?? "") }));
     case "enabled":
       if (item.discoveredBaseUrl === undefined && item.pendingScopes?.includes("environment"))
-        return `${item.name} now also asks to show a sidebar panel that sees all your projects. Allow it?`;
+        return resolve(
+          msg(
+            "{name} now also asks to show a sidebar panel that sees all your projects. Allow it?",
+            {
+              name: item.name,
+            },
+          ),
+        );
       if (item.discoveredBaseUrl === undefined && item.pendingScopes?.includes("links"))
-        return `${item.name} now also asks to show cards for links in chat. Allow it?`;
+        return resolve(
+          msg("{name} now also asks to show cards for links in chat. Allow it?", {
+            name: item.name,
+          }),
+        );
       return item.discoveredBaseUrl === undefined
         ? item.live
-          ? "Enabled"
-          : "Enabled · not running"
-        : `${item.name} is now running at ${host(item.discoveredBaseUrl)}, not ${host(item.baseUrl ?? "")}. Switch to it?`;
+          ? resolve(msg("Enabled", { $context: "plugin state" }))
+          : resolve(msg("Enabled · not running", { $context: "plugin state" }))
+        : resolve(
+            msg("{name} is now running at {discovered}, not {current}. Switch to it?", {
+              name: item.name,
+              discovered: host(item.discoveredBaseUrl),
+              current: host(item.baseUrl ?? ""),
+            }),
+          );
     case "disabled":
-      return "Disabled";
+      return resolve(msg("Disabled", { $context: "plugin state" }));
     case "dismissed":
-      return "Dismissed";
+      return resolve(msg("Dismissed", { $context: "plugin state" }));
     case "manual":
-      return "Configured in panel-plugins.json";
+      return resolve(msg("Configured in {file}", { file: "panel-plugins.json" }));
   }
 }
 
 /** The buttons a plugin offers, primary choice first. */
 export function pluginDiscoveryChoices(
   item: PluginDiscoveryItem,
+  resolve: MFunctionType = mFallback,
 ): ReadonlyArray<PluginDiscoveryChoice> {
   const enable = (label: string, baseUrl: string | undefined): Array<PluginDiscoveryChoice> =>
     baseUrl === undefined ? [] : [{ label, input: { action: "enable", id: item.id, baseUrl } }];
   switch (item.state) {
     case "offered":
       return [
-        ...enable("Enable", item.baseUrl),
-        { label: "Dismiss", input: { action: "dismiss", id: item.id } },
+        ...enable(resolve(msg("Enable", { $context: "verb, turns a plugin on" })), item.baseUrl),
+        { label: resolve(msg("Dismiss")), input: { action: "dismiss", id: item.id } },
       ];
     case "enabled":
       return [
         ...(item.discoveredBaseUrl === undefined
           ? item.pendingScopes === undefined
             ? []
-            : enable("Allow", item.baseUrl)
+            : enable(
+                resolve(msg("Allow", { $context: "verb, grants a plugin access" })),
+                item.baseUrl,
+              )
           : [
-              ...enable("Switch", item.discoveredBaseUrl),
+              ...enable(
+                resolve(msg("Switch", { $context: "verb, moves a plugin to a new endpoint" })),
+                item.discoveredBaseUrl,
+              ),
               {
-                label: "Keep current",
+                label: resolve(msg("Keep current")),
                 input: { action: "dismiss", id: item.id },
               } satisfies PluginDiscoveryChoice,
             ]),
-        { label: "Disable", input: { action: "disable", id: item.id } },
+        {
+          label: resolve(msg("Disable", { $context: "verb, turns a plugin off" })),
+          input: { action: "disable", id: item.id },
+        },
       ];
     case "disabled":
       return [
-        ...enable("Enable", item.baseUrl),
-        { label: "Forget", input: { action: "reset", id: item.id } },
+        ...enable(resolve(msg("Enable", { $context: "verb, turns a plugin on" })), item.baseUrl),
+        { label: resolve(msg("Forget")), input: { action: "reset", id: item.id } },
       ];
     case "dismissed":
       return [
-        ...(item.live ? enable("Enable", item.baseUrl) : []),
-        { label: "Ask again", input: { action: "reset", id: item.id } },
+        ...(item.live
+          ? enable(resolve(msg("Enable", { $context: "verb, turns a plugin on" })), item.baseUrl)
+          : []),
+        { label: resolve(msg("Ask again")), input: { action: "reset", id: item.id } },
       ];
     case "manual":
       return [];

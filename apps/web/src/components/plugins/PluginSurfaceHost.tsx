@@ -24,7 +24,9 @@ import {
 import { requestConfirmDialog } from "../../confirmDialog";
 import { readPreparedConnection } from "../../state/session";
 import { useAtomCommand } from "../../state/use-atom-command";
+import { msg, T, useGT } from "gt-react";
 import { Maximize2Icon, Minimize2Icon } from "lucide-react";
+import { m } from "~/i18n/messages";
 import { Button } from "../ui/button";
 import { Dialog, DialogHeader, DialogPanel, DialogPopup, DialogTitle } from "../ui/dialog";
 import { Popover, PopoverPopup } from "../ui/popover";
@@ -165,10 +167,10 @@ async function confirm(message: string) {
 
 function failureMessage(result: AtomCommandResult<unknown, unknown>) {
   const error = squashAtomCommandFailure(result as never);
-  return error instanceof Error ? error.message : "The plugin request failed.";
+  return error instanceof Error ? error.message : m(msg("The plugin request failed."));
 }
 
-const LINK_CARD_ACTIONS = "Link cards are read-only; open the link to act on it.";
+const LINK_CARD_ACTIONS = msg("Link cards are read-only; open the link to act on it.");
 
 function reportFailure(title: string, description: string) {
   toastManager.add(stackedThreadToast({ type: "error", title, description }));
@@ -274,7 +276,7 @@ function useHostApi(
       return { content: { kind: "structured", surface: card.surface }, title: card.surface.title };
     const base = readPreparedConnection(environmentId)?.httpBaseUrl;
     if (base === undefined)
-      return { content: { kind: "error", message: "The environment is not connected." } };
+      return { content: { kind: "error", message: m(msg("The environment is not connected.")) } };
     const url = new URL(card.webUrl, base).href;
     return {
       content: { kind: "web", url, bridgeSurfaceId: `link:${link.linkId}`, gatewayUrl: url },
@@ -338,7 +340,7 @@ function useHostApi(
     const node = "node" in origin ? origin.node : null;
     const route = node?.route;
     if (route?.kind === "link") {
-      reportFailure(action.label, LINK_CARD_ACTIONS);
+      reportFailure(action.label, m(LINK_CARD_ACTIONS));
       return;
     }
     if (route?.kind === "frame") {
@@ -405,7 +407,7 @@ function useHostApi(
   ) => {
     const node = "node" in origin ? origin.node : null;
     if (node?.route.kind === "link") {
-      reportFailure(action.label, LINK_CARD_ACTIONS);
+      reportFailure(action.label, m(LINK_CARD_ACTIONS));
       return;
     }
     if (action.kind === "agent") {
@@ -483,8 +485,17 @@ function useHostApi(
     if (agent === null) return reply("Agent requests work only in thread panels.");
     const approved = await confirm(
       request === null
-        ? `Stop the agent run ${frame.panelTitle} started?\nThe plugin panel ${frame.panelTitle} asks to stop it.`
-        : `Send this message from ${frame.panelTitle}?\n${request.prompt}`,
+        ? m(
+            msg("Stop the agent run {panel} started?\nThe plugin panel {panel} asks to stop it.", {
+              panel: frame.panelTitle,
+            }),
+          )
+        : m(
+            msg("Send this message from {panel}?\n{prompt}", {
+              panel: frame.panelTitle,
+              prompt: request.prompt,
+            }),
+          ),
     );
     if (!approved) return reply("Declined by the user.");
     reply(
@@ -508,6 +519,7 @@ function useHostApi(
     switch (message.type) {
       case "panel.resize": {
         if (frame.nodeId === null && frame.onResize !== undefined) frame.onResize(message.height);
+        // oxlint-disable-next-line t3code/no-untranslated-copy -- bridge error for the plugin's code
         else post(frame, { type: "error", message: "This frame cannot resize a panel." });
         return;
       }
@@ -584,6 +596,7 @@ function useHostApi(
           post(frame, {
             type: "error",
             message:
+              // oxlint-disable-next-line t3code/no-untranslated-copy -- bridge error for the plugin's code
               id === undefined ? "That surface is not open." : "That path is outside this plugin.",
           });
           return;
@@ -620,7 +633,10 @@ function useHostApi(
         if (id !== undefined) tree.close(id, "closed", message.result);
         else if (frame.nodeId !== null && frame.ownSurfaceId === message.surfaceId) {
           tree.close(frame.nodeId, "closed", message.result);
-        } else post(frame, { type: "error", message: "That surface is not open." });
+        } else {
+          // oxlint-disable-next-line t3code/no-untranslated-copy -- bridge error for the plugin's code
+          post(frame, { type: "error", message: "That surface is not open." });
+        }
         return;
       }
       case "agent.prompt":
@@ -808,6 +824,7 @@ function surfaceWidth(node: PluginSurfaceNode) {
 
 function SurfaceNodeView({ node, blocked }: { node: PluginSurfaceNode; blocked: boolean }) {
   const host = usePluginSurfaceHost();
+  const gt = useGT();
   const width = surfaceWidth(node);
   const body = (
     <div inert={blocked} className="min-w-0" data-plugin-surface-body="">
@@ -882,8 +899,8 @@ function SurfaceNodeView({ node, blocked }: { node: PluginSurfaceNode; blocked: 
             size="icon"
             variant="ghost"
             className="absolute end-12 top-2"
-            aria-label={maximized ? "Restore size" : "Maximize"}
-            title={maximized ? "Restore size" : "Maximize"}
+            aria-label={maximized ? gt("Restore size") : gt("Maximize")}
+            title={maximized ? gt("Restore size") : gt("Maximize")}
             onClick={() => host.tree.update(node.id, { maximized: !maximized })}
           >
             {maximized ? <Minimize2Icon /> : <Maximize2Icon />}
@@ -904,7 +921,7 @@ function SurfaceContentView({ node }: { node: PluginSurfaceNode }) {
       return (
         <div className="flex items-center gap-2 text-xs text-muted-foreground" role="status">
           <Spinner className="size-3.5" />
-          Loading…
+          <T>Loading…</T>
         </div>
       );
     case "error":
