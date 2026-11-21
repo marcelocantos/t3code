@@ -280,7 +280,7 @@ function useSettingsIndexSections(): SettingsListSection[] {
         page("SettingsScheduledTasks", "clock", gt("Scheduled tasks")),
         page("SettingsPlugins", "cube", gt("Plugins"), {
           disabled: noServerTargets,
-          ...(pluginDecisions > 0 ? { value: `${pluginDecisions} new` } : {}),
+          ...(pluginDecisions > 0 ? { value: gt("{count} new", { count: pluginDecisions }) } : {}),
         }),
       ],
     },

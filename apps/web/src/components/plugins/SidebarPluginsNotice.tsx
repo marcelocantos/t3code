@@ -2,6 +2,7 @@ import { useAtomValue } from "@effect/atom-react";
 import { pluginNeedsDecision } from "@t3tools/client-runtime/state/pluginDiscovery";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
+import { useGT } from "gt-react";
 import { PuzzleIcon } from "lucide-react";
 import { useEnvironments } from "../../state/environments";
 import { useEnvironmentQuery } from "../../state/query";
@@ -30,12 +31,16 @@ function EnvironmentPluginsNotice({ environmentId }: { environmentId: Environmen
   const canDecide = useAtomValue(pluginDiscovery.act.permissionAtom(environmentId));
   const navigate = useNavigate();
   const { isMobile, setOpenMobile } = useSidebar();
+  const gt = useGT();
   const pending = (query.data?.plugins ?? []).filter(pluginNeedsDecision);
   if (!canDecide || pending.length === 0) return null;
   const label =
     pending.length === 1
-      ? `New plugin: ${pending[0]!.name}. Review in Settings`
-      : `${String(pending.length)} new plugins. Review in Settings`;
+      ? gt("New plugin: {name}. Review in Settings", { name: pending[0]!.name })
+      : gt(
+          "{count, plural, one {{count} new plugin. Review in Settings} other {{count} new plugins. Review in Settings}}",
+          { count: pending.length },
+        );
   return (
     <SidebarMenuItem className="shrink-0">
       <Tooltip>

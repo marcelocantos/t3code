@@ -6225,6 +6225,8 @@
   "6128f5900ed0b589": "Choose an environment to manage its plugins.",
   "bb0416d2f696032b": "Enable selected",
   "5c029981bf78bbc2": "You can see this environment's plugins but not change them.",
+  "3c16a82040afab26": "New plugin: {name}. Review in Settings",
+  "e5939087bbd5f7e1": "{count, plural, one {{count} new plugin. Review in Settings} other {{count} new plugins. Review in Settings}}",
   "1c0244f781a87ef2": "Spracheingabe für Anmerkungen konnte nicht aktualisiert werden",
   "53b9a6ba24deb0e7": "Navigation",
   "c85ddaab914c8e1a": "Zurück",
