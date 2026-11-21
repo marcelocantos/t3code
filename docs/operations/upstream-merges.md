@@ -68,15 +68,29 @@ Check that `git diff <old merge> $merge` shows only the files that `main` change
 
 ## 5. Review the merge's friction
 
-An agent that did not do the merge reviews it. It starts from the report, the conflict resolutions and the follow-up commits, and adds an entry for the tag to [`upstream-merges.json`](upstream-merges.json):
+An agent that did not do the merge reviews it. It starts from the facts git records:
 
-- every conflict, with its `cause` (`version-line`, `inline-registry`, `adjacent-edit`, `upstream-refactor`, `api-drift`) and the `resolution` used,
+```sh
+node scripts/upstream-merge-report.ts --merge <merge commit>   # conflicts, priorMerges, hotFiles
+git merge-tree --write-tree <merge>^1 <merge>^2                # the raw conflicts; read files with git show <tree>:<path>
+git diff <merge>^1 <merge> -- <file>                           # what the resolution did to the fork's side
+git diff <merge>^2 <merge> -- <file>                           # and to upstream's side
+```
+
+It checks that each resolution kept both sides' intent, and it reviews the follow-up commits. Then it adds an entry for the tag to [`upstream-merges.json`](upstream-merges.json). The entry has `tag`, `date`, `upstreamCommits`, `notes` and two lists:
+
+- `conflicts`: every conflicted `file`, with its `cause` and the `resolution` used. The causes are:
+  - `version-line`: the fork's version against upstream's.
+  - `inline-registry`: a fork entry in an upstream list or table.
+  - `adjacent-edit`: both sides changed nearby lines, and neither side restructured the code.
+  - `upstream-refactor`: upstream restructured the code that the fork's edit sits in.
+  - `api-drift`: upstream changed an API the fork calls.
 - `followUps`: what to change so the next merge hurts less.
 
-The ledger commit goes on the merge branch. To choose follow-ups:
+The ledger commit goes on the merge branch. To choose follow-ups, weigh how often a file conflicts against how much it costs to resolve:
 
-- **One-off:** upstream rewrote an area it rarely touches. Accept the cost. No follow-up.
-- **Repeat:** a file that conflicted in an earlier merge (`priorMerges` in the report), or that sits near the top of `hotFiles` with fork edits in it. Move the fork's code into a fork-only file that upstream's file imports or registers in one line. File it as a bullseye target.
+- **One-off:** upstream rewrote an area it rarely touches, or the conflict costs a line, such as two imports colliding. Accept the cost. No follow-up.
+- **Repeat:** a file that conflicted in an earlier merge (`priorMerges` in the report) and took real work to resolve, or a file near the top of `hotFiles` with many fork lines in it. Move the fork's code into a fork-only file that upstream's file imports or registers in one line. Put the fork's remaining inline entries at the end of their lists, not among upstream's. File it as a bullseye target.
 - **Patch (last resort):** a conflict that repeats every merge and cannot be moved. Keep the fork change as an uncommitted patch applied after each merge. That requires changes to the fork's CI and release scripts, so propose it to the maintainer. Never adopt it unilaterally.
 
 ## 6. Merge and release
