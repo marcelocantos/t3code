@@ -50,7 +50,11 @@ Push the branch and open a PR titled `Merge upstream <tag>`. In the body, put:
 - the follow-up commits,
 - the failing tests that also fail on clean upstream.
 
-Mark it **merge commit, not squash**. The agent stops here.
+Mark it **merge commit, not squash**.
+
+The agent context budget check fails whenever upstream's prompts or MCP tools grew. When `apps/server/src/provider/agentContextBudget.json` on the branch matches the tag's copy (`git diff <tag> HEAD -- <that file>` is empty), the growth is upstream's alone. Add the `agent-context-increase` label to the PR and rerun the check. If the fork's code added to the budget too, say so in the PR and leave the label for the maintainer.
+
+The agent stops here.
 
 If `main` moves before the PR merges, rebuild the merge commit on the new `main` instead of merging `main` into the branch. When the new `main` commits do not touch any conflicted file, reuse the resolved tree:
 
