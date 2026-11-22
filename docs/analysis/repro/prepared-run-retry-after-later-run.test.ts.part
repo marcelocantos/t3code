@@ -1,0 +1,90 @@
+// Reproduction for docs/analysis/run-lifecycle-2026-11-22.md, defect D1.
+// Append to a copy of apps/server/src/orchestration-v2/ThreadLaunchService.test.ts
+// (it reuses that file's makeHarness, launchInput and preparationSettled) and run with
+//   vp test run <copy> -t "D1"
+it.effect("D1: a failed setup run cannot be retried after later work ran past it", () => {
+  let fetchAttempts = 0;
+  const harness = makeHarness({
+    fetchWorktreeBaseCommit: () =>
+      fetchAttempts++ === 0
+        ? Effect.fail(
+            new GitCommandError({
+              operation: "GitVcsDriver.fetchRemote",
+              command: "git",
+              cwd: project.workspaceRoot,
+              detail: "Git could not reach the remote.",
+              exitCode: 128,
+            }),
+          )
+        : Effect.succeed({ commitSha: "remote-main-sha", remoteRefName: "origin/main" }),
+  });
+  return Effect.gen(function* () {
+    const launches = yield* ThreadLaunch.ThreadLaunchService;
+    const threads = yield* ThreadManagement.ThreadManagementService;
+    const launched = yield* launches.launch(
+      launchInput({
+        command: "command:launch:d1",
+        thread: "thread:launch:d1",
+        message: "First message",
+        workspace: { type: "worktree", baseRef: "main", startFromOrigin: true },
+      }),
+    );
+    const failed = yield* preparationSettled(launched.threadId);
+    const r1 = failed.runs[0]!;
+    assert.equal(r1.status, "failed");
+
+    // The user picks an existing worktree instead of retrying, then sends a new message.
+    yield* threads.dispatch({
+      type: "thread.metadata.update",
+      commandId: CommandId.make("command:launch:d1:choose-workspace"),
+      threadId: launched.threadId,
+      worktreePath: "/repo/.worktrees/chosen",
+      branch: "chosen",
+    });
+    yield* threads.sendToThread({
+      projectId,
+      commandId: CommandId.make("command:launch:d1:second"),
+      threadId: launched.threadId,
+      messageId: MessageId.make("message:launch:d1:second"),
+      text: "Second message",
+      attachments: [],
+      mode: "auto",
+      createdBy: "user",
+      creationSource: "web",
+    });
+    const afterSecond = yield* threads.getThreadProjection(launched.threadId);
+    const r2 = afterSecond.runs.find((run) => run.id !== r1.id)!;
+    // Later work runs and ends past the failed setup run.
+    yield* threads.dispatch({
+      type: "run.interrupt",
+      commandId: CommandId.make("command:launch:d1:stop-second"),
+      threadId: launched.threadId,
+      runId: r2.id,
+    });
+    const ended = yield* threads.getThreadProjection(launched.threadId);
+    console.log(
+      "D1 before retry:",
+      ended.runs.map((run) => `${run.ordinal}:${run.status}`).join(" "),
+      "worktreePath=",
+      ended.thread.worktreePath,
+    );
+
+    // The old Retry button is still offered (workspacePreparationRetryRunIds) and the server accepts it.
+    const retried = yield* Effect.exit(
+      launches.retryPreparation({
+        commandId: CommandId.make("command:launch:d1:retry"),
+        threadId: launched.threadId,
+        runId: r1.id,
+      }),
+    );
+    const after = yield* threads.getThreadProjection(launched.threadId);
+    console.log(
+      "D1 retry exit:",
+      retried._tag,
+      "after retry:",
+      after.runs.map((run) => `${run.ordinal}:${run.status}`).join(" "),
+    );
+    // Desired: the retry is refused and r1 stays failed, its one terminal state.
+    assert.equal(after.runs.find((run) => run.id === r1.id)?.status, "failed");
+  }).pipe(Effect.provide(harness.layer));
+});

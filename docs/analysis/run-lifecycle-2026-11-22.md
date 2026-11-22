@@ -60,7 +60,41 @@ archived or deleted; and no runtime request is pending.
 
 ## 4. Confirmed defects
 
-(in progress)
+### D1. A failed workspace-setup run stays failed once later work has run past it
+
+- **Severity: medium.** A user-reachable click revives a terminal run. Its first
+  message is sent to the provider again, after later messages, in whatever worktree
+  the user has since chosen. The later run can no longer be resumed: once the old run
+  is active again, the resume guard's `latestExecutedRun` (`Orchestrator.ts:7154`) is
+  the old run. Every reaction that ran when the run first failed (queue start,
+  delegated-completion finalization, scheduled-task outcome) has already happened, and
+  they run again when it ends a second time.
+- **Mechanism.** `dispatchPreparedRunRetry` (`Orchestrator.ts:12496`) accepts a retry
+  when the run is `failed`, has `workspacePreparation`, has a
+  `workspace_preparation_failed` error item, and **no other run is active**
+  (`Orchestrator.ts:12525`). It does not check that the run is still the latest
+  executed run, or that the thread still has no worktree. It then emits
+  `run.updated { status: "preparing", completedAt: null }` (`Orchestrator.ts:12567`),
+  a terminal-to-active transition. `ThreadLaunchService.retryPreparation`
+  (`ThreadLaunchService.ts:1551`) then schedules preparation; with a `worktreePath` now
+  set, it reuses that worktree (`ThreadLaunchService.ts:1572`). The client offers the
+  button for every such run, with no recency check:
+  `workspacePreparationRetryRunIds` (`packages/client-runtime/src/state/turnItemPresentation.ts:20`),
+  used by `apps/web/src/components/chat/useWorktreeSetup.ts:113` and
+  `apps/mobile/src/features/threads/thread-work-log.tsx:785`.
+- **Reproduction.** `docs/analysis/repro/prepared-run-retry-after-later-run.test.ts.part`,
+  appended to a copy of `ThreadLaunchService.test.ts` (real orchestrator, in-memory
+  SQLite, fake git, no provider). Run 1 fails setup; the user picks an existing
+  worktree (`thread.metadata.update`); run 2 starts and is stopped; Retry on run 1 is
+  accepted. Output: `before retry: 1:failed 2:interrupted` → `retry exit: Success,
+  after retry: 1:preparing 2:interrupted`. The test asserts the desired state and
+  fails on `main`.
+- **Smallest fix.** In `dispatchPreparedRunRetry`, also refuse when
+  `latestExecutedRun(projection.runs)?.id !== state.run.id` or when
+  `projection.thread.worktreePath !== null`. This is the condition
+  `orchestrationV2WorktreePending` (`packages/shared/src/orchestrationV2ThreadError.ts:79`)
+  already uses for "the setup request is still standing". Apply the same predicate in
+  `workspacePreparationRetryRunIds`, so the button disappears too.
 
 ## 5. Design findings
 
