@@ -17,7 +17,7 @@
    - Run 1 is a launch with worktree preparation. Later runs are messages.
    - FixRetry = TRUE adds the guard proposed for defect D1.
    - FixStop = TRUE makes a Stop that lands while a start is past its running
-     write wait for the provider (the proposed fix for model finding M2).   *)
+     write wait for the provider (the proposed fix for defect D2).   *)
 EXTENDS Naturals, FiniteSets
 
 CONSTANTS Runs, MaxClock, FixRetry, FixStop

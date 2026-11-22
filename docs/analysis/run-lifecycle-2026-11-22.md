@@ -76,7 +76,7 @@ Status key: **holds by argument** (code read, no counterexample found); **holds 
 | I1 | A run's terminal status is final. The only designed exception is Retry of a failed setup run that is still the latest executed run. | Each `run.updated` emit site (no projection guard: `ProjectionStore.ts:2542` is a whole-row upsert). Effect-worker writes are compare-and-set through `EventSink.writeIfRunCurrent` (`EventSink.ts:545`). Orchestrator writes run under the thread lock. | An emit site that sets an active status without checking recency. `dispatchPreparedRunRetry` (`Orchestrator.ts:12496`) does this. | **Violated**: D1, reproduced; TLC trace T1. |
 | I1b | Native rewind relabels `completed` runs as `rolled_back` (`ProviderEventIngestor.ts:443`). | By design: terminal to terminal. | Reactions keyed on "became terminal" fire again. | Holds by argument: `handleRunUpdate` reacts to terminal statuses idempotently; finalizers re-read state. |
 | I2 | At most one run of a thread is in `preparing`/`starting`/`running`. | `dispatchMessage` queues behind an active run (`Orchestrator.ts:7805-7828`); queue start checks for an active run; the recovery query `queued-runs` (`ProjectionStore.ts:5071`). | A start path that skips the active check. | **Holds in model** (TLC: 4 runs, clock 9, crash/restart; 2.8M states). |
-| I3 | A thread never has two live provider turns on its provider thread. A resume, or a new message after Stop, never runs alongside the turn it replaced. | `abandonedProviderTurns` interrupts an ended run's still-running turn before a new start reuses the session (`ProviderTurnStartService.ts:878-905`). A turn accepted after Stop is interrupted (`RunExecutionService.ts:1893-1922`). Per-thread effect ordering (`EffectWorker.ts:755`). | Stop lands after the running write but before the provider accepts. It ends the run at once (`Orchestrator.ts:13700-13800`) and cancels the in-flight start (`EffectWorker.ts:939`), which frees the thread's effect queue. The next run's start finds no stored turn to clean up and starts a second turn, while the first is accepted late. | **Violated in model** (trace T2, mapped to code). Not reproduced end to end: whether an adapter accepts the second `startTurn` is residue (M2). |
+| I3 | A thread never has two live provider turns on its provider thread. A resume, or a new message after Stop, never runs alongside the turn it replaced. | `abandonedProviderTurns` interrupts an ended run's still-running turn before a new start reuses the session (`ProviderTurnStartService.ts:878-905`). A turn accepted after Stop is interrupted (`RunExecutionService.ts:1893-1922`). Per-thread effect ordering (`EffectWorker.ts:755`). | Stop lands after the running write but before the provider accepts. It ends the run at once (`Orchestrator.ts:13700-13800`) and cancels the in-flight start (`EffectWorker.ts:939`), which frees the thread's effect queue. The next run's start finds no stored turn to clean up and starts a second turn, while the first is accepted late. | **Violated**: D2, TLC trace T2, reproduced against the real orchestrator and effect worker with a fake adapter. |
 | I4 | An interrupted or failed run keeps no provider turn alive, except while a late-turn interrupt is in flight. | Same as I3, plus Force stop (`ThreadManagementService.ts:1306`) and restart reconcile (`ProviderRuntimeRecoveryService.ts:1108`). No provider process survives the server. | An unresponsive provider: the run stays `running` with `unresponsiveAt` set until the user forces a stop (`Orchestrator.ts:13207`). This is by design: the run is not marked interrupted while its process lives. | Holds in model (both fixes, bound above). Holds by argument for unresponsive Stop. |
 | I5 | A child's result reaches its parent, or the parent is told it was lost. | `handleRunUpdate` → `finalizeAppOwnedSubagent` (`Orchestrator.ts:16261-16330`); startup `recoverDelegatedTasks` with the `subagent-results` and `delegated-completions` queries (`ProjectionStore.ts:5091-5127`); reconcile turns blocking waits into `completionWake: always` (`ProviderRuntimeRecoveryService.ts:838`). | A crash between the child's terminal commit and the parent's finalize. The recovery query covers it: a terminal requested run with a null task result, or a terminal latest run with no `subagent_result` transfer. | Holds by argument. D1 weakens it: a revived child run produces a second end after the parent already holds a result (unconfirmed consequence, S3). |
 | I6 | A scheduled slot fires at most once. | In-memory `activeRuns` reservation (`ScheduledTaskService.ts:1226`); `markRunning` before dispatch; command and message ids derived from the slot (`:1062`), so a replay is idempotent; startup moves crash-left `running` rows to `failed` and advances `next_run_at` (`:1350`). | A crash after dispatch: recovery advances past the slot, so it never re-fires. That is at-most-once, not exactly-once: a crash between `markRunning` and dispatch loses the slot, and the task is marked "interrupted by a server restart". DST fall-back: checked, `setParts` picks the earlier instant and the next slot is the next day (probe below). | Holds by argument; DST probe run. |
@@ -101,7 +101,7 @@ provider start, `:13704`) → `RetrySetup(1)` (`dispatchPreparedRunRetry`, `:125
 goes `failed → preparing` after run 2 ended. The vitest reproduction follows the same
 steps.
 
-**T2** (model finding M2): `SetupSucceeds(1)` → `MarkRunning(1)` (CAS `starting →
+**T2** (maps to D2): `SetupSucceeds(1)` → `MarkRunning(1)` (CAS `starting →
 running`, `ProviderTurnStartService.ts:1933`; the start effect is now delivering context
 and calling `startTurn`) → `Stop(1)` (`dispatchRunInterrupt` finds no provider turn for
 the attempt, so it ends run 1 `interrupted` and cancels unsettled `provider-turn.start`
@@ -155,26 +155,58 @@ thread" fails in the model.
   already uses for "the setup request is still standing". Apply the same predicate in
   `workspacePreparationRetryRunIds`, so the button disappears too.
 
-### M2 (model counterexample, mapped to code, not reproduced end to end). A Stop during turn start never lets the next run's turn overlap the old one
+### D2. A Stop during turn start never lets the next run's turn overlap the old one
 
-- **Severity: medium if real.** The user flow is common: send, Stop at once, send a
-  correction. When it bites, the second message lands in, or races with, a turn the user
-  stopped, and the late interrupt aimed at the old turn can also cut the new one.
-- **Mechanism:** trace T2 above. The window runs from the running write to the
-  provider's acceptance of `startTurn`. It includes context-handoff delivery and history
-  injection, so it can last seconds.
-- **Residue.** The orchestrator side is mapped step by step. Not confirmed: whether an
-  interrupted `startTurn` fiber can still have sent its request (it depends on each
-  adapter's RPC), and what an adapter does with a second `startTurn` while a turn is
-  live (Codex app-server may refuse it; Claude's prompt queue may merge it into the live
-  turn). A confirming test needs a fake adapter whose `startTurn` blocks after "sending",
-  driven through the real effect worker. That harness was more than this pass could build.
-- **Smallest fix (checked in the model as `FixStop`).** In `dispatchRunInterrupt`, when
-  the run is `running` and its start effect is past the running write (no provider turn
-  stored yet), store the interrupt request instead of ending the run. Let the provider's
-  acceptance or failure settle it, as the existing `unlessInterruptRequested` guard
-  already allows (`EventSink.ts:144`). Alternatively, keep a cancelled
-  `provider-turn.start` row blocking the thread's effect queue until its fiber has exited.
+- **Severity: medium.** The user flow is common: send, Stop at once, send a correction.
+  The provider receives the second prompt while it is still starting the first, on the
+  same session and native thread. The first turn is never stored, so no client shows
+  it. It is interrupted only after the second turn has started, by an interrupt aimed
+  at a turn id the projection does not have.
+- **Mechanism (trace T2, section 3).** The window runs from the running write
+  (`ProviderTurnStartService.ts:1933`) to the provider's acceptance of `startTurn`. It
+  includes context-handoff delivery and history injection, so it can last seconds.
+  During it, `dispatchRunInterrupt` finds no stored provider turn. It ends the run at
+  once (`Orchestrator.ts:13700-13800`) and cancels the unsettled
+  `provider-turn.start` effect. `EffectOutbox.cancelUnsettled` marks the running row
+  cancelled (`EffectOutbox.ts:499`) and the worker interrupts its fiber
+  (`EffectWorker.ts:939`). The cancelled row no longer holds the thread's effect queue,
+  so the next run's start runs at once. Its `abandonedProviderTurns` check
+  (`ProviderTurnStartService.ts:878`) sees no stored turn for run 1, and it calls
+  `startTurn` on the same session. When the provider then accepts run 1's request, a
+  consumer interrupts that turn (`RunExecutionService.ts:1893-1922`), after run 2's
+  turn is live.
+- **Reproduction.** `docs/analysis/repro/stop-during-turn-start.test.ts.part`, appended
+  to a copy of `ThreadStop.test.ts`: real orchestrator, real effect worker, in-memory
+  SQLite, and a fake Codex-capability adapter whose `startTurn` for run 1 records the
+  request and then waits for a reply that never comes. The test asserts the desired
+  ordering and fails on `main`. Observed log:
+  ```
+  startTurn run 1
+  run 1 is running when Stop lands
+  startTurn run 1 fiber interrupted
+  after Stop: 1:interrupted
+  startTurn run 2
+  provider accepts run 1's request now
+  interruptTurn run 1's turn
+  late turn stored: None
+  final runs: 1:interrupted 2:running; running turns: <run 2's turn only>
+  ```
+- **Residue (not verified).** Whether a real adapter's `startTurn` RPC can have left
+  the process when its fiber is interrupted (the fake assumes it can). What a real
+  provider does with a second prompt while the first is starting: Codex app-server may
+  refuse it; Claude's prompt queue may merge it into the first turn. Whether
+  `interruptTurn` for run 1's turn id stops run 2's turn on adapters that interrupt
+  "the current turn" of a native thread.
+- **Smallest fix (checked in the model as `FixStop`; with `FixRetry`, TLC finds no
+  violation at 4 runs, clock 9).** In `dispatchRunInterrupt`, when the run is
+  `running` but has no stored provider turn, store the interrupt request instead of
+  ending the run. The start's own outcome then settles it: an accepted turn is stopped
+  through the normal interrupt path, and a refused start fails the run. The
+  `unlessInterruptRequested` guard on `writeIfRunCurrent` (`EventSink.ts:144`) already
+  supports this. Keep the synchronous path for `preparing` and `starting`, where no
+  prompt can have left. A smaller alternative: keep a cancelled `provider-turn.start`
+  row blocking the thread's effect queue until its fiber has actually exited and the
+  outcome of its RPC is known.
 
 ## 5. Design findings
 
@@ -195,7 +227,7 @@ thread" fails in the model.
 3. **Stop has two semantics that depend on whether a provider turn is stored yet.**
    With no stored turn, Stop ends the run synchronously. With one, it sends an interrupt
    and waits. The boundary ("is a turn stored?") is not the real one ("could the
-   provider have received a prompt?"); M2 lives in that gap. Change: key the synchronous
+   provider have received a prompt?"); D2 lives in that gap. Change: key the synchronous
    path on the run never having reached `running`. Cost: low, plus one integration test
    with a blocking fake `startTurn`.
 4. **Recovery re-derives work from SQL predicates kept apart from the reactions they
@@ -219,7 +251,7 @@ thread" fails in the model.
   lease from the one held during removal. Tried: read both sides. Not tried: a two-alias
   reproduction. The window is narrow, because `blockedSinceCheck` rereads every bound
   thread under the lease.
-- **S2. Adapter behaviour under M2**, as above.
+- **S2. Adapter behaviour under D2**: see D2's residue.
 - **S3. D1 on a delegated child.** If the revived run belongs to an app-owned child, the
   parent already holds the first result. `finalizeAppOwnedSubagent` would run again on
   the second end; whether it overwrites, duplicates or ignores the result was not
@@ -247,7 +279,7 @@ Skimmed: `ProviderTurnStartService.ts` (start, abandoned turns, running write),
 worktree path (1160-1660), `ThreadLaunchService.retryPreparation`/`prepareRun`,
 `WorktreeMcpService` worktree creation.
 
-Not reached: provider adapters (`Adapters/*`; needed for M2's residue);
+Not reached: provider adapters (`Adapters/*`; needed for D2's residue);
 `ProviderSessionManager.ts` (3,495 lines: session sharing, idle unload, detach);
 `RestartContinuation.ts` beyond its marker; `UsageLimitRecoveryWorker.ts` beyond the
 dispatch guard; `DelegatedCompletionDelivery` internals (cohorts, generations); remote
@@ -255,6 +287,6 @@ delegated tasks (`RemoteDelegatedTask`); `ThreadSettlementService`; checkpoint
 rollback; the mobile client beyond resume. The TLA+ model does not cover delegated
 parent/child, steering, provider switching, or shared sessions across threads.
 
-Probes run: D1 vitest reproduction (fails on `main` as described); a DST probe of
+Probes run: D1 and D2 vitest reproductions (both fail on `main` as described); a DST probe of
 `nextScheduledRunAt` in `Australia/Sydney` (fall-back 2026-04-05 and spring-forward
 2026-10-04: one fire per day, no repeat); four TLC configurations.
