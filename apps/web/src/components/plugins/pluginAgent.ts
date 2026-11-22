@@ -79,6 +79,7 @@ export function usePluginThreadAgent(
   return {
     runningSources,
     async submit(source, prompt) {
+      // oxlint-disable-next-line t3code/no-untranslated-copy -- agent.result error for the plugin's code
       if (shell === null) return "This thread is not available.";
       const messageId = newMessageId();
       const result = await startTurn({
@@ -100,6 +101,7 @@ export function usePluginThreadAgent(
     },
     async stop(source) {
       const run = activeRun(source);
+      // oxlint-disable-next-line t3code/no-untranslated-copy -- agent.result error for the plugin's code
       if (run === undefined) return "No run this plugin started is active.";
       const input = { environmentId, input: { threadId, runId: run.id } };
       const result =

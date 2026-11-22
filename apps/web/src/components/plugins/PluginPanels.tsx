@@ -8,6 +8,7 @@ import type {
   PluginPanelTarget,
   SubscribePluginPanelsInput,
 } from "@t3tools/contracts";
+import { T, useGT, Var } from "gt-react";
 import { EllipsisIcon, PlayIcon, SquareIcon } from "lucide-react";
 import {
   use,
@@ -65,11 +66,14 @@ export function PluginPanels(props: {
   onNavigate?: (row: PluginPanelRow, anchor: Element) => void;
 }) {
   const { Section } = props;
+  const gt = useGT();
   return (
     <>
       {props.error ? (
         <p role="alert" className="px-4 text-xs text-muted-foreground">
-          Plugin panels unavailable: {props.error}
+          <T>
+            Plugin panels unavailable: <Var>{props.error}</Var>
+          </T>
         </p>
       ) : null}
       {props.snapshots?.map((plugin) =>
@@ -81,10 +85,15 @@ export function PluginPanels(props: {
           >
             <p className="px-2.5 text-xs text-muted-foreground" role="status">
               {plugin.status === "connecting"
-                ? "Connecting…"
+                ? gt("Connecting…")
                 : plugin.status === "error"
-                  ? "Plugin configuration or response is invalid. Check panel-plugins.json and the plugin."
-                  : "Plugin disconnected. Reconnecting…"}
+                  ? gt(
+                      "Plugin configuration or response is invalid. Check {file} and the plugin.",
+                      {
+                        file: "panel-plugins.json",
+                      },
+                    )
+                  : gt("Plugin disconnected. Reconnecting…")}
             </p>
           </Section>
         ) : (
@@ -177,6 +186,7 @@ export function SizedPanel(props: {
   const dragRef = useRef<{ pointerId: number; startY: number; startHeight: number } | null>(null);
   const [dragHeight, setDragHeight] = useState<number | null>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  const gt = useGT();
   const height = contentHeight ?? dragHeight ?? savedHeight;
   const dragging = dragHeight !== null;
   const heightAt = (event: PointerEvent<HTMLDivElement>) => {
@@ -216,7 +226,7 @@ export function SizedPanel(props: {
         <div
           role="separator"
           aria-orientation="horizontal"
-          aria-label={`Resize ${props.title}`}
+          aria-label={gt("Resize {title}", { title: props.title })}
           aria-valuemin={PANEL_HEIGHT.min}
           aria-valuemax={PANEL_HEIGHT.max}
           aria-valuenow={height}
@@ -283,7 +293,11 @@ function PluginNativeList(props: {
   const allowed = (action: PluginAction): boolean =>
     action.kind === "surface" || (canOperate && (action.kind !== "agent" || agent !== null));
   if (panel.rows.length === 0) {
-    return <p className="px-2.5 text-xs text-muted-foreground">No items.</p>;
+    return (
+      <p className="px-2.5 text-xs text-muted-foreground">
+        <T>No items.</T>
+      </p>
+    );
   }
   return (
     <ul className="flex flex-col gap-0.5 px-1 text-xs">
@@ -342,6 +356,7 @@ function PluginRow(props: {
   onNavigate?: (row: PluginPanelRow, anchor: Element) => void;
 }) {
   const { row, origin } = props;
+  const gt = useGT();
   const host = usePluginSurfaceHost();
   const agent = use(PluginAgentContext);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -446,8 +461,8 @@ function PluginRow(props: {
           <Button
             size="icon-xs"
             variant="ghost"
-            aria-label={`Stop ${running.label}`}
-            title="Stop"
+            aria-label={gt("Stop {label}", { label: running.label })}
+            title={gt("Stop", { $context: "verb, stops an agent run" })}
             onClick={() => {
               void agent?.stop(pluginRowAgentSource(origin.row, running.id));
             }}
@@ -465,7 +480,7 @@ function PluginRow(props: {
                 <Button
                   size="icon-xs"
                   variant="ghost"
-                  aria-label={`More actions for ${row.label}`}
+                  aria-label={gt("More actions for {label}", { label: row.label })}
                 />
               }
             >

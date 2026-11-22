@@ -11,6 +11,7 @@ import type {
   ThreadId,
 } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
+import { msg, T, useGT, useMessages, Var } from "gt-react";
 import { PlusIcon } from "lucide-react";
 import { useState } from "react";
 import { useNewThreadHandler } from "../../hooks/useHandleNewThread";
@@ -28,10 +29,10 @@ import { environmentPluginPanels } from "./pluginState";
 import { PluginSurfaceHost } from "./PluginSurfaceHost";
 
 const ACTIVITY_LABEL: Record<PluginNavigationActivity, string> = {
-  approval: "Needs approval",
-  input: "Awaiting input",
-  working: "Working",
-  idle: "Idle",
+  approval: msg("Needs approval"),
+  input: msg("Awaiting input"),
+  working: msg("Working", { $context: "thread activity" }),
+  idle: msg("Idle", { $context: "thread activity" }),
 };
 
 /**
@@ -55,6 +56,8 @@ function EnvironmentPanels({ environmentId }: { environmentId: EnvironmentId }) 
   const query = useEnvironmentQuery(environmentPluginPanels({ environmentId, input: { filters } }));
   const navigate = useNavigate();
   const handleNewThread = useNewThreadHandler();
+  const gt = useGT();
+  const m = useMessages();
   const panels = (query.data ?? []).filter(
     (plugin) => plugin.status !== "connected" || plugin.panels.length > 0,
   );
@@ -79,8 +82,8 @@ function EnvironmentPanels({ environmentId }: { environmentId: EnvironmentId }) 
       toastManager.add(
         stackedThreadToast({
           type: "info",
-          title: "No matching project",
-          description: "This item's projects are not on this environment.",
+          title: gt("No matching project"),
+          description: gt("This item's projects are not on this environment."),
         }),
       );
     } else setChooser({ plan, anchor });
@@ -118,7 +121,7 @@ function EnvironmentPanels({ environmentId }: { environmentId: EnvironmentId }) 
             width="sm"
             padding="compact"
           >
-            <div className="flex flex-col gap-1 text-xs" aria-label="Choose a thread">
+            <div className="flex flex-col gap-1 text-xs" aria-label={gt("Choose a thread")}>
               {chooser.plan.kind === "choose"
                 ? chooser.plan.threads.map((thread) => (
                     <Button
@@ -129,7 +132,7 @@ function EnvironmentPanels({ environmentId }: { environmentId: EnvironmentId }) 
                     >
                       <span className="min-w-0 flex-1 truncate text-start">{thread.title}</span>
                       <span className="shrink-0 text-muted-foreground">
-                        {ACTIVITY_LABEL[thread.activity]}
+                        {m(ACTIVITY_LABEL[thread.activity])}
                       </span>
                     </Button>
                   ))
@@ -146,7 +149,9 @@ function EnvironmentPanels({ environmentId }: { environmentId: EnvironmentId }) 
                 >
                   <PlusIcon />
                   <span className="min-w-0 flex-1 truncate text-start">
-                    New thread in {project.title}
+                    <T>
+                      New thread in <Var>{project.title}</Var>
+                    </T>
                   </span>
                 </Button>
               ))}

@@ -30,8 +30,9 @@
         "fixtures/*/*.js",
         "knip-schemas.ts",
         "linux-after-pack.ts",
-        // The maintainer runs the plugin build's signed release by path; see panel-plugins.md.
+        // The maintainer runs these fork scripts by path; see panel-plugins.md and upstream-merges.md.
         "release-plugin-desktop.ts",
+        "upstream-merge-report.ts",
         "mobile-behavior/run.ts",
         "mobile-native-client.ts",
         // e2e loads its config and the scenarios by path, and starts the app script.
@@ -169,6 +170,11 @@
       "includeEntryExports": true,
       "entry": ["test/fixtures/*.ts"],
       "ignoreIssues": { "src/_generated/**": ["exports", "types"] },
+    },
+    "packages/issue-tracker-linear": {
+      // graphqlgen reads its config; the generated operations export every selection's class.
+      "entry": ["graphql.config.ts"],
+      "ignoreIssues": { "**/*.graphql.ts": ["exports", "types", "namespaceMembers"] },
     },
     "packages/source-control-github": {
       // graphqlgen reads its config; the generated operations export every selection's class.

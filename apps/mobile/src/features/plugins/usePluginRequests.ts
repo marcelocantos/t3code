@@ -8,6 +8,7 @@ import type {
   PluginPanelTarget,
   PluginSurface,
 } from "@t3tools/contracts";
+import { useGT } from "gt-react-native";
 
 import * as Dialog from "../../components/ui/Dialog";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -41,6 +42,7 @@ export function usePluginRequests(environmentId: EnvironmentId) {
   const act = useAtomCommand(pluginPanelCommands.act, { reportFailure: false });
   const fetchSurface = useAtomCommand(pluginPanelCommands.surface, { reportFailure: false });
   const canOperate = useAtomValue(pluginPanelCommands.act.permissionAtom(environmentId));
+  const gt = useGT();
 
   const runAction = async (
     scope: PluginRowScope,
@@ -66,7 +68,10 @@ export function usePluginRequests(environmentId: EnvironmentId) {
       },
     });
     if (result._tag === "Success") return result.value;
-    Dialog.alert(`Could not ${action.label.toLowerCase()}`, pluginFailureMessage(result.cause));
+    Dialog.alert(
+      gt("Could not {action}", { action: action.label.toLowerCase() }),
+      pluginFailureMessage(result.cause),
+    );
     return null;
   };
 
@@ -81,7 +86,7 @@ export function usePluginRequests(environmentId: EnvironmentId) {
       input: { ...rest, surfaceId, ...(itemId === undefined ? {} : { itemId }) },
     });
     if (result._tag === "Success") return result.value;
-    Dialog.alert("Could not open", pluginFailureMessage(result.cause));
+    Dialog.alert(gt("Could not open"), pluginFailureMessage(result.cause));
     return null;
   };
 
@@ -90,14 +95,20 @@ export function usePluginRequests(environmentId: EnvironmentId) {
     new Promise<string | null>((resolve) =>
       Dialog.prompt({
         title: action.label,
-        message: "Enter a date as YYYY-MM-DD.",
+        message: gt("Enter a date as {format}.", { format: "YYYY-MM-DD" }),
+        // oxlint-disable-next-line t3code/no-untranslated-copy -- the ISO date format the prompt parses, not a sentence
         placeholder: "YYYY-MM-DD",
         initialValue: action.value ?? pluginDateChoices(new Date())[0]?.value ?? "",
-        confirmText: "Set",
+        confirmText: gt("Set", { $context: "verb, confirms a date" }),
         onCancel: () => resolve(null),
         onConfirm: (text) => {
           const date = parsePluginCalendarDate(text);
-          if (date === null) Dialog.alert("Not a date", `“${text}” is not a YYYY-MM-DD date.`);
+          if (date === null) {
+            Dialog.alert(
+              gt("Not a date"),
+              gt("“{text}” is not a {format} date.", { text, format: "YYYY-MM-DD" }),
+            );
+          }
           resolve(date);
         },
       }),

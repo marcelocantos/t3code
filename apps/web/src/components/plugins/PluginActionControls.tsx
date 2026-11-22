@@ -4,6 +4,7 @@ import {
   toCalendarDate,
 } from "@t3tools/client-runtime/state/panelPlugins";
 import type { PluginAction, PluginBadge as PluginBadgeData } from "@t3tools/contracts";
+import { T, useGT, useMessages } from "gt-react";
 import { useState } from "react";
 import { useNowMinute } from "../../hooks/useNowMinute";
 import { Badge } from "../ui/badge";
@@ -80,20 +81,24 @@ export function PluginDateMenuItems({
   onCustom: () => void;
 }) {
   const now = useNowMinuteDate();
+  const gt = useGT();
+  const m = useMessages();
   return (
     <>
-      {pluginDateChoices(now).map((choice) => (
+      {pluginDateChoices(now, undefined, m).map((choice) => (
         <MenuItem key={choice.id} onClick={() => onChoose(choice.value)}>
           {choice.label}
           <MenuItemDetail>{choice.hint}</MenuItemDetail>
         </MenuItem>
       ))}
-      <MenuItem onClick={onCustom}>Custom…</MenuItem>
+      <MenuItem onClick={onCustom}>
+        <T>Custom…</T>
+      </MenuItem>
       {action.value === undefined ? null : (
         <>
           <MenuSeparator />
           <MenuItem variant="destructive" onClick={() => onChoose(null)}>
-            {action.clearLabel ?? "Clear"}
+            {action.clearLabel ?? gt("Clear", { $context: "verb, removes a date" })}
           </MenuItem>
         </>
       )}
@@ -189,6 +194,7 @@ function CustomDateForm({
 }) {
   const now = useNowMinuteDate();
   const [value, setValue] = useState(action.value ?? toCalendarDate(now));
+  const gt = useGT();
   return (
     <DialogPopup>
       <form
@@ -207,7 +213,7 @@ function CustomDateForm({
           <Input
             nativeInput
             type="date"
-            aria-label={`${action.label} date`}
+            aria-label={gt("{label} date", { label: action.label })}
             required
             value={value}
             onChange={(event) => setValue(event.target.value)}
@@ -215,9 +221,11 @@ function CustomDateForm({
         </DialogPanel>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>
-            Cancel
+            <T>Cancel</T>
           </Button>
-          <Button type="submit">Set date</Button>
+          <Button type="submit">
+            <T>Set date</T>
+          </Button>
         </DialogFooter>
       </form>
     </DialogPopup>
