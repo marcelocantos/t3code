@@ -1,8 +1,8 @@
 # Run lifecycle: correctness analysis (2026-11-22)
 
 Read-only analysis of the owner's T3 Code fork at local `main` 64d67164a6.
-Method: code reading, one TLA+ model checked with TLC
-(`docs/analysis/tla/RunLifecycle.tla`), and reproductions run against the real
+Method: code reading, two TLA+ models checked with TLC
+(`docs/analysis/tla/RunLifecycle.tla`, `docs/analysis/tla/ChildResult.tla`), and reproductions run against the real
 orchestrator with an in-memory database and fakes. No server, provider or live state was
 touched. The worktree had no `node_modules`, so tests ran with symlinks to the main
 checkout's `node_modules`. That checkout is clean at the same commit, 64d67164a6.
@@ -75,9 +75,9 @@ Status key: **holds by argument** (code read, no counterexample found); **holds 
 |---|---|---|---|---|
 | I1 | A run's terminal status is final. The only designed exception is Retry of a failed setup run that is still the latest executed run. | Each `run.updated` emit site (no projection guard: `ProjectionStore.ts:2542` is a whole-row upsert). Effect-worker writes are compare-and-set through `EventSink.writeIfRunCurrent` (`EventSink.ts:545`). Orchestrator writes run under the thread lock. | An emit site that sets an active status without checking recency. `dispatchPreparedRunRetry` (`Orchestrator.ts:12496`) does this. | **Violated**: D1, reproduced; TLC trace T1. |
 | I1b | Native rewind relabels `completed` runs as `rolled_back` (`ProviderEventIngestor.ts:443`). | By design: terminal to terminal. | Reactions keyed on "became terminal" fire again. | Unknown: by design, but whether every terminal-status reaction is idempotent for a second end was not checked. |
-| I2 | At most one run of a thread is in `preparing`/`starting`/`running`. | `dispatchMessage` queues behind an active run (`Orchestrator.ts:7805-7828`); queue start checks for an active run; the recovery query `queued-runs` (`ProjectionStore.ts:5071`). | A start path that skips the active check. | **Holds in model** (TLC: 4 runs, clock 9, crash/restart; 2.8M states). |
+| I2 | At most one run of a thread is in `preparing`/`starting`/`running`. | `dispatchMessage` queues behind an active run (`Orchestrator.ts:7805-7828`); queue start checks for an active run; the recovery query `queued-runs` (`ProjectionStore.ts:5071`). | A start path that skips the active check. | **Holds in model** with the D1 and D2 fixes applied (TLC: 4 runs, clock 9, crash/restart; 2.8M states). The as-is runs stop at the first violation (T1, T2) before covering it. |
 | I3 | A thread never has two live provider turns on its provider thread. A resume, or a new message after Stop, never runs alongside the turn it replaced. | `abandonedProviderTurns` interrupts an ended run's still-running turn before a new start reuses the session (`ProviderTurnStartService.ts:878-905`). A turn accepted after Stop is interrupted (`RunExecutionService.ts:1893-1922`). Per-thread effect ordering (`EffectWorker.ts:755`). | Stop lands after the running write but before the provider accepts. It ends the run at once (`Orchestrator.ts:13700-13800`) and cancels the in-flight start (`EffectWorker.ts:939`), which frees the thread's effect queue. The next run's start finds no stored turn to clean up and starts a second turn, while the first is accepted late. | **Violated**: D2, TLC trace T2, reproduced against the real orchestrator and effect worker with a fake adapter. |
-| I4 | An interrupted or failed run keeps no provider turn alive, except while a late-turn interrupt is in flight. | Same as I3, plus Force stop (`ThreadManagementService.ts:1306`) and restart reconcile (`ProviderRuntimeRecoveryService.ts:1108`). No provider process survives the server. | An unresponsive provider: the run stays `running` with `unresponsiveAt` set until the user forces a stop (`Orchestrator.ts:13207`). This is by design: the run is not marked interrupted while its process lives. | Holds in model (both fixes, bound above). Holds by argument for unresponsive Stop. |
+| I4 | An interrupted or failed run keeps no provider turn alive, except while a late-turn interrupt is in flight. | Same as I3, plus Force stop (`ThreadManagementService.ts:1306`) and restart reconcile (`ProviderRuntimeRecoveryService.ts:1108`). No provider process survives the server. | An unresponsive provider: the run stays `running` with `unresponsiveAt` set until the user forces a stop (`Orchestrator.ts:13207`). This is by design: the run is not marked interrupted while its process lives. | Holds in model (both fixes, bound above; the late-kill exception is the `lateKill` flag). Holds by argument for unresponsive Stop. |
 | I5 | A child's result reaches its parent, or the parent is told it was lost. | `handleRunUpdate` → `finalizeAppOwnedSubagent` (`Orchestrator.ts:16261-16330`); startup `recoverDelegatedTasks` with the `subagent-results` and `delegated-completions` queries (`ProjectionStore.ts:5091-5127`); reconcile turns blocking waits into `completionWake: always` (`ProviderRuntimeRecoveryService.ts:838`). | A crash between the child's terminal commit and the parent's finalize. The recovery query covers it: a terminal requested run with a null task result, or a terminal latest run with no `subagent_result` transfer. | **Holds in model** without D1 (`ChildResult.tla`, up to 3 crashes, 44 states). **Violated in model** with D1's revival (trace T3): the second end is silently dropped. Not reproduced in code (S3). |
 | I6 | A scheduled slot fires at most once. | In-memory `activeRuns` reservation (`ScheduledTaskService.ts:1226`); `markRunning` before dispatch; command and message ids derived from the slot (`:1062`), so a replay is idempotent; startup moves crash-left `running` rows to `failed` and advances `next_run_at` (`:1350`). | A crash after dispatch: recovery advances past the slot, so it never re-fires. That is at-most-once, not exactly-once: a crash between `markRunning` and dispatch loses the slot, and the task is marked "interrupted by a server restart". DST fall-back: checked, `setParts` picks the earlier instant and the next slot is the next day (probe below). | Holds by argument; DST probe run. |
 | I7 | A settled or archived thread's worktree is never removed while a run, terminal or live session uses it. | `storageCleanup.ts`: idleness check, then `blockedSinceCheck` re-reads all bound threads and live sessions, inside `withWorkspaceLease(worktreePath)` (`:1603`). Turn start holds the same lease during startup (`ProviderTurnStartService.ts:2173`). A started run has `activeRunId` set, which blocks cleanup. | The lease key is the raw `path.resolve`d string (`workspace/workspaceLease.ts:9`), while cleanup groups threads by canonical path. Two threads bound to one worktree through different aliases take different leases (S1). | Holds by argument for un-aliased paths. |
@@ -95,18 +95,6 @@ behaviours):
 | `RunLifecycle_fixboth_big.cfg` (4 runs, clock 9) | yes | yes | no error, 2,822,224 distinct states, depth 33, 25 s |
 | `ChildResult_revive_FALSE.cfg` (3 crashes) | — | — | `ParentHearsLatestEnd` holds, 44 distinct states |
 | `ChildResult_revive_TRUE.cfg` (3 crashes) | D1 revival allowed | — | `ParentHearsLatestEnd` violated, trace T3 (7 states) |
-
-`ChildResult.tla` is deliberately small: one child, one task, the reaction, the two
-startup sweeps and crashes. It checks that the sweep predicates cover every crash point
-between the child's terminal commit and the parent's wake.
-
-**T3** (D1 on a delegated child): `ChildEnds` → `React` (finalize writes result,
-transfer and delivery plan in one commit, `Orchestrator.ts:15083`) → `Offer` (parent
-woken) → `Revive` (D1 retry of the child's failed setup run) → `ChildEnds` →
-`React`: `finalizeAppOwnedSubagent` drops the task from `openTasks` because it already
-has a result and a `subagent_result` transfer (`Orchestrator.ts:14702-14708`). The
-parent keeps the first ("setup failed") result while the child goes on to finish the
-work.
 
 **T1** (maps to D1): `SetupFails(1)` (`dispatchPreparedRunFail`, `Orchestrator.ts:12486`) →
 `ChooseWorkspace` (`thread.metadata.update worktreePath`) → `Send(2)` (`dispatchMessage`
@@ -131,13 +119,25 @@ enabled in the same state as `Send(2)`: run 1 is interrupted and latest. So the
 manual-resume path reaches the same trace, and "a resume never runs two sessions on one
 thread" fails in the model.
 
+`ChildResult.tla` is deliberately small: one child, one task, the reaction, the two
+startup sweeps and crashes. It checks that the sweep predicates cover every crash point
+between the child's terminal commit and the parent's wake.
+
+**T3** (D1 on a delegated child): `ChildEnds` → `React` (finalize writes result,
+transfer and delivery plan in one commit, `Orchestrator.ts:15085`) → `Offer` (parent
+woken) → `Revive` (D1 retry of the child's failed setup run) → `ChildEnds` →
+`React`: `finalizeAppOwnedSubagent` drops the task from `openTasks` because it already
+has a result and a `subagent_result` transfer (`Orchestrator.ts:15126-15131`). The
+parent keeps the first ("setup failed") result while the child goes on to finish the
+work.
+
 ## 4. Confirmed defects
 
 ### D1. A failed workspace-setup run stays failed once later work has run past it
 
-- **Severity: medium.** A user-reachable click revives a terminal run. Its first
-  message is sent to the provider again, after later messages, in whatever worktree
-  the user has since chosen. The later run can no longer be resumed: once the old run
+- **Severity: medium.** A user-reachable click revives a terminal run. Its message,
+  which never reached the provider, is sent now, after later messages that already ran,
+  in whatever worktree the user has since chosen. The later run can no longer be resumed: once the old run
   is active again, the resume guard's `latestExecutedRun` (`Orchestrator.ts:7154`) is
   the old run. Every reaction that ran when the run first failed (queue start,
   delegated-completion finalization, scheduled-task outcome) has already happened, and
@@ -162,11 +162,12 @@ thread" fails in the model.
   accepted. Output: `before retry: 1:failed 2:interrupted` → `retry exit: Success,
   after retry: 1:preparing 2:interrupted`. The test asserts the desired state and
   fails on `main`.
-- **Smallest fix.** In `dispatchPreparedRunRetry`, also refuse when
-  `latestExecutedRun(projection.runs)?.id !== state.run.id` or when
-  `projection.thread.worktreePath !== null`. This is the condition
-  `orchestrationV2WorktreePending` (`packages/shared/src/orchestrationV2ThreadError.ts:79`)
-  already uses for "the setup request is still standing". Apply the same predicate in
+- **Smallest fix (checked in the model as `FixRetry`).** In `dispatchPreparedRunRetry`,
+  also refuse when `latestExecutedRun(projection.runs)?.id !== state.run.id`. That is
+  the recency half of `orchestrationV2WorktreePending`
+  (`packages/shared/src/orchestrationV2ThreadError.ts:79`), the existing "setup request
+  still standing" predicate. Retrying after the user chose a worktree, with nothing run
+  since, stays allowed: the message has not run anywhere yet. Apply the same check in
   `workspacePreparationRetryRunIds`, so the button disappears too.
 
 ### D2. A Stop during turn start never lets the next run's turn overlap the old one
@@ -247,7 +248,7 @@ thread" fails in the model.
 4. **Recovery re-derives work from SQL predicates kept apart from the reactions they
    back up.** `handleRunUpdate` and `recoverDelegatedTasks` must agree on "a child result
    is owed"; the SQL in `ProjectionStore.ts:5098` restates `delegatedTaskResultPending`
-   (`Orchestrator.ts:16596`). They agree today (checked by reading). Change: a test that
+   (`Orchestrator.ts:16595`). They agree today (checked by reading). Change: a test that
    runs both on the same fixtures. Cost: one table test.
 5. **Unresponsive interrupt is user-resolved.** A provider that ignores interrupt
    leaves the run `running`, flagged `unresponsiveAt`, until Force stop. This is honest
@@ -269,7 +270,7 @@ thread" fails in the model.
 - **S3. D1 on a delegated child loses the real result.** The code reading and trace T3
   agree: after a child's failed-setup result reaches the parent, a Retry in the child
   thread (the button is shown there too) runs the work, and its result is never
-  delivered (`openTasks`, `Orchestrator.ts:14702-14708`). Not reproduced: a test needs
+  delivered (`openTasks`, `Orchestrator.ts:15126-15131`). Not reproduced: a test needs
   an app-owned child launched with worktree preparation that fails, a harness this pass
   did not build. D1's fix removes the path.
 - **S4. Scheduled run lost on a crash before dispatch.** `markRunning` commits before
@@ -279,7 +280,7 @@ thread" fails in the model.
 
 ## 7. Coverage
 
-Read in full or nearly: `docs/analysis` brief, `AGENTS.md`, `~/.claude/tlaplus.md`;
+Read in full or nearly: the analysis brief, `AGENTS.md`, `~/.claude/tlaplus.md`;
 `Orchestrator.ts` sections: `dispatchMessage` (7071-7900), `dispatchRunInterrupt`
 (13518-13960), `dispatchInterruptUnresponsive`, the prepared-run family (12229-12600),
 `resumeQueuedRuns`, `handleRunUpdate` and the recovery streams (16180-16620);

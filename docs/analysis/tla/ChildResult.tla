@@ -7,9 +7,9 @@
      is lost on a crash.
    - finalizeAppOwnedSubagentTask writes the task result, the subagent_result
      context transfer and the parent's delivery plan in one commit
-     (Orchestrator.ts:15083); the offer that wakes the parent is in memory.
+     (Orchestrator.ts:15085); the offer that wakes the parent is in memory.
    - finalizeAppOwnedSubagent skips a task that already has a result and a
-     transfer (openTasks, Orchestrator.ts ~14700).
+     transfer (openTasks, Orchestrator.ts:15126).
    - Startup: reconcile ends an active child run (ProviderRuntimeRecoveryService);
      recoverDelegatedTasks then runs the subagent-results and
      delegated-completions sweeps (ProjectionStore.ts:5091-5127).
