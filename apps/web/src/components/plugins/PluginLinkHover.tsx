@@ -202,10 +202,11 @@ function LinkCardTrigger(props: {
           url: props.url,
         });
       }}
-      onPointerEnter={(event) => {
+      onPointerEnter={() => host.cancelHoverClose(transientKey)}
+      // Scrolling under a still pointer sends enter but no move, so only a move opens a card.
+      onPointerMove={(event) => {
+        if (openTimer.current !== null) return;
         const anchor = event.currentTarget;
-        host.cancelHoverClose(transientKey);
-        cancelOpen();
         openTimer.current = setTimeout(() => show(anchor), HOVER_OPEN_MS);
       }}
       onPointerLeave={leave}

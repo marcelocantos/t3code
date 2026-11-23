@@ -385,10 +385,11 @@ function PluginRow(props: {
     hoverSurfaceId === undefined
       ? {}
       : {
-          onPointerEnter: (event: PointerEvent<HTMLLIElement>) => {
+          onPointerEnter: () => host.cancelHoverClose(props.panelKey),
+          // A list scrolling under a still pointer sends enter but no move, so only a move opens a card.
+          onPointerMove: (event: PointerEvent<HTMLLIElement>) => {
+            if (hoverTimer.current !== null) return;
             const anchor = event.currentTarget;
-            host.cancelHoverClose(props.panelKey);
-            cancelHoverOpen();
             hoverTimer.current = setTimeout(() => showHover(anchor), HOVER_OPEN_MS);
           },
           onPointerLeave: () => {

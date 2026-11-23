@@ -4,7 +4,7 @@ import { EnvironmentId, ThreadId, type PluginPanelRow } from "@t3tools/contracts
 import { userEvent } from "vite-plus/test/browser";
 import { expect, it, vi } from "vite-plus/test";
 import { page } from "vite-plus/test/browser";
-import { render } from "../../../test/render";
+import { fakeTimers, render } from "../../../test/render";
 
 const plugin = vi.hoisted(() => ({
   act: vi.fn(async (_value: unknown) => ({ _tag: "Success", value: {} })),
@@ -218,7 +218,14 @@ it("offers a row's primary action, a menu with the rest, and date shortcuts", as
 });
 
 it("shows a row's hover card over the chat, outside the panel's scroll box", async () => {
-  setup([{ id: "T1", label: "Hover me", hoverSurfaceId: "card" }]);
+  setup([
+    { id: "T1", label: "Hover me", hoverSurfaceId: "card" },
+    ...Array.from({ length: 30 }, (_, index) => ({
+      id: `R${index}`,
+      label: `Row ${index}`,
+      hoverSurfaceId: "card",
+    })),
+  ]);
   const viewport = { width: window.innerWidth, height: window.innerHeight };
   await page.viewport(1200, 800);
   await using _viewport = {
@@ -247,4 +254,15 @@ it("shows a row's hover card over the chat, outside the panel's scroll box", asy
   expect(card.element().contains(hit)).toBe(true);
   await userEvent.keyboard("{Escape}");
   await expect.element(card).not.toBeInTheDocument();
+
+  // The list scrolling under a still pointer closes the card and opens none for the row now under it.
+  await page.getByText("Row 0", { exact: true }).hover();
+  await page.getByText("Hover me").hover();
+  await expect.element(card).toBeVisible();
+  using _timers = fakeTimers();
+  content.scrollTop = 120;
+  await expect.element(card).not.toBeInTheDocument();
+  await vi.runOnlyPendingTimersAsync();
+  await expect.element(page.getByRole("dialog")).not.toBeInTheDocument();
+  expect(plugin.surface).toHaveBeenCalledTimes(2);
 });

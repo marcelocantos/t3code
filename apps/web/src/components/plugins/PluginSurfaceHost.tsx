@@ -864,6 +864,7 @@ function SurfaceNodeView({ node, blocked }: { node: PluginSurfaceNode; blocked: 
           sideOffset={6}
           padding="compact"
           liveContent
+          instant
           initialFocus={transientKey === undefined}
           finalFocus={false}
           aria-label={node.title}
