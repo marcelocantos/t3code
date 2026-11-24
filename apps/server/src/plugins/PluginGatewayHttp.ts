@@ -78,6 +78,8 @@ const socketConstructor = Layer.succeed(Socket.WebSocketConstructor)((url, optio
 });
 
 const contextHeaders = (grant: PluginGatewayGrant): Record<string, string> => ({
+  // Lets a plugin rely on `T3-Content-Security-Policy`; older gateways drop it silently.
+  "x-t3-gateway-features": "plugin-policy",
   ...(grant.threadId === undefined ? {} : { "x-t3-thread-id": grant.threadId }),
   ...(grant.cwd === undefined ? {} : { "x-t3-workspace": encodeURIComponent(grant.cwd) }),
 });

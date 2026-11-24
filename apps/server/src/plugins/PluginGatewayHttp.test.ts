@@ -130,6 +130,7 @@ it.live("forwards only capability-scoped HTTP, preserves JSON, and revokes acces
       expect(received[0]?.body).toBe('{"value":7}');
       expect(received[0]?.headers["content-type"]).toBe("application/json");
       expect(received[0]?.headers["x-t3-thread-id"]).toBe("thread-one");
+      expect(received[0]?.headers["x-t3-gateway-features"]).toBe("plugin-policy");
       expect(received[0]?.headers.cookie).toBeUndefined();
       expect(received[0]?.headers.authorization).toBeUndefined();
       expect(received[0]?.headers.dpop).toBeUndefined();

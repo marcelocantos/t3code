@@ -499,7 +499,9 @@ The gateway's response CSP applies even when a panel URL is navigated directly. 
 `Content-Security-Policy` is dropped, since it names the plugin's origin rather than the gateway's.
 A policy in a `T3-Content-Security-Policy` response header is enforced beside the gateway's, without
 its `report-uri` and `report-to`, so it can only tighten it: a plugin that serves SVG or HTML someone
-else wrote can forbid their scripts. A policy longer than 4 KiB fails the request. Fonts may also be `data:` URLs. Module/API
+else wrote can forbid their scripts. A policy longer than 4 KiB fails the request. Every request
+the gateway forwards carries `x-t3-gateway-features: plugin-policy`, so a plugin can serve such a
+file only when the header is present: an older gateway ignores the policy header. Fonts may also be `data:` URLs. Module/API
 responses allow the sandbox's `null` origin without credentialed CORS. Native mobile uses a
 sandboxed iframe inside an isolated WebView with no native message bridge.
 
