@@ -123,7 +123,11 @@ it("keeps a web hover card across its panel and card, then closes outside both",
   await using _screen = await render(
     <PluginSurfaceHost>
       <button style={{ position: "fixed", left: 0, bottom: 0 }}>Outside</button>
-      <div style={{ width: 300, marginLeft: "auto" }}>
+      <div
+        role="region"
+        aria-label="Panel list"
+        style={{ width: 300, height: 240, marginLeft: "auto", overflow: "auto" }}
+      >
         <PluginFrame
           src={`${gateway}panel.html`}
           title="Hover panel"
@@ -134,6 +138,7 @@ it("keeps a web hover card across its panel and card, then closes outside both",
           panelTitle="Hover details"
           agentSource="frame:hover"
         />
+        <div style={{ height: 400 }} />
       </div>
     </PluginSurfaceHost>,
   );
@@ -157,6 +162,13 @@ it("keeps a web hover card across its panel and card, then closes outside both",
   await expect.element(card).toBeVisible();
   await page.getByRole("button", { name: "Outside", exact: true }).hover();
   await vi.runOnlyPendingTimersAsync();
+  await expect.element(card).not.toBeInTheDocument();
+
+  // Scrolling the list the card hangs off dismisses it rather than dragging it along.
+  await panel.getByRole("button", { name: "Hover card" }).hover();
+  await expect.element(card).toBeVisible();
+  const list = page.getByRole("region", { name: "Panel list" }).element();
+  list.scrollTop = 40;
   await expect.element(card).not.toBeInTheDocument();
 });
 

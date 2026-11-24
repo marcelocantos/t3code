@@ -45,6 +45,7 @@ function PopoverPopup({
   anchor,
   touchBackdrop = false,
   liveContent = false,
+  instant = false,
   ...props
 }: PopoverPrimitive.Popup.Props & {
   padding?: keyof typeof popoverViewportPaddingClassName;
@@ -64,6 +65,8 @@ function PopoverPopup({
    * viewport keeps the size it measured on open, so the card would grow past the window edge.
    */
   liveContent?: boolean;
+  /** Opened from code rather than a trigger: there is no earlier position to slide from. */
+  instant?: boolean;
 }) {
   // Viewport rekeys on close; persistent single-trigger forms need stable containers for drafts and submit
   // guards.
@@ -86,7 +89,7 @@ function PopoverPopup({
         className={cn(
           "h-(--positioner-height) max-h-(--available-height) w-(--positioner-width) max-w-(--available-width)",
           // Kept-mounted positioners first paint at the window origin, so a transform transition slides them in from there.
-          !keepMounted && "transition-transform data-instant:transition-none",
+          !keepMounted && !instant && "transition-transform data-instant:transition-none",
           variant === "panel"
             ? "z-(--z-sheet) w-[min(calc(var(--thread-details-panel-width)+--spacing(4)),calc(var(--anchor-width)---spacing(2)))] transition-[top] duration-150 ease-out data-instant:transition-[top] motion-reduce:transition-none motion-reduce:data-instant:transition-none"
             : "z-[130]",

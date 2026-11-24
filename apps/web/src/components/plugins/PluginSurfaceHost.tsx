@@ -93,7 +93,10 @@ export const pluginRowAgentSource = (row: PluginRowTarget, actionId: string) =>
 export const pluginFrameAgentSource = (pluginId: string, panelId: string) =>
   JSON.stringify(["frame", pluginId, panelId]);
 
-type VirtualAnchor = { getBoundingClientRect: () => DOMRect };
+type VirtualAnchor = {
+  getBoundingClientRect: () => DOMRect;
+  readonly contextElement?: Element;
+};
 type SurfaceAnchor = Element | VirtualAnchor | null;
 
 /** One frame's end of the bridge. Mutable: it follows the frame across loads. */
@@ -447,6 +450,7 @@ function useHostApi(
   ): SurfaceAnchor => {
     if (rect === undefined) return frame.iframe;
     return {
+      ...(frame.iframe === null ? {} : { contextElement: frame.iframe }),
       getBoundingClientRect: () => {
         const bounds = frame.iframe?.getBoundingClientRect() ?? new DOMRect();
         const placed = pluginAnchorInWindow(bounds, rect, {
@@ -834,8 +838,23 @@ function SurfaceNodeView({ node, blocked }: { node: PluginSurfaceNode; blocked: 
   const close = (open: boolean) => {
     if (!open) host.tree.close(node.id, "dismissed");
   };
+  const { transientKey } = node;
+  const anchorElement =
+    node.anchor instanceof Element ? node.anchor : (node.anchor?.contextElement ?? null);
+  const hoverAnchor = transientKey === undefined ? null : anchorElement;
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- listens for page scrolls, which React does not own
+  useEffect(() => {
+    if (hoverAnchor === null) return;
+    // A hover card dragged along by its scrolling list reads as the card scrolling.
+    const onScroll = (event: Event) => {
+      if (event.target instanceof Node && event.target.contains(hoverAnchor)) {
+        host.tree.close(node.id, "dismissed");
+      }
+    };
+    document.addEventListener("scroll", onScroll, { capture: true, passive: true });
+    return () => document.removeEventListener("scroll", onScroll, { capture: true });
+  }, [hoverAnchor, host.tree, node.id]);
   if (node.presentation === "popover") {
-    const { transientKey } = node;
     return (
       <Popover open onOpenChange={close}>
         <PopoverPopup
@@ -845,6 +864,7 @@ function SurfaceNodeView({ node, blocked }: { node: PluginSurfaceNode; blocked: 
           sideOffset={6}
           padding="compact"
           liveContent
+          instant
           initialFocus={transientKey === undefined}
           finalFocus={false}
           aria-label={node.title}
