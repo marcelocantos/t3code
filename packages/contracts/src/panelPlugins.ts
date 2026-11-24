@@ -41,7 +41,8 @@ export const PluginLinkTemplate = Schema.String.check(
 );
 /**
  * `open` follows the link (rewritten if the plugin says so); `card` shows the plugin's card;
- * `activate` asks the plugin to handle the click and follows the link only if it declines.
+ * `activate` asks the plugin to handle the click. A decline shows the card when the pattern has one,
+ * and otherwise, like a failure, follows the link.
  */
 export const PluginLinkClick = Schema.Literals(["open", "card", "activate"]);
 export type PluginLinkClick = typeof PluginLinkClick.Type;
@@ -52,6 +53,8 @@ const PluginLinkBehaviour = {
   resolve: Schema.optional(Schema.Boolean),
   /** `false`: the plugin serves no card for these links, so hovering shows none. */
   card: Schema.optional(Schema.Boolean),
+  /** `false`: hovering or focusing the link shows no card; only a click or a declined activation does. */
+  hover: Schema.optional(Schema.Boolean),
 };
 /** Chat links starting with `prefix`, or matching `glob`, belong to the plugin that declared it. */
 export const PluginLinkPattern = Schema.Union([

@@ -48,6 +48,23 @@ it.live("forwards only capability-scoped HTTP, preserves JSON, and revokes acces
           holding.resolve();
           return;
         }
+        if (request.url === "/app/strict") {
+          response
+            .writeHead(200, {
+              "content-type": "image/svg+xml",
+              "content-security-policy": "frame-ancestors 'none'",
+              "t3-content-security-policy":
+                "script-src 'none'; report-uri https://reports.example/; report-to t3",
+            })
+            .end("<svg/>");
+          return;
+        }
+        if (request.url === "/app/long-policy") {
+          response
+            .writeHead(200, { "t3-content-security-policy": `script-src ${"x".repeat(5000)}` })
+            .end("x");
+          return;
+        }
         if (request.url === "/app/redirect") {
           response.writeHead(302, { location: "/escape" }).end();
           return;
@@ -125,7 +142,18 @@ it.live("forwards only capability-scoped HTTP, preserves JSON, and revokes acces
       expect(response.headers.get("content-security-policy")).toContain(
         "script-src 'unsafe-inline' 'wasm-unsafe-eval' ",
       );
+      expect(response.headers.get("content-security-policy")).toContain("font-src data: ");
       expect(response.headers.get("referrer-policy")).toBe("no-referrer");
+      // The policy a plugin adds is enforced beside the gateway's, without its reporting; its own
+      // CSP header, written for its own origin, is not.
+      const strict = (await handler(new Request(`${url}strict`))).headers.get(
+        "content-security-policy",
+      )!;
+      expect(strict.startsWith(response.headers.get("content-security-policy")!)).toBe(true);
+      expect(strict.endsWith(", script-src 'none'")).toBe(true);
+      expect(strict).not.toContain("report");
+      expect(strict).not.toContain("frame-ancestors");
+      expect((await handler(new Request(`${url}long-policy`))).status).toBe(502);
       expect((await handler(new Request(`${url}redirect`))).status).toBe(502);
       expect(received.some((item) => item.path === "/escape")).toBe(false);
       expect(

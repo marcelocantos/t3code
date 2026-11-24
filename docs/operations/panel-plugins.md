@@ -360,8 +360,11 @@ A pattern has either a `prefix` or a `glob`; a malformed one is ignored.
   requests is that path.
 
 When several patterns match, the one with the longest literal start wins. For a glob, that is the
-text before its first wildcard. A matching link gets the card, unless the pattern says
-`"card": false`; T3 then never asks for one. Clicking it opens the link, unless the plugin takes the
+text before its first wildcard. Between equally long starts the choice is arbitrary, so two plugins
+should not claim the same links. A matching link gets the card on hover or focus, unless the pattern
+says `"card": false`; T3 then never asks for one. `"hover": false` keeps the card but shows it only
+when the link is clicked (`click: "card"`, or a declined `activate`), for a card too large to pop up,
+such as a document viewer. Clicking it opens the link, unless the plugin takes the
 link over (below). Adding `links` to an enabled plugin's scopes asks the user
 again, like `environment`; changing the patterns does not. T3 keeps a plugin with link patterns
 connected while a client is open, and lists its patterns to clients only while it is connected.
@@ -441,7 +444,8 @@ A link pattern can also say what the link does and where it leads:
 
   Answer `"activate": { "handled": true }` when you dealt with the click, for example by opening
   the file in an application on this machine; T3 then does nothing more. Answer
-  `{ "handled": false }` to decline. A decline, an error, no answer within two seconds, or a
+  `{ "handled": false }` to decline. A decline shows the pattern's card as a dialog (on mobile, a
+  sheet) when it has one. A decline without a card, an error, no answer within two seconds, or a
   disconnected plugin makes the client do what it does for an unclaimed link: follow it, or open
   the file in T3. Decide before acting, so a slow answer never does both. Activation needs
   `orchestration:operate`; a client without it never asks.
@@ -451,6 +455,10 @@ A link pattern can also say what the link does and where it leads:
   connection to T3 comes from a loopback address. Mobile is never local. A tunnel or SSH forward
   also arrives on loopback, so treat `local` as where the user is, not as authentication: any
   client with `orchestration:operate` can already open editors on this machine.
+
+  Together these give one link two behaviours: a plugin declares `"click": "activate"` and
+  `"hover": false`, opens the file in a local application when `local` is true, and declines
+  otherwise, so a phone or another machine gets the card.
 
 Cards, hovers, resolution and activation requests carry the link as written (a file link as its
 absolute path), not the rewritten href.
@@ -487,7 +495,11 @@ Web panels run in an opaque-origin sandbox with scripts and forms enabled. They 
 T3's DOM, cookies, local storage, or credentials. Local storage, service workers, popups,
 embedding other frames, arbitrary external resources and JavaScript `eval` are unavailable.
 WebAssembly compiles (`'wasm-unsafe-eval'`), so a panel can ship a wasm build of its engine.
-The gateway's response CSP applies even when a panel URL is navigated directly. Module/API
+The gateway's response CSP applies even when a panel URL is navigated directly. A plugin's own
+`Content-Security-Policy` is dropped, since it names the plugin's origin rather than the gateway's.
+A policy in a `T3-Content-Security-Policy` response header is enforced beside the gateway's, without
+its `report-uri` and `report-to`, so it can only tighten it: a plugin that serves SVG or HTML someone
+else wrote can forbid their scripts. A policy longer than 4 KiB fails the request. Fonts may also be `data:` URLs. Module/API
 responses allow the sandbox's `null` origin without credentialed CORS. Native mobile uses a
 sandboxed iframe inside an isolated WebView with no native message bridge.
 
@@ -546,7 +558,8 @@ Structured surfaces size to their content and ignore it.
 
 A web surface shown
 `maximized` fills the window less a 1rem margin on web and desktop, whose dialogs with web content
-also get a maximize toggle in their header. On mobile it becomes a full-height sheet; Android's
+also get a maximize toggle in their header. On mobile it becomes a full-height sheet, a link card's
+included; Android's
 sheet keeps its maximum width on large tablets. The page sees the change as an ordinary `resize`.
 
 On mobile every presentation is a sheet and anchors are ignored; the protocol is otherwise the same.

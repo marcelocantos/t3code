@@ -29,6 +29,7 @@ import {
   pluginBridgeInjection,
   type PluginBridgeAgent,
   DEFAULT_WEB_SURFACE_SIZE,
+  type OwnSurfaceUpdate,
   type PluginBridgeFrame,
   type PluginBridgeSurfaceNode,
   type PluginBridgeTree,
@@ -39,7 +40,7 @@ import { confirmAsync, usePluginRequests } from "./usePluginRequests";
 
 const PAGE_SIZE = { width: 800, height: 720 };
 /** The sheet header, safe areas and padding a maximized page leaves room for. */
-const MAXIMIZED_CHROME_HEIGHT = 160;
+export const MAXIMIZED_CHROME_HEIGHT = 160;
 
 interface PluginBridgeHostValue {
   readonly environmentId: EnvironmentId;
@@ -151,7 +152,7 @@ export function useOpenPluginPage() {
  */
 export function PluginBridgeWebView(props: {
   readonly onResize?: (height: number) => void;
-  readonly onSurfaceResize?: (size: { readonly width?: number; readonly height?: number }) => void;
+  readonly onSurfaceUpdate?: (update: OwnSurfaceUpdate) => void;
   readonly src: string;
   readonly height: number;
   readonly nodeId: string | null;
@@ -165,7 +166,7 @@ export function PluginBridgeWebView(props: {
   const [frame] = useState(() =>
     createPluginBridgeFrame({
       ...(props.onResize === undefined ? {} : { onResize: props.onResize }),
-      ...(props.onSurfaceResize === undefined ? {} : { onSurfaceResize: props.onSurfaceResize }),
+      ...(props.onSurfaceUpdate === undefined ? {} : { onSurfaceUpdate: props.onSurfaceUpdate }),
       nodeId: props.nodeId,
       ownSurfaceId: props.ownSurfaceId,
       gatewayUrl: props.gatewayUrl,

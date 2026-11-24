@@ -3433,8 +3433,9 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
       };
       // Touch has no hover, so a plugin link shows its card first unless the plugin says `open`.
       if (claim.link.click === "activate")
-        void pluginLinkTakeover.activate(claim.link, claim.url).then((handled) => {
-          if (!handled) open();
+        void pluginLinkTakeover.activate(claim.link, claim.url).then((outcome) => {
+          if (outcome === "declined" && claim.link.card !== false) setPluginLinkCard(claim);
+          else if (outcome !== "handled") open();
         });
       else if (claim.link.click !== "open" && claim.link.card !== false) setPluginLinkCard(claim);
       else open();

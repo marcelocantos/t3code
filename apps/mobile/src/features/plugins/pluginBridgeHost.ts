@@ -19,12 +19,14 @@ import type { PluginSurface } from "@t3tools/contracts";
 export const DEFAULT_WEB_SURFACE_SIZE = { width: 360, height: 320 };
 
 type SurfaceSizeUpdate = { readonly width?: number; readonly height?: number };
+/** What a surface shown outside the tree may change about itself. */
+export type OwnSurfaceUpdate = { readonly size?: SurfaceSizeUpdate; readonly maximized?: boolean };
 
 /** One WebView's end of the bridge. Mutable: it follows the frame across loads. */
 export interface PluginBridgeFrame {
   readonly onResize?: (height: number) => void;
-  /** Set for a surface shown outside the tree, such as a link card, so it can resize itself. */
-  readonly onSurfaceResize?: (size: SurfaceSizeUpdate) => void;
+  /** Set for a surface shown outside the tree, such as a link card, so it can size itself. */
+  readonly onSurfaceUpdate?: (update: OwnSurfaceUpdate) => void;
   /** The surface showing this frame; null for a panel frame. */
   readonly nodeId: string | null;
   /** The id this frame's opener gave its surface. */
@@ -71,7 +73,7 @@ export type PluginBridgeAgent = (
 
 export function createPluginBridgeFrame(input: {
   readonly onResize?: (height: number) => void;
-  readonly onSurfaceResize?: (size: SurfaceSizeUpdate) => void;
+  readonly onSurfaceUpdate?: (update: OwnSurfaceUpdate) => void;
   readonly nodeId: string | null;
   readonly ownSurfaceId: string | undefined;
   readonly gatewayUrl: string;
@@ -225,10 +227,13 @@ export function handlePluginBridgeRelay(
       if (
         opened === undefined &&
         frame.nodeId === null &&
-        frame.onSurfaceResize !== undefined &&
+        frame.onSurfaceUpdate !== undefined &&
         frame.ownSurfaceId === message.surfaceId
       ) {
-        if (message.size !== undefined) frame.onSurfaceResize(message.size);
+        frame.onSurfaceUpdate({
+          ...(message.size === undefined ? {} : { size: message.size }),
+          ...(message.maximized === undefined ? {} : { maximized: message.maximized }),
+        });
         return;
       }
       // A frame may change only its own surface's size, never replace itself.

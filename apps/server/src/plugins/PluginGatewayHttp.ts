@@ -26,6 +26,7 @@ import {
 const REQUEST_LIMIT = 1024 * 1024;
 const RESPONSE_LIMIT = 8 * 1024 * 1024;
 const ACTIVE_LIMIT = 32;
+const PLUGIN_POLICY_LIMIT = 4096;
 const METHODS = new Set(["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]);
 class GatewayError extends Schema.TaggedError<GatewayError>()("PluginGatewayError", {
   cause: Schema.Defect(),
@@ -148,15 +149,46 @@ const proxyHttp = Effect.fn("PluginGateway.http")(function* (
   if (method === "HEAD" || response.status === 204 || response.status === 205) {
     return HttpServerResponse.empty({ status: response.status, headers });
   }
+  const pluginPolicy = pluginContentSecurityPolicy(response.headers["t3-content-security-policy"]);
+  if (pluginPolicy === null) {
+    return HttpServerResponse.text("Plugin Content-Security-Policy is too long", {
+      status: 502,
+      headers,
+    });
+  }
   const data = yield* bytes(response.stream, RESPONSE_LIMIT);
   return HttpServerResponse.uint8Array(data, {
     status: response.status,
     headers: {
       ...headers,
       "content-type": response.headers["content-type"] ?? "application/octet-stream",
+      ...(pluginPolicy === undefined
+        ? {}
+        : { "content-security-policy": `${headers["content-security-policy"]}, ${pluginPolicy}` }),
     },
   });
 });
+
+/**
+ * The policy a plugin asks the gateway to add (its own CSP header targets its own origin, so it is
+ * dropped). Browsers apply every policy in the list, so it can only tighten; report directives go,
+ * since reports reach hosts the gateway never admits. Null when too long to carry.
+ */
+const pluginContentSecurityPolicy = (value: string | undefined) => {
+  if (value === undefined) return undefined;
+  if (value.length > PLUGIN_POLICY_LIMIT) return null;
+  const policies = value
+    .split(",")
+    .map((policy) =>
+      policy
+        .split(";")
+        .map((directive) => directive.trim())
+        .filter((directive) => directive !== "" && !/^report-(uri|to)(\s|$)/i.test(directive))
+        .join("; "),
+    )
+    .filter((policy) => policy !== "");
+  return policies.length === 0 ? undefined : policies.join(", ");
+};
 
 const handler = Effect.gen(function* () {
   const request = yield* HttpServerRequest.HttpServerRequest;
@@ -183,7 +215,7 @@ const handler = Effect.gen(function* () {
     "access-control-allow-origin": "null",
     "access-control-allow-methods": [...METHODS].join(", "),
     "access-control-allow-headers": "content-type, accept",
-    "content-security-policy": `sandbox allow-scripts allow-forms; default-src 'none'; script-src 'unsafe-inline' 'wasm-unsafe-eval' ${root}; style-src 'unsafe-inline' ${root}; img-src data: blob: ${root}; font-src ${root}; connect-src ${root} ${wsRoot}; base-uri ${root}; form-action ${root}; frame-src 'none'; worker-src 'none'; object-src 'none'`,
+    "content-security-policy": `sandbox allow-scripts allow-forms; default-src 'none'; script-src 'unsafe-inline' 'wasm-unsafe-eval' ${root}; style-src 'unsafe-inline' ${root}; img-src data: blob: ${root}; font-src data: ${root}; connect-src ${root} ${wsRoot}; base-uri ${root}; form-action ${root}; frame-src 'none'; worker-src 'none'; object-src 'none'`,
   };
   if (request.method === "OPTIONS") return HttpServerResponse.empty({ status: 204, headers });
   if (grant.active >= ACTIVE_LIMIT) return HttpServerResponse.empty({ status: 429, headers });

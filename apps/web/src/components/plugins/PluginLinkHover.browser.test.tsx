@@ -29,6 +29,7 @@ vi.mock("../../state/query", () => ({
     data: [
       { pluginId: "viewer", linkId: "message", prefix: "https://viewer.example/msg/" },
       { pluginId: "opener", linkId: "markdown", glob: "/**/*.md", click: "activate", card: false },
+      { pluginId: "viewer", linkId: "doc", glob: "/docs/*.md", click: "activate", hover: false },
     ],
   }),
 }));
@@ -125,4 +126,38 @@ it("offers a plain click to a plugin that activates links, and falls back when i
   await userEvent.click(chip, { modifiers: ["Meta"] });
   expect(opened).toHaveBeenCalledTimes(3);
   expect(state.activate).toHaveBeenCalledTimes(3);
+});
+
+it("shows a click-only card when the plugin declines a click, and nothing on focus", async () => {
+  state.card.mockClear();
+  const opened = vi.fn();
+  await using screen = await render(
+    <PluginFileLink environmentId={environmentId} path="/docs/plan.md" local={false}>
+      <button type="button" onClick={opened}>
+        plan.md
+      </button>
+    </PluginFileLink>,
+  );
+  const chip = screen.getByRole("button", { name: "plan.md" });
+
+  // `hover: false`: focus (and hover) never fetch the card.
+  chip.element().focus();
+  expect(state.card).not.toHaveBeenCalled();
+
+  // Declined: the card opens in place of the click.
+  state.activate.mockResolvedValueOnce({ _tag: "Success", value: { handled: false } });
+  await userEvent.click(chip);
+  await expect.element(page.getByText("Settled")).toBeVisible();
+  expect(state.card).toHaveBeenCalledWith({
+    environmentId,
+    input: { pluginId: "viewer", linkId: "doc", url: "/docs/plan.md" },
+  });
+  expect(opened).not.toHaveBeenCalled();
+  await userEvent.keyboard("{Escape}");
+  await expect.element(page.getByText("Settled")).not.toBeInTheDocument();
+
+  // A failed activation still does what an unclaimed link does.
+  state.activate.mockResolvedValueOnce({ _tag: "Failure" });
+  await userEvent.click(chip);
+  await vi.waitFor(() => expect(opened).toHaveBeenCalledTimes(1));
 });

@@ -19,10 +19,12 @@ import { Sheet } from "../../components/ui/Sheet";
 import { usePreparedConnection } from "../../state/session";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { pluginFailureMessage, pluginLinks } from "./pluginAtoms";
-import { PluginBridgeHost, PluginBridgeWebView } from "./PluginBridge";
+import { MAXIMIZED_CHROME_HEIGHT, PluginBridgeHost, PluginBridgeWebView } from "./PluginBridge";
 import { SurfaceBlock } from "./PluginSurfaceSheet";
 
 const WEB_CARD_HEIGHT = 240;
+/** The Open link row below a maximized card. */
+const LINK_ACTIONS_HEIGHT = 60;
 
 const resolutions = createPluginLinkResolutions();
 
@@ -66,15 +68,17 @@ export function usePluginLinkTakeover(
     match,
     /**
      * Offers a tap on a `click: "activate"` link to its plugin. A phone is never the environment's
-     * machine, so `local` is false; false back means the tap opens the link as usual.
+     * machine, so `local` is false. A decline shows the card when the link has one; a failure, or
+     * no permission to ask, opens the link as usual.
      */
-    activate: async (link: PluginLink, url: string) => {
-      if (!canActivate) return false;
+    activate: async (link: PluginLink, url: string): Promise<"handled" | "declined" | "failed"> => {
+      if (!canActivate) return "failed";
       const answer = await activate({
         environmentId,
         input: { pluginId: link.pluginId, linkId: link.linkId, url, client: { local: false } },
       });
-      return answer._tag === "Success" && answer.value.handled;
+      if (answer._tag !== "Success") return "failed";
+      return answer.value.handled ? "handled" : "declined";
     },
     hrefFor: (link: PluginLink, url: string) => pluginLinkHref(link, url, resolutionFor(link, url)),
     textFor: (href: string) => {
@@ -99,6 +103,8 @@ export function PluginLinkCardSheet(props: {
   const gt = useGT();
   const fetchCard = useAtomCommand(pluginLinks.card, { reportFailure: false });
   const [card, setCard] = useState<PluginLinkCard | { readonly error: string } | null>(null);
+  // A web card may ask for the whole sheet, as a document viewer does.
+  const [maximized, setMaximized] = useState(false);
   const { environmentId, link, url } = props;
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- fetches the card from the plugin when the sheet opens
   useEffect(() => {
@@ -120,7 +126,7 @@ export function PluginLinkCardSheet(props: {
   const title = card !== null && "surface" in card ? card.surface.title : url;
 
   return (
-    <Sheet title={title} onClose={props.onClose}>
+    <Sheet title={title} onClose={props.onClose} expanded={maximized}>
       <ScrollView
         contentInsetAdjustmentBehavior="automatic"
         contentContainerClassName="gap-4 px-5 pt-3"
@@ -148,7 +154,13 @@ export function PluginLinkCardSheet(props: {
             />
           ))
         ) : (
-          <WebCard environmentId={environmentId} linkId={link.linkId} card={card} />
+          <WebCard
+            environmentId={environmentId}
+            linkId={link.linkId}
+            card={card}
+            maximized={maximized}
+            onMaximize={setMaximized}
+          />
         )}
         <View className="flex-row">
           <Button
@@ -167,6 +179,8 @@ function WebCard(props: {
   readonly environmentId: EnvironmentId;
   readonly linkId: string;
   readonly card: Extract<PluginLinkCard, { webUrl: string }>;
+  readonly maximized: boolean;
+  readonly onMaximize: (maximized: boolean) => void;
 }) {
   const connection = usePreparedConnection(props.environmentId);
   const viewport = useWindowDimensions();
@@ -179,9 +193,14 @@ function WebCard(props: {
     <PluginBridgeHost environmentId={props.environmentId} agent={undefined}>
       <PluginBridgeWebView
         src={src}
-        height={clampPluginSurfaceSize({ width: viewport.width, height }, viewport).height}
-        onSurfaceResize={(size) => {
-          if (size.height !== undefined) setHeight(size.height);
+        height={
+          props.maximized
+            ? viewport.height - MAXIMIZED_CHROME_HEIGHT - LINK_ACTIONS_HEIGHT
+            : clampPluginSurfaceSize({ width: viewport.width, height }, viewport).height
+        }
+        onSurfaceUpdate={(update) => {
+          if (update.size?.height !== undefined) setHeight(update.size.height);
+          if (update.maximized !== undefined) props.onMaximize(update.maximized);
         }}
         nodeId={null}
         ownSurfaceId={`link:${props.linkId}`}

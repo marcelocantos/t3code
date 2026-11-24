@@ -7,6 +7,7 @@ import {
   decodePluginBridgeRelay,
   handlePluginBridgeRelay,
   pluginBridgeHostHtml,
+  type OwnSurfaceUpdate,
   type PluginBridgeAgent,
   type PluginBridgeTree,
 } from "./pluginBridgeHost";
@@ -129,21 +130,22 @@ describe("handlePluginBridgeRelay", () => {
     expect(tree.nodes.at(-1)?.maximized).toBe(false);
   });
 
-  it("resizes a link card, which is not in the surface tree, only when it names itself", () => {
+  it("resizes and maximizes a link card, which is not in the surface tree, only when it names itself", () => {
     const { tree, sent, receive } = setup();
-    const sizes: Array<{ readonly width?: number; readonly height?: number }> = [];
+    const updates: Array<OwnSurfaceUpdate> = [];
     const card = createPluginBridgeFrame({
       nodeId: null,
       ownSurfaceId: "link:pr",
       gatewayUrl: GATEWAY,
       panelTitle: "Link card",
       agentKey: "link-card",
-      onSurfaceResize: (size) => sizes.push(size),
+      onSurfaceUpdate: (update) => updates.push(update),
     });
     card.send = (message) => sent.push(["card", message]);
     receive(card, { type: "surface.update", surfaceId: "link:pr", size: { height: 420 } });
+    receive(card, { type: "surface.update", surfaceId: "link:pr", maximized: true });
     receive(card, { type: "surface.update", surfaceId: "other", size: { height: 600 } });
-    expect(sizes).toEqual([{ height: 420 }]);
+    expect(updates).toEqual([{ size: { height: 420 } }, { maximized: true }]);
     expect(tree.nodes).toEqual([]);
     expect(sent).toEqual([["card", { type: "error", message: "That surface is not open." }]]);
   });

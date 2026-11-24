@@ -126,7 +126,17 @@ function LinkCardTrigger(props: {
   const canActivate = useAtomValue(pluginLinks.activate.permissionAtom(props.environmentId));
   const takesClick = props.link.click === "activate" && canActivate;
   const activation = useRef<"idle" | "asking" | "replaying">("idle");
-  /** Asks the plugin; when it declines, fails or is gone, replays the click as an unclaimed one. */
+  const hasCard = props.link.card !== false;
+  const openDialog = () =>
+    host.openLinkCardDialog({
+      environmentId: props.environmentId,
+      link: props.link,
+      url: props.url,
+    });
+  /**
+   * Asks the plugin. A decline shows the card when there is one; a decline without a card, a
+   * failure or a missing plugin replays the click as an unclaimed one.
+   */
   const askPlugin = async (target: HTMLElement) => {
     activation.current = "asking";
     const result = await activate({
@@ -140,6 +150,7 @@ function LinkCardTrigger(props: {
     });
     activation.current = "idle";
     if ((result._tag === "Success" && result.value.handled) || !target.isConnected) return;
+    if (result._tag === "Success" && hasCard) return openDialog();
     activation.current = "replaying";
     target.click();
     activation.current = "idle";
@@ -155,10 +166,10 @@ function LinkCardTrigger(props: {
     },
     [],
   );
-  const hasCard = props.link.card !== false;
+  const hovers = hasCard && props.link.hover !== false;
   const show = (anchor: Element) => {
     cancelOpen();
-    if (!anchor.isConnected || !hasCard) return;
+    if (!anchor.isConnected || !hovers) return;
     host.showLinkCard({
       environmentId: props.environmentId,
       link: props.link,
@@ -196,16 +207,12 @@ function LinkCardTrigger(props: {
         event.preventDefault();
         event.stopPropagation();
         cancelOpen();
-        host.openLinkCardDialog({
-          environmentId: props.environmentId,
-          link: props.link,
-          url: props.url,
-        });
+        openDialog();
       }}
       onPointerEnter={() => host.cancelHoverClose(transientKey)}
       // Scrolling under a still pointer sends enter but no move, so only a move opens a card.
       onPointerMove={(event) => {
-        if (openTimer.current !== null) return;
+        if (!hovers || openTimer.current !== null) return;
         const anchor = event.currentTarget;
         openTimer.current = setTimeout(() => show(anchor), HOVER_OPEN_MS);
       }}
