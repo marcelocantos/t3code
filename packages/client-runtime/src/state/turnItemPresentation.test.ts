@@ -59,14 +59,27 @@ function preparationFailure(
 }
 
 const worktree = { type: "worktree", baseRef: "main" } as const;
+const at = DateTime.makeUnsafe("2026-08-03T00:00:00.000Z");
+const later = DateTime.makeUnsafe("2026-08-03T00:01:00.000Z");
 function run(
   status: OrchestrationV2Run["status"],
   workspacePreparation?: typeof worktree,
-): Pick<OrchestrationV2Run, "id" | "status" | "workspacePreparation"> {
+  overrides?: Partial<Pick<OrchestrationV2Run, "id" | "ordinal" | "startedAt" | "completedAt">>,
+): Pick<
+  OrchestrationV2Run,
+  "id" | "status" | "workspacePreparation" | "ordinal" | "startedAt" | "completedAt"
+> {
   return {
     id: RunId.make("run-1"),
     status,
+    ordinal: 1,
+    startedAt: at,
+    completedAt:
+      status === "preparing" || status === "starting" || status === "running" || status === "queued"
+        ? null
+        : at,
     ...(workspacePreparation === undefined ? {} : { workspacePreparation }),
+    ...overrides,
   };
 }
 
@@ -92,5 +105,27 @@ describe("workspacePreparationRetryRunIds", () => {
         [preparationFailure("failed", "provider_crashed")],
       ).size,
     ).toBe(0);
+  });
+
+  it("hides the retry once a later run has executed", () => {
+    const failure = [preparationFailure("failed")];
+    const executedLater = run("interrupted", undefined, {
+      id: RunId.make("run-2"),
+      ordinal: 2,
+      startedAt: later,
+      completedAt: later,
+    });
+    expect(
+      workspacePreparationRetryRunIds([run("failed", worktree), executedLater], failure).size,
+    ).toBe(0);
+    const queuedLater = run("queued", undefined, {
+      id: RunId.make("run-2"),
+      ordinal: 2,
+      startedAt: null,
+      completedAt: null,
+    });
+    expect([
+      ...workspacePreparationRetryRunIds([run("failed", worktree), queuedLater], failure),
+    ]).toEqual([RunId.make("run-1")]);
   });
 });

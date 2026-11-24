@@ -52,6 +52,7 @@ import {
 } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { workspacePreparationRetryRunIds } from "@t3tools/client-runtime/state/turn-item-presentation";
 import { environmentThreadDetails, threadEnvironment } from "../../state/threads";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { toolActivityFaviconUrl } from "@t3tools/shared/favicon";
@@ -777,8 +778,11 @@ function WorkspacePreparationRetryButton(props: {
   const retryable = useAtomValue(
     environmentThreadDetails.threadAtom(scopeThreadRef(props.environmentId, props.threadId)),
     (thread) => {
-      const run = thread?.projection.runs.find((candidate) => candidate.id === props.runId);
-      return run?.status === "failed" && run.workspacePreparation !== undefined;
+      if (thread === undefined) return false;
+      return workspacePreparationRetryRunIds(
+        thread.projection.runs,
+        thread.projection.turnItems,
+      ).has(props.runId);
     },
   );
   const gt = useGT();

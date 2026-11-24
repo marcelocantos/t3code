@@ -3,6 +3,7 @@ import {
   type OrchestrationV2Run,
   type OrchestrationV2TurnItem,
 } from "@t3tools/contracts";
+import { latestExecutedRun } from "@t3tools/shared/orchestrationV2ThreadError";
 
 import type { ThreadStructureTurnItem } from "./models.ts";
 
@@ -18,12 +19,20 @@ export function turnItemIsWorkspacePreparation(item: OrchestrationV2TurnItem): b
 }
 
 export function workspacePreparationRetryRunIds(
-  runs: ReadonlyArray<Pick<OrchestrationV2Run, "id" | "status" | "workspacePreparation">>,
+  runs: ReadonlyArray<
+    Pick<
+      OrchestrationV2Run,
+      "id" | "status" | "workspacePreparation" | "ordinal" | "completedAt" | "startedAt"
+    >
+  >,
   items: ReadonlyArray<ThreadStructureTurnItem>,
 ): ReadonlySet<OrchestrationV2Run["id"]> {
+  const latestId = latestExecutedRun(runs)?.id;
   const failedRuns = new Set(
     runs.flatMap((run) =>
-      run.status === "failed" && run.workspacePreparation !== undefined ? [run.id] : [],
+      run.status === "failed" && run.workspacePreparation !== undefined && run.id === latestId
+        ? [run.id]
+        : [],
     ),
   );
   const retryable = new Set<OrchestrationV2Run["id"]>();

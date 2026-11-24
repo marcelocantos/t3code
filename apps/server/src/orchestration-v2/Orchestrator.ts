@@ -12529,6 +12529,13 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         cause: "Another run is active on this thread.",
       });
     }
+    if (latestExecutedRun(projection.runs)?.id !== state.run.id) {
+      return yield* new OrchestratorDispatchError({
+        commandId: command.commandId,
+        commandType: command.type,
+        cause: `Run ${command.runId} is not the latest executed run, so its workspace preparation cannot be retried.`,
+      });
+    }
     const now = yield* DateTime.now;
     const emitEvent = emit(events, command);
     const scope = {

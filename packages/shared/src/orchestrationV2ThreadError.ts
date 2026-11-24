@@ -59,10 +59,10 @@ export function threadErrorSummary(
   };
 }
 
-export function latestExecutedRun(
-  runs: ReadonlyArray<OrchestrationV2Run>,
-): OrchestrationV2Run | null {
-  let latest: OrchestrationV2Run | null = null;
+export function latestExecutedRun<
+  Run extends Pick<OrchestrationV2Run, "status" | "ordinal" | "completedAt" | "startedAt">,
+>(runs: ReadonlyArray<Run>): Run | null {
+  let latest: Run | null = null;
   for (const run of runs) {
     if (run.status === "queued") continue;
     if (run.status === "cancelled" && run.startedAt === null) continue;
