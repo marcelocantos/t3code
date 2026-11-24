@@ -778,7 +778,7 @@ function WorkspacePreparationRetryButton(props: {
   const retryable = useAtomValue(
     environmentThreadDetails.threadAtom(scopeThreadRef(props.environmentId, props.threadId)),
     (thread) => {
-      if (thread === undefined) return false;
+      if (thread === null) return false;
       return workspacePreparationRetryRunIds(
         thread.projection.runs,
         thread.projection.turnItems,
