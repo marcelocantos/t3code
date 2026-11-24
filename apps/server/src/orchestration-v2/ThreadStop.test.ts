@@ -18,6 +18,7 @@ import {
   TurnItemId,
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
@@ -2240,4 +2241,214 @@ it.effect.each([
         );
       }).pipe(Effect.provide(layerLive));
     }),
+);
+
+it.live("D2: a Stop during turn start never lets the next run's turn overlap the old one", () =>
+  Effect.gen(function* () {
+    const cwd = yield* checkpointWorkspace("thread-stop-d2");
+    const driver = adapter.driver;
+    const log: Array<string> = [];
+    let events: Queue.Queue<ProviderAdapter.ProviderAdapterV2Event> | undefined;
+    const firstEntered = yield* Deferred.make<void>();
+    const acceptRun1 = yield* Deferred.make<void>();
+    const interruptedRun1 = yield* Deferred.make<void>();
+    const providerTurn = (turn: ProviderAdapter.ProviderAdapterV2TurnInput, now: DateTime.Utc) => ({
+      type: "provider_turn.updated" as const,
+      driver,
+      providerTurn: {
+        id: ProviderTurnId.make(`provider-turn:${turn.attemptId}`),
+        providerThreadId: turn.providerThread.id,
+        nodeId: turn.rootNodeId,
+        runAttemptId: turn.attemptId,
+        nativeTurnRef: {
+          driver,
+          nativeId: `native:${turn.attemptId}`,
+          strength: "strong" as const,
+        },
+        ordinal: turn.providerTurnOrdinal,
+        status: "running" as const,
+        startedAt: now,
+        completedAt: null,
+      },
+    });
+    const turns: Array<ProviderAdapter.ProviderAdapterV2TurnInput> = [];
+    const liveAdapter: ProviderAdapter.ProviderAdapterV2["Service"] = {
+      ...adapter,
+      openSession: (input) =>
+        Effect.gen(function* () {
+          const now = yield* DateTime.now;
+          events = yield* Queue.unbounded<ProviderAdapter.ProviderAdapterV2Event>();
+          return {
+            instanceId,
+            driver,
+            providerSessionId: input.providerSessionId,
+            providerSession: {
+              id: input.providerSessionId,
+              driver,
+              providerInstanceId: instanceId,
+              status: "ready",
+              cwd,
+              model: modelSelection.model,
+              capabilities: CodexProviderCapabilitiesV2,
+              createdAt: now,
+              updatedAt: now,
+              lastError: null,
+            },
+            events: Stream.fromQueue(events),
+            ensureThread: ({ threadId }) =>
+              Effect.succeed({
+                id: ProviderThreadId.make(`provider-thread:${input.providerSessionId}:${threadId}`),
+                driver,
+                providerInstanceId: instanceId,
+                providerSessionId: input.providerSessionId,
+                appThreadId: threadId,
+                ownerNodeId: null,
+                nativeThreadRef: { driver, nativeId: "native-thread", strength: "strong" },
+                nativeConversationHeadRef: null,
+                status: "idle",
+                firstRunOrdinal: null,
+                lastRunOrdinal: null,
+                handoffIds: [],
+                forkedFrom: null,
+                createdAt: now,
+                updatedAt: now,
+              }),
+            resumeThread: ({ providerThread }) => Effect.succeed(providerThread),
+            startTurn: (turn) =>
+              Effect.gen(function* () {
+                turns.push(turn);
+                log.push(`startTurn run ${turn.runOrdinal}`);
+                if (turn.runOrdinal === 1) {
+                  yield* Deferred.succeed(firstEntered, undefined);
+                  yield* Deferred.await(acceptRun1).pipe(
+                    Effect.onInterrupt(() =>
+                      Effect.sync(() => log.push("startTurn run 1 fiber interrupted")),
+                    ),
+                  );
+                  return;
+                }
+                yield* Queue.offer(events!, providerTurn(turn, yield* DateTime.now));
+              }),
+            steerTurn: () => Effect.die("unused"),
+            interruptTurn: (interrupt) =>
+              Effect.gen(function* () {
+                const label = String(interrupt.providerTurnId).includes("ordinal%3A1")
+                  ? "run 1's turn"
+                  : "run 2's turn";
+                log.push(`interruptTurn ${label}`);
+                if (label === "run 1's turn") yield* Deferred.succeed(interruptedRun1, undefined);
+              }),
+            respondToRuntimeRequest: () => Effect.die("unused"),
+            readThreadSnapshot: () => Effect.die("unused"),
+            rollbackThread: () => Effect.die("unused"),
+            forkThread: () => Effect.die("unused"),
+          };
+        }),
+    };
+    const layerLive = ThreadManagementService.layer.pipe(
+      Layer.provideMerge(
+        Layer.mergeAll(
+          layerDatabase,
+          ProjectionStore.layer.pipe(Layer.provide(layerDatabase)),
+          EventStore.layer.pipe(Layer.provide(layerDatabase)),
+          EffectOutbox.layer.pipe(Layer.provide(layerDatabase)),
+          ProviderReplayHarness.layerWithRegistry(
+            { name: "thread-stop-d2" },
+            ProviderAdapterRegistry.layerFromAdapters([liveAdapter]),
+            { databaseLayer: layerDatabase, runEffectWorker: false },
+          ),
+        ),
+      ),
+      Layer.provideMerge(ServerSettings.layerTest()),
+      Layer.provideMerge(CommandReceiptStore.layer.pipe(Layer.provide(layerDatabase))),
+    );
+    yield* Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator.OrchestratorV2;
+      const worker = yield* EffectWorker.OrchestrationEffectWorkerV2;
+      const threadId = ThreadId.make("thread:d2");
+      yield* orchestrator.dispatch({
+        type: "thread.create",
+        commandId: CommandId.make("create:d2"),
+        threadId,
+        projectId: ProjectId.make("project:thread-stop"),
+        title: "D2",
+        modelSelection,
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        branch: null,
+        worktreePath: cwd,
+        createdBy: "user",
+        creationSource: "web",
+      });
+      yield* send(threadId, "first", "start_immediately");
+      const firstStart = yield* worker.drain().pipe(Effect.forkChild);
+      yield* Deferred.await(firstEntered);
+      const run1 = (yield* orchestrator.getThreadProjection(threadId)).runs.at(-1)!;
+      log.push(`run 1 is ${run1.status} when Stop lands`);
+      yield* orchestrator.dispatch({
+        type: "run.interrupt",
+        commandId: CommandId.make("stop:d2"),
+        threadId,
+        runId: run1.id,
+      });
+      const stopped = yield* orchestrator.getThreadProjection(threadId);
+      log.push(
+        `after Stop: ${stopped.runs.map((run) => `${run.ordinal}:${run.status}`).join(" ")}`,
+      );
+      yield* send(threadId, "second", "start_immediately");
+      yield* worker.drain();
+      const run1Ended = yield* Effect.gen(function* () {
+        const current = yield* orchestrator.getThreadProjection(threadId);
+        const run = current.runs.find((candidate) => candidate.id === run1.id);
+        if (run !== undefined && (run.status === "interrupted" || run.status === "failed")) {
+          return;
+        }
+        yield* orchestrator.streamDomainEvents.pipe(
+          Stream.filter(
+            (event) =>
+              event.type === "run.updated" &&
+              event.runId === run1.id &&
+              (event.payload.status === "interrupted" || event.payload.status === "failed"),
+          ),
+          Stream.take(1),
+          Stream.runDrain,
+        );
+      }).pipe(Effect.forkScoped);
+      log.push("provider accepts run 1's request now");
+      const acceptedTurn = turns[0]!;
+      yield* Queue.offer(events!, providerTurn(acceptedTurn, yield* DateTime.now));
+      const sawInterrupt = yield* Deferred.await(interruptedRun1).pipe(
+        Effect.timeoutOption("5 seconds"),
+      );
+      log.push(`interrupt observed: ${sawInterrupt._tag}`);
+      yield* Queue.offer(events!, {
+        type: "turn.terminal",
+        driver,
+        providerThreadId: acceptedTurn.providerThread.id,
+        providerTurnId: ProviderTurnId.make(`provider-turn:${acceptedTurn.attemptId}`),
+        runOrdinal: acceptedTurn.runOrdinal,
+        status: "interrupted",
+        failure: null,
+        threadDisposition: "reusable",
+      });
+      yield* Deferred.succeed(acceptRun1, undefined);
+      const settled = yield* Fiber.join(run1Ended).pipe(Effect.timeoutOption("5 seconds"));
+      log.push(`run 1 settled: ${settled._tag}`);
+      yield* worker.drain();
+      yield* Fiber.interrupt(firstStart);
+      const final = yield* orchestrator.getThreadProjection(threadId);
+      log.push(
+        `final runs: ${final.runs.map((run) => `${run.ordinal}:${run.status}`).join(" ")}; running turns: ${final.providerTurns
+          .filter((turn) => turn.status === "running")
+          .map((turn) => turn.id)
+          .join(", ")}`,
+      );
+      const secondStart = log.indexOf("startTurn run 2");
+      const firstInterrupt = log.findIndex((line) => line === "interruptTurn run 1's turn");
+      assert.isTrue(
+        firstInterrupt !== -1 && secondStart !== -1 && firstInterrupt < secondStart,
+        `run 2's provider turn started while run 1's turn request was still outstanding\n${log.join("\n")}`,
+      );
+    }).pipe(Effect.provide(layerLive));
+  }).pipe(Effect.scoped),
 );

@@ -1986,6 +1986,15 @@ export const layer: Layer.Layer<
             persist: persistHandoff,
           });
           if (!(yield* isCurrentAttemptInStatus("running"))) return;
+          if (yield* runControls.hasUnpairedRunInterruptRequest()) {
+            return yield* new ProviderAdapter.ProviderAdapterTurnStartError({
+              driver: session.driver,
+              threadId: projection.thread.id,
+              providerThreadId: providerThread.id,
+              runId: run.id,
+              cause: new RunExecutionService.ProviderPromptSupersededByStopError(),
+            });
+          }
           const start = compact ? session.compactThread! : session.startTurn;
           // Like history, the side chat context waits for a turn that sends a prompt.
           const sideChatContext =

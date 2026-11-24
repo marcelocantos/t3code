@@ -13697,10 +13697,65 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       }
     }
 
-    if (
-      providerTurn === undefined &&
-      (run.status === "preparing" || run.status === "starting" || run.status === "running")
-    ) {
+    // Stop cancels a pending restart, so it must end the turn that restart could not stop.
+    const queueSupersededTurnInterrupt = Effect.gen(function* () {
+      const supersededTurn = projection.providerTurns.findLast(
+        (candidate) =>
+          candidate.status === "running" &&
+          projection.attempts.some(
+            (attempt) => attempt.id === candidate.runAttemptId && attempt.runId === run.id,
+          ),
+      );
+      const supersededOwner =
+        supersededTurn === undefined
+          ? undefined
+          : projection.providerThreads.find(
+              (candidate) => candidate.id === supersededTurn.providerThreadId,
+            );
+      if (
+        supersededTurn === undefined ||
+        supersededOwner === undefined ||
+        supersededOwner.providerSessionId === null ||
+        Option.isNone(
+          yield* providerSessions
+            .get(supersededOwner.providerSessionId)
+            .pipe(Effect.orElseSucceed(() => Option.none())),
+        )
+      ) {
+        return;
+      }
+      const id = `effect:${command.commandId}:provider-turn.interrupt:${supersededTurn.id}`;
+      if (otherProviderInterrupts.some((effect) => effect.id === id)) return;
+      otherProviderInterrupts.push({
+        id,
+        commandId: command.commandId,
+        threadId: command.threadId,
+        request: {
+          type: "provider-turn.interrupt",
+          providerSessionId: supersededOwner.providerSessionId,
+          providerThreadId: supersededOwner.id,
+          providerTurnId: supersededTurn.id,
+        },
+      });
+    });
+
+    if (providerTurn === undefined && run.status === "running") {
+      yield* emitEvent({
+        type: "turn-item.updated",
+        threadId: command.threadId,
+        runId: run.id,
+        nodeId: rootNode.id,
+        providerInstanceId: run.providerInstanceId,
+        occurredAt: now,
+        payload: interruptRequestItem,
+      });
+      yield* queueSupersededTurnInterrupt;
+      yield* stopRemainingWork();
+      yield* Ref.update(effects, (existing) => [...existing, ...otherProviderInterrupts]);
+      return undefined;
+    }
+
+    if (providerTurn === undefined && (run.status === "preparing" || run.status === "starting")) {
       const attempt = projection.attempts.find((candidate) => candidate.id === run.activeAttemptId);
       if (attempt === undefined) {
         return yield* new OrchestratorDispatchError({
@@ -13802,45 +13857,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         occurredAt: now,
         payload: { ...run, status: "interrupted", completedAt: now },
       });
-      // Stop cancels a pending restart, so it must end the turn that restart could not stop.
-      const supersededTurn = projection.providerTurns.findLast(
-        (candidate) =>
-          candidate.status === "running" &&
-          projection.attempts.some(
-            (attempt) => attempt.id === candidate.runAttemptId && attempt.runId === run.id,
-          ),
-      );
-      const supersededOwner =
-        supersededTurn === undefined
-          ? undefined
-          : projection.providerThreads.find(
-              (candidate) => candidate.id === supersededTurn.providerThreadId,
-            );
-      if (
-        supersededTurn !== undefined &&
-        supersededOwner !== undefined &&
-        supersededOwner.providerSessionId !== null &&
-        Option.isSome(
-          yield* providerSessions
-            .get(supersededOwner.providerSessionId)
-            .pipe(Effect.orElseSucceed(() => Option.none())),
-        )
-      ) {
-        const id = `effect:${command.commandId}:provider-turn.interrupt:${supersededTurn.id}`;
-        if (!otherProviderInterrupts.some((effect) => effect.id === id)) {
-          otherProviderInterrupts.push({
-            id,
-            commandId: command.commandId,
-            threadId: command.threadId,
-            request: {
-              type: "provider-turn.interrupt",
-              providerSessionId: supersededOwner.providerSessionId,
-              providerThreadId: supersededOwner.id,
-              providerTurnId: supersededTurn.id,
-            },
-          });
-        }
-      }
+      yield* queueSupersededTurnInterrupt;
       yield* stopRemainingWork();
       yield* Ref.update(effects, (existing) => [...existing, ...otherProviderInterrupts]);
       return {

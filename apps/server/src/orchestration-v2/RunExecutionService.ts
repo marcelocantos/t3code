@@ -625,6 +625,13 @@ export class RunExecutionIngestError extends Schema.TaggedError<RunExecutionInge
 }
 const isRunExecutionIngestError = Schema.is(RunExecutionIngestError);
 
+export class ProviderPromptSupersededByStopError extends Schema.TaggedError<ProviderPromptSupersededByStopError>()(
+  "ProviderPromptSupersededByStopError",
+  {},
+) {}
+const isProviderPromptSupersededByStopError = Schema.is(ProviderPromptSupersededByStopError);
+const isProviderAdapterTurnStartError = Schema.is(ProviderAdapter.ProviderAdapterTurnStartError);
+
 export const RunExecutionServiceV2Error = Schema.Union([
   RunExecutionStartError,
   RunExecutionIngestError,
@@ -1892,18 +1899,26 @@ export const layer: Layer.Layer<
           const shouldStartProviderTurn = input.shouldStartProviderTurn;
           if (deliveredEvent && startedRootTurn !== undefined && shouldStartProviderTurn) {
             rootTurnOwnershipChecked = true;
-            // Stop plans under this lock from stored turns. Storing the first turn and rechecking
-            // the attempt under it means Stop either saw the turn or already settled the run.
-            const [stored, owned] = yield* threadCommands.withLock(
+            // Stop plans under this lock from stored turns. Storing the first turn
+            // and rechecking under it means Stop saw the turn, already settled the
+            // run, or left an interrupt request while the prompt was in flight.
+            const [stored, owned, stopRequested] = yield* threadCommands.withLock(
               input.run.threadId,
-              Effect.all([
-                ingestDelivered(event, deliveredEvent),
-                shouldStartProviderTurn().pipe(Effect.orElseSucceed(() => true)),
-              ]),
+              Effect.gen(function* () {
+                const storedCount = yield* ingestDelivered(event, deliveredEvent);
+                const stillOwned = yield* shouldStartProviderTurn().pipe(
+                  Effect.orElseSucceed(() => true),
+                );
+                const requested =
+                  input.hasUnpairedRunInterruptRequest === undefined
+                    ? false
+                    : yield* input.hasUnpairedRunInterruptRequest();
+                return [storedCount, stillOwned, requested] as const;
+              }),
             );
             storedEventCount = stored;
-            if (!owned) {
-              yield* Ref.get(latestProviderThread).pipe(
+            if (!owned || stopRequested) {
+              const interruptLateTurn = Ref.get(latestProviderThread).pipe(
                 Effect.flatMap((providerThread) =>
                   input.session.interruptTurn({
                     providerThread,
@@ -1918,8 +1933,9 @@ export const layer: Layer.Layer<
                       { runId: input.run.id, cause },
                     ),
                 ),
-                Effect.forkIn(scope),
               );
+              if (owned) yield* interruptLateTurn;
+              else yield* Effect.forkIn(scope)(interruptLateTurn);
             }
           } else if (deliveredEvent) {
             storedEventCount = yield* ingestDelivered(event, deliveredEvent);
@@ -2242,6 +2258,57 @@ export const layer: Layer.Layer<
           yield* Fiber.interrupt(providerEventFiber);
           return;
         }
+        const settleStoppedBeforePrompt = writeFinalRunEvents({
+          run: input.run,
+          rootNode: input.rootNode,
+          checkpointScope: input.checkpointScope,
+          providerThread: input.providerThread,
+          attempt: input.attempt,
+          ...(input.shouldFinalizeRun === undefined
+            ? {}
+            : { shouldFinalizeRun: input.shouldFinalizeRun }),
+          ...(input.hasUnpairedRunInterruptRequest === undefined
+            ? {}
+            : { hasUnpairedRunInterruptRequest: input.hasUnpairedRunInterruptRequest }),
+          ...(input.loadRunInterruptReason === undefined
+            ? {}
+            : { loadRunInterruptReason: input.loadRunInterruptReason }),
+          writeIfRunCurrent: {
+            activeAttemptId: input.attempt.id,
+            expectedStatus: "running",
+          },
+          terminal: {
+            type: "turn.terminal",
+            driver: input.providerThread.driver,
+            providerThreadId: input.providerThread.id,
+            providerTurnId: failedProviderTurnId,
+            runOrdinal: input.run.ordinal,
+            status: "interrupted",
+            failure: null,
+            threadDisposition: "reusable",
+          },
+          failureItemPersisted: false,
+          refreshAfterTurn,
+        }).pipe(
+          Effect.mapError(
+            (writeCause) =>
+              new RunExecutionStartError({
+                commandId: input.commandId,
+                runId: input.run.id,
+                cause: writeCause,
+              }),
+          ),
+        );
+        if (
+          Exit.isSuccess(shouldStart) &&
+          shouldStart.value &&
+          input.hasUnpairedRunInterruptRequest !== undefined &&
+          (yield* input.hasUnpairedRunInterruptRequest())
+        ) {
+          yield* settleStoppedBeforePrompt;
+          yield* Fiber.interrupt(providerEventFiber);
+          return;
+        }
 
         const compact =
           input.message.attachments.length === 0 &&
@@ -2286,8 +2353,19 @@ export const layer: Layer.Layer<
               Effect.forkDetach,
             ),
           ),
-          Effect.catchCause((cause) =>
-            Effect.logError("orchestration V2 provider turn start failed", {
+          Effect.catchCause((cause) => {
+            const squashed = Cause.squash(cause);
+            if (
+              isProviderPromptSupersededByStopError(squashed) ||
+              (isProviderAdapterTurnStartError(squashed) &&
+                isProviderPromptSupersededByStopError(squashed.cause))
+            ) {
+              return settleStoppedBeforePrompt.pipe(
+                Effect.andThen(Fiber.interrupt(providerEventFiber)),
+                Effect.asVoid,
+              );
+            }
+            return Effect.logError("orchestration V2 provider turn start failed", {
               runId: input.run.id,
               cause,
             }).pipe(
@@ -2332,8 +2410,8 @@ export const layer: Layer.Layer<
                     cause: { start: cause, write: writeCause },
                   }),
               ),
-            ),
-          ),
+            );
+          }),
         );
       }),
     } satisfies RunExecutionServiceV2Shape);
