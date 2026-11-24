@@ -3539,79 +3539,103 @@ it.effect("replays an accepted send after the project disables the instance", ()
   }).pipe(Effect.provide(Layer.mergeAll(harness.layer, layerFiles)));
 });
 
-it.effect("D1: a failed setup run stays failed once a later run has executed", () => {
-  let fetchAttempts = 0;
-  const harness = makeHarness({
-    fetchWorktreeBaseCommit: () =>
-      fetchAttempts++ === 0
-        ? Effect.fail(
-            new GitCommandError({
-              operation: "GitVcsDriver.fetchRemote",
-              command: "git",
-              cwd: project.workspaceRoot,
-              detail: "Git could not reach the remote.",
-              exitCode: 128,
-            }),
-          )
-        : Effect.succeed({ commitSha: "remote-main-sha", remoteRefName: "origin/main" }),
-  });
-  return Effect.gen(function* () {
-    const launches = yield* ThreadLaunch.ThreadLaunchService;
-    const threads = yield* ThreadManagement.ThreadManagementService;
-    const launched = yield* launches.launch(
-      launchInput({
-        command: "command:launch:d1",
-        thread: "thread:launch:d1",
-        message: "First message",
-        workspace: { type: "worktree", baseRef: "main", startFromOrigin: true },
-      }),
-    );
-    const failed = yield* preparationSettled(launched.threadId);
-    const r1 = failed.runs[0]!;
-    assert.equal(r1.status, "failed");
+it.effect.each([true, false])(
+  "D1: setup retry after choosing a worktree; later execution: %s",
+  (laterExecuted) => {
+    let fetchAttempts = 0;
+    const harness = makeHarness({
+      fetchWorktreeBaseCommit: () =>
+        fetchAttempts++ === 0
+          ? Effect.fail(
+              new GitCommandError({
+                operation: "GitVcsDriver.fetchRemote",
+                command: "git",
+                cwd: project.workspaceRoot,
+                detail: "Git could not reach the remote.",
+                exitCode: 128,
+              }),
+            )
+          : Effect.succeed({ commitSha: "remote-main-sha", remoteRefName: "origin/main" }),
+    });
+    return Effect.gen(function* () {
+      const launches = yield* ThreadLaunch.ThreadLaunchService;
+      const threads = yield* ThreadManagement.ThreadManagementService;
+      const launched = yield* launches.launch(
+        launchInput({
+          command: "command:launch:d1",
+          thread: "thread:launch:d1",
+          message: "First message",
+          workspace: { type: "worktree", baseRef: "main", startFromOrigin: true },
+        }),
+      );
+      const failed = yield* preparationSettled(launched.threadId);
+      const r1 = failed.runs[0]!;
+      assert.equal(r1.status, "failed");
 
-    yield* threads.dispatch({
-      type: "thread.metadata.update",
-      commandId: CommandId.make("command:launch:d1:choose-workspace"),
-      threadId: launched.threadId,
-      worktreePath: "/repo/.worktrees/chosen",
-      branch: "chosen",
-    });
-    yield* threads.sendToThread({
-      projectId,
-      commandId: CommandId.make("command:launch:d1:second"),
-      threadId: launched.threadId,
-      messageId: MessageId.make("message:launch:d1:second"),
-      text: "Second message",
-      attachments: [],
-      mode: "auto",
-      createdBy: "user",
-      creationSource: "web",
-    });
-    const afterSecond = yield* threads.getThreadProjection(launched.threadId);
-    const r2 = afterSecond.runs.find((run) => run.id !== r1.id);
-    if (r2 === undefined) assert.fail("the later message did not start a run");
-    yield* threads.dispatch({
-      type: "run.interrupt",
-      commandId: CommandId.make("command:launch:d1:stop-second"),
-      threadId: launched.threadId,
-      runId: r2.id,
-    });
-    const ended = yield* threads.getThreadProjection(launched.threadId);
-    const endedStatuses = ended.runs.map((run) => `${run.ordinal}:${run.status}`).join(" ");
-    assert.equal(ended.runs.find((run) => run.id === r1.id)?.status, "failed", endedStatuses);
-    assert.equal(ended.runs.find((run) => run.id === r2.id)?.status, "interrupted", endedStatuses);
-
-    const retried = yield* Effect.exit(
-      launches.retryPreparation({
-        commandId: CommandId.make("command:launch:d1:retry"),
+      yield* threads.dispatch({
+        type: "thread.metadata.update",
+        commandId: CommandId.make("command:launch:d1:choose-workspace"),
         threadId: launched.threadId,
-        runId: r1.id,
-      }),
-    );
-    const after = yield* threads.getThreadProjection(launched.threadId);
-    const afterStatuses = after.runs.map((run) => `${run.ordinal}:${run.status}`).join(" ");
-    assert.equal(retried._tag, "Failure", afterStatuses);
-    assert.equal(after.runs.find((run) => run.id === r1.id)?.status, "failed", afterStatuses);
-  }).pipe(Effect.provide(harness.layer));
-});
+        worktreePath: "/repo/.worktrees/chosen",
+        branch: "chosen",
+      });
+      if (!laterExecuted) {
+        yield* launches.retryPreparation({
+          commandId: CommandId.make("command:launch:d1:retry-chosen"),
+          threadId: launched.threadId,
+          runId: r1.id,
+        });
+        yield* threads.streamStoredEventsFrom({ threadId: launched.threadId }).pipe(
+          Stream.filter((stored) => stored.commandId === "command:launch:d1:retry-chosen:release"),
+          Stream.runHead,
+        );
+        const retried = yield* threads.getThreadProjection(launched.threadId);
+        assert.equal(retried.runs[0]?.id, r1.id);
+        assert.equal(retried.runs[0]?.status, "starting");
+        assert.equal(retried.thread.worktreePath, "/repo/.worktrees/chosen");
+        assert.equal(fetchAttempts, 1);
+        return;
+      }
+      yield* threads.sendToThread({
+        projectId,
+        commandId: CommandId.make("command:launch:d1:second"),
+        threadId: launched.threadId,
+        messageId: MessageId.make("message:launch:d1:second"),
+        text: "Second message",
+        attachments: [],
+        mode: "auto",
+        createdBy: "user",
+        creationSource: "web",
+      });
+      const afterSecond = yield* threads.getThreadProjection(launched.threadId);
+      const r2 = afterSecond.runs.find((run) => run.id !== r1.id);
+      if (r2 === undefined) assert.fail("the later message did not start a run");
+      yield* threads.dispatch({
+        type: "run.interrupt",
+        commandId: CommandId.make("command:launch:d1:stop-second"),
+        threadId: launched.threadId,
+        runId: r2.id,
+      });
+      const ended = yield* threads.getThreadProjection(launched.threadId);
+      const endedStatuses = ended.runs.map((run) => `${run.ordinal}:${run.status}`).join(" ");
+      assert.equal(ended.runs.find((run) => run.id === r1.id)?.status, "failed", endedStatuses);
+      assert.equal(
+        ended.runs.find((run) => run.id === r2.id)?.status,
+        "interrupted",
+        endedStatuses,
+      );
+
+      const retried = yield* Effect.exit(
+        launches.retryPreparation({
+          commandId: CommandId.make("command:launch:d1:retry"),
+          threadId: launched.threadId,
+          runId: r1.id,
+        }),
+      );
+      const after = yield* threads.getThreadProjection(launched.threadId);
+      const afterStatuses = after.runs.map((run) => `${run.ordinal}:${run.status}`).join(" ");
+      assert.equal(retried._tag, "Failure", afterStatuses);
+      assert.equal(after.runs.find((run) => run.id === r1.id)?.status, "failed", afterStatuses);
+    }).pipe(Effect.provide(harness.layer));
+  },
+);

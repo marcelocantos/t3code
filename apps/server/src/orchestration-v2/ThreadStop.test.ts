@@ -18,6 +18,7 @@ import {
   TurnItemId,
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
+import type * as Cause from "effect/Cause";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -42,10 +43,12 @@ import * as EffectOutbox from "./EffectOutbox.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
 import * as ProviderAdapterRegistry from "./ProviderAdapterRegistry.ts";
 import * as ProviderSessionManager from "./ProviderSessionManager.ts";
+import * as ProviderRuntimeRecovery from "./ProviderRuntimeRecoveryService.ts";
 import * as ThreadManagementService from "./ThreadManagementService.ts";
 import * as ProviderReplayHarness from "./testkit/ProviderReplayHarness.ts";
 import { checkpointWorkspace } from "@t3tools/provider-testing/replayWorkspace";
-import type * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
+import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
+import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 
 const instanceId = ProviderInstanceId.make("codex");
 const modelSelection = { instanceId, model: "gpt-5.1-codex" };
@@ -2243,12 +2246,19 @@ it.effect.each([
     }),
 );
 
-it.live("D2: a Stop during turn start never lets the next run's turn overlap the old one", () =>
+it.live.each([
+  "accepts",
+  "second Stop",
+  "never answers",
+  "process dies",
+  "refuses",
+  "server restarts",
+] as const)("D2: Stop during turn start when the provider %s", (outcome) =>
   Effect.gen(function* () {
     const cwd = yield* checkpointWorkspace("thread-stop-d2");
     const driver = adapter.driver;
     const log: Array<string> = [];
-    let events: Queue.Queue<ProviderAdapter.ProviderAdapterV2Event> | undefined;
+    let events: Queue.Queue<ProviderAdapter.ProviderAdapterV2Event, Cause.Done> | undefined;
     const firstEntered = yield* Deferred.make<void>();
     const acceptRun1 = yield* Deferred.make<void>();
     const interruptedRun1 = yield* Deferred.make<void>();
@@ -2277,7 +2287,7 @@ it.live("D2: a Stop during turn start never lets the next run's turn overlap the
       openSession: (input) =>
         Effect.gen(function* () {
           const now = yield* DateTime.now;
-          events = yield* Queue.unbounded<ProviderAdapter.ProviderAdapterV2Event>();
+          events = yield* Queue.unbounded<ProviderAdapter.ProviderAdapterV2Event, Cause.Done>();
           return {
             instanceId,
             driver,
@@ -2325,6 +2335,15 @@ it.live("D2: a Stop during turn start never lets the next run's turn overlap the
                       Effect.sync(() => log.push("startTurn run 1 fiber interrupted")),
                     ),
                   );
+                  if (outcome === "refuses") {
+                    return yield* new ProviderAdapter.ProviderAdapterTurnStartError({
+                      driver,
+                      threadId: turn.threadId,
+                      providerThreadId: turn.providerThread.id,
+                      runId: turn.runId,
+                      cause: "Provider refused the start.",
+                    });
+                  }
                   return;
                 }
                 yield* Queue.offer(events!, providerTurn(turn, yield* DateTime.now));
@@ -2332,9 +2351,11 @@ it.live("D2: a Stop during turn start never lets the next run's turn overlap the
             steerTurn: () => Effect.die("unused"),
             interruptTurn: (interrupt) =>
               Effect.gen(function* () {
-                const label = String(interrupt.providerTurnId).includes("ordinal%3A1")
-                  ? "run 1's turn"
-                  : "run 2's turn";
+                const label =
+                  interrupt.providerTurnId ===
+                  ProviderTurnId.make(`provider-turn:${turns[0]?.attemptId}`)
+                    ? "run 1's turn"
+                    : "run 2's turn";
                 log.push(`interruptTurn ${label}`);
                 if (label === "run 1's turn") yield* Deferred.succeed(interruptedRun1, undefined);
               }),
@@ -2392,50 +2413,82 @@ it.live("D2: a Stop during turn start never lets the next run's turn overlap the
         runId: run1.id,
       });
       const stopped = yield* orchestrator.getThreadProjection(threadId);
+      assert.equal(stopped.runs[0]?.status, "running");
+      assert.isEmpty(stopped.providerTurns);
+      if (outcome === "second Stop" || outcome === "never answers") {
+        yield* orchestrator.dispatch({
+          type: "run.interrupt",
+          commandId: CommandId.make("stop:d2:again"),
+          threadId,
+          runId: run1.id,
+        });
+        const repeated = yield* orchestrator.getThreadProjection(threadId);
+        assert.equal(repeated.runs[0]?.status, "running");
+        assert.lengthOf(
+          repeated.turnItems.filter((item) => item.type === "run_interrupt_request"),
+          1,
+        );
+      }
       log.push(
         `after Stop: ${stopped.runs.map((run) => `${run.ordinal}:${run.status}`).join(" ")}`,
       );
       yield* send(threadId, "second", "start_immediately");
       yield* worker.drain();
-      const run1Ended = yield* Effect.gen(function* () {
-        const current = yield* orchestrator.getThreadProjection(threadId);
-        const run = current.runs.find((candidate) => candidate.id === run1.id);
-        if (run !== undefined && (run.status === "interrupted" || run.status === "failed")) {
-          return;
-        }
-        yield* orchestrator.streamDomainEvents.pipe(
+      const run1Ended = yield* (yield* ThreadManagementService.ThreadManagementService)
+        .streamStoredEventsFrom({ threadId })
+        .pipe(
+          Stream.map((stored) => stored.event),
           Stream.filter(
             (event) =>
               event.type === "run.updated" &&
               event.runId === run1.id &&
-              (event.payload.status === "interrupted" || event.payload.status === "failed"),
+              (event.payload.status === "interrupted" ||
+                event.payload.status === "failed" ||
+                event.payload.status === "cancelled"),
           ),
           Stream.take(1),
           Stream.runDrain,
+          Effect.forkScoped,
         );
-      }).pipe(Effect.forkScoped);
-      log.push("provider accepts run 1's request now");
-      const acceptedTurn = turns[0]!;
-      yield* Queue.offer(events!, providerTurn(acceptedTurn, yield* DateTime.now));
-      const sawInterrupt = yield* Deferred.await(interruptedRun1).pipe(
-        Effect.timeoutOption("5 seconds"),
-      );
-      log.push(`interrupt observed: ${sawInterrupt._tag}`);
-      yield* Queue.offer(events!, {
-        type: "turn.terminal",
-        driver,
-        providerThreadId: acceptedTurn.providerThread.id,
-        providerTurnId: ProviderTurnId.make(`provider-turn:${acceptedTurn.attemptId}`),
-        runOrdinal: acceptedTurn.runOrdinal,
-        status: "interrupted",
-        failure: null,
-        threadDisposition: "reusable",
-      });
-      yield* Deferred.succeed(acceptRun1, undefined);
-      const settled = yield* Fiber.join(run1Ended).pipe(Effect.timeoutOption("5 seconds"));
-      log.push(`run 1 settled: ${settled._tag}`);
+      if (outcome === "never answers") {
+        const request = stopped.turnItems.find((item) => item.type === "run_interrupt_request");
+        assert.isDefined(
+          request?.type === "run_interrupt_request" ? request.unresponsiveAt : undefined,
+          "a start that never answers must offer Force stop",
+        );
+        yield* (yield* ThreadManagementService.ThreadManagementService).forceStopThread({
+          threadId,
+          runId: run1.id,
+        });
+      } else if (outcome === "process dies") {
+        yield* Queue.end(events!);
+      } else if (outcome === "refuses") {
+        yield* Deferred.succeed(acceptRun1, undefined);
+      } else if (outcome === "server restarts") {
+        yield* (yield* ProviderRuntimeRecovery.ProviderRuntimeRecoveryService).reconcile("startup");
+      } else {
+        log.push("provider accepts run 1's request now");
+        const acceptedTurn = turns[0]!;
+        yield* Queue.offer(events!, providerTurn(acceptedTurn, yield* DateTime.now));
+        yield* Deferred.await(interruptedRun1);
+        yield* Queue.offer(events!, {
+          type: "turn.terminal",
+          driver,
+          providerThreadId: acceptedTurn.providerThread.id,
+          providerTurnId: ProviderTurnId.make(`provider-turn:${acceptedTurn.attemptId}`),
+          runOrdinal: acceptedTurn.runOrdinal,
+          status: "interrupted",
+          failure: null,
+          threadDisposition: "reusable",
+        });
+        yield* Deferred.succeed(acceptRun1, undefined);
+      }
+      yield* Fiber.join(run1Ended);
+      yield* Fiber.join(firstStart);
+      if (outcome === "never answers" || outcome === "process dies" || outcome === "refuses") {
+        yield* send(threadId, "after failure", "start_immediately");
+      }
       yield* worker.drain();
-      yield* Fiber.interrupt(firstStart);
       const final = yield* orchestrator.getThreadProjection(threadId);
       log.push(
         `final runs: ${final.runs.map((run) => `${run.ordinal}:${run.status}`).join(" ")}; running turns: ${final.providerTurns
@@ -2444,11 +2497,37 @@ it.live("D2: a Stop during turn start never lets the next run's turn overlap the
           .join(", ")}`,
       );
       const secondStart = log.indexOf("startTurn run 2");
+      if (outcome === "never answers" || outcome === "process dies" || outcome === "refuses") {
+        assert.isTrue(
+          log.some((entry) => entry === "startTurn run 3"),
+          log.join("\n"),
+        );
+      }
+      if (outcome === "server restarts") {
+        assert.equal(final.runs[0]?.status, "cancelled");
+        assert.equal(final.runs[1]?.queueHeld, true);
+        assert.isTrue(
+          final.turnItems.some(
+            (item) => item.type === "run_interrupt_result" && item.runId === run1.id,
+          ),
+        );
+      }
       const firstInterrupt = log.findIndex((line) => line === "interruptTurn run 1's turn");
-      assert.isTrue(
-        firstInterrupt !== -1 && secondStart !== -1 && firstInterrupt < secondStart,
-        `run 2's provider turn started while run 1's turn request was still outstanding\n${log.join("\n")}`,
-      );
-    }).pipe(Effect.provide(layerLive));
+      if (outcome === "accepts" || outcome === "second Stop") {
+        assert.isTrue(
+          firstInterrupt !== -1 && secondStart !== -1 && firstInterrupt < secondStart,
+          `run 2's provider turn started while run 1's turn request was still outstanding\n${log.join("\n")}`,
+        );
+      }
+      assert.notEqual(final.runs[0]?.status, "running", log.join("\n"));
+      yield* Fiber.interrupt(firstStart);
+    }).pipe(
+      Effect.provide(
+        ProviderRuntimeRecovery.layer.pipe(
+          Layer.provide(IdAllocator.layer),
+          Layer.provideMerge(layerLive),
+        ),
+      ),
+    );
   }).pipe(Effect.scoped),
 );

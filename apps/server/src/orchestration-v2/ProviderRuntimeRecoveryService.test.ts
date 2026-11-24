@@ -58,6 +58,7 @@ it.effect("expires orphaned runtime requests before command readiness", () => {
         Layer.mock(ProjectionStore.ProjectionStoreV2)({
           getRecoveryThreadIds: () => Effect.succeed([threadId]),
           getRuntimeRecoveryProjection: () => Effect.succeed(projection),
+          getThreadRecords: () => Effect.succeed(projection),
         }),
         Layer.mock(EventSink.EventSinkV2)({ commitCommand: committed }),
         IdAllocator.layer,
@@ -110,6 +111,7 @@ it.effect("preserves async questions across startup and shutdown", () => {
         Layer.mock(ProjectionStore.ProjectionStoreV2)({
           getRecoveryThreadIds: () => Effect.succeed([threadId]),
           getRuntimeRecoveryProjection: () => Effect.succeed(projection),
+          getThreadRecords: () => Effect.succeed(projection),
         }),
         Layer.mock(EventSink.EventSinkV2)({ commitCommand }),
         IdAllocator.layer,
@@ -180,6 +182,7 @@ it.effect(
           Layer.mock(ProjectionStore.ProjectionStoreV2)({
             getRecoveryThreadIds: () => Effect.succeed([threadId]),
             getRuntimeRecoveryProjection: () => Effect.succeed(projection),
+            getThreadRecords: () => Effect.succeed(projection),
           }),
           Layer.mock(EventSink.EventSinkV2)({
             commitCommand: (input) => {
@@ -325,6 +328,7 @@ it.effect(
           Layer.mock(ProjectionStore.ProjectionStoreV2)({
             getRecoveryThreadIds: () => Effect.succeed([threadId]),
             getRuntimeRecoveryProjection: () => Effect.succeed(projection),
+            getThreadRecords: () => Effect.succeed(projection),
           }),
           Layer.mock(EventSink.EventSinkV2)({
             commitCommand: (input) => {
@@ -391,6 +395,7 @@ it.effect("cancels a stale waiting run when no checkpoint capture can finish it"
         Layer.mock(ProjectionStore.ProjectionStoreV2)({
           getRecoveryThreadIds: () => Effect.succeed([threadId]),
           getRuntimeRecoveryProjection: () => Effect.succeed(projection),
+          getThreadRecords: () => Effect.succeed(projection),
         }),
         Layer.mock(EventSink.EventSinkV2)({
           commitCommand: (input) => {
@@ -486,6 +491,7 @@ it.effect("recovery closes a secret card but leaves a link card and an unread st
         Layer.mock(ProjectionStore.ProjectionStoreV2)({
           getRecoveryThreadIds: () => Effect.succeed([threadId]),
           getRuntimeRecoveryProjection: () => Effect.succeed(projection),
+          getThreadRecords: () => Effect.succeed(projection),
         }),
         Layer.mock(EventSink.EventSinkV2)({
           commitCommand: (input) => {
@@ -531,6 +537,7 @@ it.effect.each([
   "starting-scheduled",
   "starting-steered",
   "running",
+  "running-stopped",
   "running-delegated",
   "running-delegated-capped",
   "running-delegated-snoozed",
@@ -547,6 +554,7 @@ it.effect.each([
     status === "preparing" ||
     scenario === "starting-own-request" ||
     scenario === "starting-steered" ||
+    scenario === "running-stopped" ||
     scenario === "running-delegated-capped" ||
     scenario === "running-delegated-snoozed" ||
     scenario === "running-delegated-stopped" ||
@@ -678,7 +686,7 @@ it.effect.each([
           ]
         : [],
     turnItems:
-      scenario === "running-delegated-stopped"
+      scenario === "running-delegated-stopped" || scenario === "running-stopped"
         ? [
             {
               id: TurnItemId.make("turn_item_queued_restart_stop"),
@@ -757,6 +765,17 @@ it.effect.each([
       startedAt: scenario === "starting-steered" ? startedAt : null,
     });
     assert.isEmpty(command.effects);
+    if (scenario === "running-stopped" || scenario === "running-delegated-stopped") {
+      assert.isTrue(
+        command.events.some(
+          (event) =>
+            event.type === "turn-item.updated" &&
+            event.payload.type === "run_interrupt_result" &&
+            event.runId === runId,
+        ),
+        "restart must close the pending Stop as well as its run",
+      );
+    }
     assert.deepEqual(
       written.map((effect) => effect.request),
       resent ? [{ type: "provider-turn.start", runId }] : [],
@@ -886,6 +905,7 @@ it.effect(
           Layer.mock(ProjectionStore.ProjectionStoreV2)({
             getRecoveryThreadIds: () => Effect.succeed([threadId]),
             getRuntimeRecoveryProjection: () => Effect.succeed(projection),
+            getThreadRecords: () => Effect.succeed(projection),
           }),
           Layer.mock(EventSink.EventSinkV2)({
             commitCommand: (input) => {
@@ -1184,6 +1204,7 @@ it.effect(
           Layer.mock(ProjectionStore.ProjectionStoreV2)({
             getRecoveryThreadIds: () => Effect.succeed([threadId]),
             getRuntimeRecoveryProjection: () => Effect.succeed(projection),
+            getThreadRecords: () => Effect.succeed(projection),
           }),
           Layer.mock(EventSink.EventSinkV2)({
             commitCommand: (input) => {
@@ -1341,6 +1362,7 @@ it.effect(
           Layer.mock(ProjectionStore.ProjectionStoreV2)({
             getRecoveryThreadIds: () => Effect.succeed([threadId]),
             getRuntimeRecoveryProjection: () => Effect.succeed(projection),
+            getThreadRecords: () => Effect.succeed(projection),
           }),
           Layer.mock(EventSink.EventSinkV2)({
             commitCommand: (input) => {
@@ -1471,6 +1493,7 @@ it.effect(
           Layer.mock(ProjectionStore.ProjectionStoreV2)({
             getRecoveryThreadIds: () => Effect.succeed([threadId]),
             getRuntimeRecoveryProjection: () => Effect.succeed(projection),
+            getThreadRecords: () => Effect.succeed(projection),
           }),
           Layer.mock(EventSink.EventSinkV2)({
             commitCommand: (input) => {
@@ -1631,6 +1654,7 @@ it.effect("leaves delegated tasks to their own child threads after process loss"
         Layer.mock(ProjectionStore.ProjectionStoreV2)({
           getRecoveryThreadIds: () => Effect.succeed([threadId]),
           getRuntimeRecoveryProjection: () => Effect.succeed(projection),
+          getThreadRecords: () => Effect.succeed(projection),
         }),
         Layer.mock(EventSink.EventSinkV2)({
           commitCommand: (input) => {

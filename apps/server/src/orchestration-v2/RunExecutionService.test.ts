@@ -3080,6 +3080,14 @@ it.effect("emits run_interrupt_result when superseded attempt still has a hard-s
       key: "stop-then-steer-supersede",
       shouldFinalizeRun: () => Effect.succeed(false),
       hasUnpairedRunInterruptRequest: () => Effect.succeed(true),
+      afterStart: (closed) =>
+        Deferred.isDone(closed).pipe(
+          Effect.tap((done) =>
+            Effect.sync(() =>
+              assert.isTrue(done, "the stopped start must close its event subscription"),
+            ),
+          ),
+        ),
     });
     assert.deepEqual(
       written.map((item) => item.type),

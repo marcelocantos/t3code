@@ -393,15 +393,31 @@ export const make = Effect.gen(function* () {
           cancelledBackgroundNativeIds.add(item.nativeItemRef.nativeId);
         }
       };
-      const unstartedRuns = runs.filter(
+      const unstartedRuns = yield* Effect.filter(
+        runs.filter(
+          (run) =>
+            run.status === "starting" &&
+            neverStarted(run) &&
+            !projection.providerTurns.some((turn) => turn.runAttemptId === run.activeAttemptId) &&
+            !projection.runtimeRequests.some(
+              (request) =>
+                request.status === "pending" &&
+                projection.nodes.some(
+                  (node) => node.id === request.nodeId && node.runId === run.id,
+                ),
+            ),
+        ),
         (run) =>
-          run.status === "starting" &&
-          neverStarted(run) &&
-          !projection.providerTurns.some((turn) => turn.runAttemptId === run.activeAttemptId) &&
-          !projection.runtimeRequests.some(
-            (request) =>
-              request.status === "pending" &&
-              projection.nodes.some((node) => node.id === request.nodeId && node.runId === run.id),
+          restartStopRequested(projections.getThreadRecords, projection.thread, run).pipe(
+            Effect.map((stopped) => !stopped),
+            Effect.mapError(
+              (cause) =>
+                new ProviderRuntimeRecoveryError({
+                  operation: "read-projections",
+                  threadId: projection.thread.id,
+                  cause,
+                }),
+            ),
           ),
       );
       const queuedRuns = projection.runs.filter((run) => run.status === "queued");
@@ -691,7 +707,53 @@ export const make = Effect.gen(function* () {
           },
         });
       }
+      const stopItems =
+        runs.length === 0
+          ? []
+          : (yield* projections
+              .getThreadRecords(projection.thread.id, ["turnItems"], {
+                turnItemRunIds: runs.map((run) => run.id),
+                turnItemTypes: ["run_interrupt_request", "run_interrupt_result"],
+              })
+              .pipe(
+                Effect.mapError(
+                  (cause) =>
+                    new ProviderRuntimeRecoveryError({
+                      operation: "read-projections",
+                      threadId: projection.thread.id,
+                      cause,
+                    }),
+                ),
+              )).turnItems;
       for (const run of runs) {
+        const stopRequest = stopItems.find(
+          (item) => item.runId === run.id && item.type === "run_interrupt_request",
+        );
+        if (
+          stopRequest?.type === "run_interrupt_request" &&
+          !stopItems.some((item) => item.runId === run.id && item.type === "run_interrupt_result")
+        ) {
+          const { unresponsiveAt: _unresponsiveAt, ...request } = stopRequest;
+          events.push({
+            id: yield* allocateEventId(),
+            type: "turn-item.updated",
+            threadId: projection.thread.id,
+            runId: run.id,
+            providerInstanceId: run.providerInstanceId,
+            occurredAt: now,
+            payload: {
+              ...request,
+              id: ids.derive.runSignalTurnItem({ runId: run.id, signal: "interrupt-result" }),
+              parentItemId: stopRequest.id,
+              type: "run_interrupt_result",
+              status: "interrupted",
+              title: "Interrupted",
+              startedAt: now,
+              completedAt: now,
+              updatedAt: now,
+            },
+          });
+        }
         events.push({
           id: yield* allocateEventId(),
           type: "run.updated",

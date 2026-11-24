@@ -13747,7 +13747,8 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         nodeId: rootNode.id,
         providerInstanceId: run.providerInstanceId,
         occurredAt: now,
-        payload: interruptRequestItem,
+        // There is no accepted turn to interrupt, so offer Force stop if startup never answers.
+        payload: { ...interruptRequestItem, unresponsiveAt: now },
       });
       yield* queueSupersededTurnInterrupt;
       yield* stopRemainingWork();

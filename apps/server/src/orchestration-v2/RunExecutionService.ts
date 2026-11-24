@@ -1216,10 +1216,11 @@ export const layer: Layer.Layer<
           input.session.subscribeEvents === undefined
             ? { events: input.session.events, close: Effect.void }
             : yield* input.session.subscribeEvents;
+        const closeEventSubscription = yield* Effect.cached(eventSubscription.close);
         const inheritedBackgroundTurnItems = yield* (
           input.loadInheritedBackgroundTurnItems?.() ?? Effect.succeed([])
         ).pipe(
-          Effect.onError(() => eventSubscription.close),
+          Effect.onError(() => closeEventSubscription),
           Effect.mapError(
             (cause) =>
               new RunExecutionStartError({
@@ -2208,9 +2209,13 @@ export const layer: Layer.Layer<
                 }),
             ),
             Effect.ensuring(endPreviewActivity),
-            Effect.ensuring(eventSubscription.close),
+            Effect.ensuring(closeEventSubscription),
             Effect.forkDetach,
           );
+        // A stopped start can cancel the consumer before its finalizers have been installed.
+        const stopIngestion = Fiber.interrupt(providerEventFiber).pipe(
+          Effect.andThen(closeEventSubscription),
+        );
 
         // A provider turn is a sign that the session is still alive. Keep
         // its already-issued MCP credential valid even when the agent goes
@@ -2255,7 +2260,7 @@ export const layer: Layer.Layer<
             ? Exit.succeed(true)
             : yield* Effect.exit(input.shouldStartProviderTurn());
         if (Exit.isSuccess(shouldStart) && !shouldStart.value) {
-          yield* Fiber.interrupt(providerEventFiber);
+          yield* stopIngestion;
           return;
         }
         const settleStoppedBeforePrompt = writeFinalRunEvents({
@@ -2306,7 +2311,7 @@ export const layer: Layer.Layer<
           (yield* input.hasUnpairedRunInterruptRequest())
         ) {
           yield* settleStoppedBeforePrompt;
-          yield* Fiber.interrupt(providerEventFiber);
+          yield* stopIngestion;
           return;
         }
 
@@ -2344,7 +2349,11 @@ export const layer: Layer.Layer<
                   }),
                 ))
               : input.session.startTurn(turnInput);
-        yield* Effect.andThen(shouldStart, startTurn).pipe(
+        yield* Effect.andThen(
+          shouldStart,
+          // A dead runtime can end ingestion without answering startTurn; release its outbox slot.
+          startTurn.pipe(Effect.raceFirst(Fiber.join(providerEventFiber))),
+        ).pipe(
           // Wait for acceptance so abandoned startup cannot leave a refresher
           // on the already-detached ingestion fiber.
           Effect.tap(() =>
@@ -2360,16 +2369,13 @@ export const layer: Layer.Layer<
               (isProviderAdapterTurnStartError(squashed) &&
                 isProviderPromptSupersededByStopError(squashed.cause))
             ) {
-              return settleStoppedBeforePrompt.pipe(
-                Effect.andThen(Fiber.interrupt(providerEventFiber)),
-                Effect.asVoid,
-              );
+              return settleStoppedBeforePrompt.pipe(Effect.andThen(stopIngestion), Effect.asVoid);
             }
             return Effect.logError("orchestration V2 provider turn start failed", {
               runId: input.run.id,
               cause,
             }).pipe(
-              Effect.andThen(Fiber.interrupt(providerEventFiber)),
+              Effect.andThen(stopIngestion),
               Effect.andThen(Ref.get(latestProviderThread)),
               Effect.flatMap((providerThread) =>
                 Ref.get(latestTurnItemOrdinal).pipe(
