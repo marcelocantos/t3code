@@ -1,5 +1,6 @@
 import { EnvironmentId, type PersistedSavedEnvironmentRecord } from "@t3tools/contracts";
 import { fromLenientJson } from "@t3tools/shared/schemaJson";
+import { corporateBuild } from "@t3tools/shared/buildEdition";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Base64 from "effect/encoding/Base64";
@@ -223,6 +224,11 @@ function decodeSecretBytes(
 
 /** @public */
 export const make = Effect.gen(function* () {
+  if (corporateBuild)
+    return DesktopSavedEnvironments.of({
+      getRegistry: Effect.succeed([]),
+      getSecret: Effect.fn("DesktopSavedEnvironments.getSecret")(() => Effect.succeedNone),
+    });
   const environment = yield* DesktopEnvironment.DesktopEnvironment;
   const fileSystem = yield* FileSystem.FileSystem;
 

@@ -8,6 +8,7 @@ import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 
 import { loadCursorSdk, loadCursorSqlite } from "./sdk.ts";
+import { corporateBuild } from "@t3tools/shared/buildEdition";
 
 // The SDK leaves a shell-error promise unhandled, which would exit the server.
 const CURSOR_SHELL_SPAWN_MARKERS = [
@@ -132,36 +133,43 @@ export class CursorSdk extends Context.Service<
 >()("@t3tools/provider-cursor/server/CursorSdk") {}
 
 /** Provide once per process: a second guard would defer to the first and swallow real rejections. */
+const makeStandard = /* @__PURE__ */ Effect.gen(function* () {
+  yield* Effect.acquireRelease(
+    Effect.sync(() => {
+      process.on("unhandledRejection", onUnhandledRejection);
+    }),
+    () =>
+      Effect.sync(() => {
+        process.off("unhandledRejection", onUnhandledRejection);
+      }),
+  );
+  // The SDK picks the agent transport per process, so no provider instance can own this.
+  const useHttp1ForAgent = yield* readCursorCliUseHttp1ForAgent;
+  let configured = false;
+  yield* Effect.addFinalizer(() =>
+    Effect.sync(() => {
+      if (configured) loadCursorSdk().Cursor.configure({ local: { useHttp1ForAgent: null } });
+    }),
+  );
+  return CursorSdk.of({
+    load: () => {
+      const sdk = loadCursorSdk();
+      if (useHttp1ForAgent && !configured) {
+        sdk.Cursor.configure({ local: { useHttp1ForAgent: true } });
+        configured = true;
+      }
+      return sdk;
+    },
+    loadSqlite: loadCursorSqlite,
+  });
+});
+
+const unavailable = (): never => {
+  throw new Error("Use the independent Cursor ACP CLI in the corporate build.");
+};
 export const layer = Layer.effect(
   CursorSdk,
-  Effect.gen(function* () {
-    yield* Effect.acquireRelease(
-      Effect.sync(() => {
-        process.on("unhandledRejection", onUnhandledRejection);
-      }),
-      () =>
-        Effect.sync(() => {
-          process.off("unhandledRejection", onUnhandledRejection);
-        }),
-    );
-    // The SDK picks the agent transport per process, so no provider instance can own this.
-    const useHttp1ForAgent = yield* readCursorCliUseHttp1ForAgent;
-    let configured = false;
-    yield* Effect.addFinalizer(() =>
-      Effect.sync(() => {
-        if (configured) loadCursorSdk().Cursor.configure({ local: { useHttp1ForAgent: null } });
-      }),
-    );
-    return CursorSdk.of({
-      load: () => {
-        const sdk = loadCursorSdk();
-        if (useHttp1ForAgent && !configured) {
-          sdk.Cursor.configure({ local: { useHttp1ForAgent: true } });
-          configured = true;
-        }
-        return sdk;
-      },
-      loadSqlite: loadCursorSqlite,
-    });
-  }),
+  corporateBuild
+    ? Effect.succeed(CursorSdk.of({ load: unavailable, loadSqlite: unavailable }))
+    : makeStandard,
 );

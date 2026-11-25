@@ -1,5 +1,6 @@
 // @effect-diagnostics nodeBuiltinImport:off -- The SDK must load from disk beside its Webpack chunks.
 import * as NodeModule from "node:module";
+import { corporateBuild } from "@t3tools/shared/buildEdition";
 
 // createRequire preserves adjacent Webpack chunks and native modules in bundled/SEA builds.
 const requireCursorSdk = NodeModule.createRequire(import.meta.url);
@@ -7,6 +8,7 @@ let sdk: typeof import("@cursor/sdk") | undefined;
 let sqlite: typeof import("@cursor/sdk/sqlite") | undefined;
 
 export function loadCursorSdk(): typeof import("@cursor/sdk") {
+  if (corporateBuild) throw new Error("Use the independent Cursor ACP CLI in the corporate build.");
   if (sdk !== undefined) return sdk;
   const start = performance.now();
   sdk = requireCursorSdk("@cursor/sdk") as typeof import("@cursor/sdk");
@@ -17,6 +19,8 @@ export function loadCursorSdk(): typeof import("@cursor/sdk") {
 }
 
 export function loadCursorSqlite(): typeof import("@cursor/sdk/sqlite") {
+  if (corporateBuild)
+    throw new Error("The in-process Cursor SDK is excluded from the corporate build.");
   if (sqlite !== undefined) return sqlite;
   const start = performance.now();
   sqlite = requireCursorSdk("@cursor/sdk/sqlite") as typeof import("@cursor/sdk/sqlite");

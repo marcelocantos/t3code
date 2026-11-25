@@ -1,3 +1,4 @@
+import "./corporate/bootstrap.ts";
 import * as MacPermissions from "./permissions/MacPermissions.ts";
 import { handleStdioError } from "./app/stdioErrors.ts";
 

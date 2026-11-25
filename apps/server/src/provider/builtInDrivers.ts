@@ -16,6 +16,7 @@ import type {
   ProviderUsageReaderEnv,
 } from "@t3tools/provider-core/server/driver";
 import { KiroDriver, type KiroDriverEnv } from "@t3tools/provider-kiro/server";
+import { corporateBuild } from "@t3tools/shared/buildEdition";
 
 export type BuiltInDriversEnv =
   | AcpRegistryDriverEnv
@@ -33,7 +34,7 @@ export type BuiltInDriversEnv =
 export const BUILT_IN_DRIVERS: ReadonlyArray<AnyProviderDriver<BuiltInDriversEnv>> = [
   CodexDriver,
   ClaudeDriver,
-  CursorDriver,
+  ...(corporateBuild ? [] : [CursorDriver]),
   GrokDriver,
   FxDriver,
   OpenCodeDriver,
@@ -65,5 +66,5 @@ export const BUILT_IN_USAGE_DRIVERS: ReadonlyArray<
   OpenCodeDriver,
   MuseDriver,
   AntigravityDriver,
-  CursorDriver,
+  ...(corporateBuild ? [] : [CursorDriver]),
 ];

@@ -11,6 +11,7 @@ import type {
   EnvironmentId,
 } from "@t3tools/contracts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
+import { corporateBuild } from "@t3tools/shared/buildEdition";
 import type { NonEmptyReadonlyArray } from "effect/Array";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
@@ -571,6 +572,14 @@ const make = Effect.gen(function* () {
     session,
     tunnelled,
   }) {
+    if (corporateBuild) {
+      if (tunnelled)
+        return yield* new LoopbackTunnelRouteError({
+          environmentId,
+          cause: "Remote previews are unavailable in the corporate build.",
+        });
+      return;
+    }
     if (routed.has(session) === tunnelled) return;
     const port = tunnelled ? yield* listen(environmentId) : null;
     yield* Effect.tryPromise({

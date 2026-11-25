@@ -1,3 +1,4 @@
+import { corporateBuild } from "@t3tools/shared/buildEdition";
 import {
   type ProviderInstanceConfig,
   ProviderInstanceId,
@@ -299,6 +300,7 @@ export const make = Effect.gen(function* () {
     if (ratesFetchedAtMs !== null && now - ratesFetchedAtMs < maxAgeMs) return;
     if (ratesLastFailedAtMs !== null && now - ratesLastFailedAtMs < RATES_REFRESH_FLOOR_MS) return;
 
+    if (corporateBuild) return;
     let fetched = yield* fetchRates(LITELLM_RATES_URL);
     if (fetched === null) {
       fetched = yield* fetchRates(LITELLM_RATES_API_URL, "application/vnd.github.raw+json");

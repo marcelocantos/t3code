@@ -1,6 +1,7 @@
 // @effect-diagnostics-next-line nodeBuiltinImport:off -- Vite config runs before any Effect runtime.
 import * as NodeFSP from "node:fs/promises";
 import * as NodeZlib from "node:zlib";
+import * as NodeURL from "node:url";
 
 import react from "@vitejs/plugin-react";
 import { tanstackRouter } from "@tanstack/router-plugin/vite";
@@ -10,6 +11,8 @@ import { defineProject, type TestProjectInlineConfiguration } from "vite-plus/te
 import "vite-plus/test/config";
 import { defineConfig, type Connect, type Plugin } from "vite-plus";
 import { parseBuildEdition } from "../../scripts/lib/build-edition.ts";
+import { corporateArtifactsPlugin } from "../../scripts/lib/corporate-artifacts.ts";
+import { corporateContentSecurityPolicy } from "@t3tools/shared/corporateContentSecurityPolicy";
 import * as Hash from "effect/Hash";
 import pkg from "./package.json" with { type: "json" };
 import pdfjsPkg from "pdfjs-dist/package.json" with { type: "json" };
@@ -35,9 +38,11 @@ const isSingleOriginDev = process.env.T3CODE_SINGLE_ORIGIN_DEV === "1";
 const port = Number(process.env.PORT ?? 5733);
 const explicitHost = process.env.HOST?.trim();
 const host = explicitHost || "localhost";
-const configuredWsUrl = isSingleOriginDev ? undefined : process.env.VITE_WS_URL?.trim();
-const configuredHttpUrl = isSingleOriginDev ? undefined : process.env.VITE_HTTP_URL?.trim();
 const buildEdition = parseBuildEdition(process.env.T3CODE_BUILD_EDITION);
+const configuredWsUrl =
+  isSingleOriginDev || buildEdition === "corporate" ? undefined : process.env.VITE_WS_URL?.trim();
+const configuredHttpUrl =
+  isSingleOriginDev || buildEdition === "corporate" ? undefined : process.env.VITE_HTTP_URL?.trim();
 const configuredRelayUrl =
   buildEdition === "corporate" ? "" : repoEnv.VITE_T3CODE_RELAY_URL?.trim() || "";
 const configuredClerkPublishableKey =
@@ -293,7 +298,10 @@ function bootstrapTitlePlugin(): Plugin {
         hostedAppChannel: configuredHostedAppChannel,
         development,
       });
-      const title = formatAppDisplayName({ baseName: "T3 Code", stageLabel });
+      const title = formatAppDisplayName({
+        baseName: buildEdition === "corporate" ? "T3 Code Corporate" : "T3 Code",
+        stageLabel,
+      });
       return html.replace(/<title>[^<]*<\/title>/, `<title>${title}</title>`);
     },
   };
@@ -326,6 +334,25 @@ export default defineConfig(({ command }) => {
     },
     assetsInclude: ["**/*.wasm"],
     plugins: [
+      corporateArtifactsPlugin(buildEdition),
+      buildEdition === "corporate"
+        ? {
+            name: "t3code:corporate-content-policy",
+            transformIndexHtml: {
+              order: "pre",
+              handler: () => [
+                {
+                  tag: "meta",
+                  attrs: {
+                    "http-equiv": "Content-Security-Policy",
+                    content: corporateContentSecurityPolicy,
+                  },
+                  injectTo: "head-prepend",
+                },
+              ],
+            },
+          }
+        : undefined,
       bootstrapTitlePlugin(),
       devCompressionPlugin(),
       chunkCycleGuardPlugin(),
@@ -348,8 +375,7 @@ export default defineConfig(({ command }) => {
     ],
     optimizeDeps: {
       include: [
-        "@clerk/clerk-js",
-        "@clerk/react/internal",
+        ...(buildEdition === "corporate" ? [] : ["@clerk/clerk-js", "@clerk/react/internal"]),
         "@pierre/diffs",
         "@pierre/diffs/edit",
         "@pierre/diffs/react",
@@ -385,6 +411,20 @@ export default defineConfig(({ command }) => {
       "import.meta.env.APP_VERSION": JSON.stringify(configuredAppVersion),
     },
     resolve: {
+      alias:
+        buildEdition === "corporate"
+          ? {
+              "@clerk/react": NodeURL.fileURLToPath(
+                new URL("./src/corporate/ClerkDisabled.tsx", import.meta.url),
+              ),
+              "@clerk/electron/react": NodeURL.fileURLToPath(
+                new URL("./src/corporate/ClerkDisabled.tsx", import.meta.url),
+              ),
+              "@clerk/electron/passkeys": NodeURL.fileURLToPath(
+                new URL("./src/corporate/ClerkDisabled.tsx", import.meta.url),
+              ),
+            }
+          : {},
       tsconfigPaths: true,
       dedupe: ["react", "react-dom"],
     },

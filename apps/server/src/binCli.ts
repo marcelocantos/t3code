@@ -71,7 +71,9 @@ const connectUnavailableCommand = Command.make("connect", {
 export const makeCli = ({ cloudEnabled = hasCloudPublicConfig } = {}) =>
   Command.make("t3", { ...sharedServerCommandFlags }).pipe(
     Command.withDescription(
-      "Run T3 Code in this terminal and open it in your browser. To use it from your other devices, run `t3 up`.",
+      corporateBuild
+        ? "Run the local-only corporate edition of T3 Code in this terminal and open it in your browser."
+        : "Run T3 Code in this terminal and open it in your browser. To use it from your other devices, run `t3 up`.",
     ),
     Command.withHandler(runDefaultServerCommand),
     Command.withSubcommands([
@@ -88,25 +90,29 @@ export const makeCli = ({ cloudEnabled = hasCloudPublicConfig } = {}) =>
       appCommand,
       pairCommand,
       authCommand,
-      environmentCommand,
+      ...(corporateBuild ? [] : [environmentCommand]),
       browserCommand,
       projectCommand,
       threadCommand,
       ...(corporateBuild ? [] : [upCommand, statusCommand]),
-      serviceCommand,
+      ...(corporateBuild ? [] : [serviceCommand]),
       ...(corporateBuild ? [] : [updateCommand, installCommand]),
-      uninstallCommand,
+      ...(corporateBuild ? [] : [uninstallCommand]),
       // bin.ts runs the bare service invocation; this keeps flags and help working like other commands.
-      Command.make("__service-launcher").pipe(
-        Command.unlisted,
-        // The launcher owns shutdown until its child exits; `runMain` would interrupt that shutdown.
-        Command.withHandler(() => Effect.sync(() => void runServiceLauncherCli())),
-      ),
+      ...(corporateBuild
+        ? []
+        : [
+            Command.make("__service-launcher").pipe(
+              Command.unlisted,
+              // The launcher owns shutdown until its child exits; `runMain` would interrupt that shutdown.
+              Command.withHandler(() => Effect.sync(() => void runServiceLauncherCli())),
+            ),
+          ]),
       claudeHistoryCommand,
       speechWorkerCommand,
       ...(corporateBuild ? [] : [sshHelperCommand]),
 
-      servicePreflightCommand,
+      ...(corporateBuild ? [] : [servicePreflightCommand]),
       themeCommand,
       traceCommand,
       doctorCommand,

@@ -24,6 +24,10 @@ export function corporatePolicy(document?: ManagedPolicyDocument) {
           ),
         ),
         enableProviderUpdateChecks: { value: false, locked: true },
+        deviceHosts: { value: [], locked: true },
+        easDeviceHosts: { value: [], locked: true },
+        simlockDeviceHosts: { value: [], locked: true },
+        simlockDeviceHostsEnabled: { value: false, locked: true },
         observability: {
           value: { otlpTracesUrl: "", otlpMetricsUrl: "", otlpLogsUrl: "" },
           locked: true,

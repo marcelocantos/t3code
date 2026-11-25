@@ -1,5 +1,6 @@
 import "vite-plus/test/config";
 import * as NodeOS from "node:os";
+import * as NodeURL from "node:url";
 
 import { defaultInclude, defineConfig } from "vite-plus";
 
@@ -7,9 +8,24 @@ import { isDesktopRuntimeExternalDependency } from "../../scripts/lib/desktop-ex
 import { parsePluginBuildMode } from "../../scripts/lib/plugin-build-mode.ts";
 import { loadRepoEnv } from "../../scripts/lib/public-config.ts";
 import { parseBuildEdition } from "../../scripts/lib/build-edition.ts";
+import { corporateArtifactsPlugin } from "../../scripts/lib/corporate-artifacts.ts";
 
 const repoEnv = loadRepoEnv();
 const buildEdition = parseBuildEdition(process.env.T3CODE_BUILD_EDITION);
+const corporateClerkModule = NodeURL.fileURLToPath(
+  new URL("./src/corporate/ClerkDisabled.ts", import.meta.url),
+);
+const corporateAliases =
+  buildEdition === "corporate"
+    ? {
+        "@clerk/electron/preload": corporateClerkModule,
+        "@clerk/electron/storage": corporateClerkModule,
+        "@clerk/electron": corporateClerkModule,
+        "electron-updater": NodeURL.fileURLToPath(
+          new URL("./src/corporate/UpdaterDisabled.ts", import.meta.url),
+        ),
+      }
+    : {};
 const domTests = ["src/preview/PickPreload.test.ts"];
 
 // Install only bundle externals; the server bundle already carries its dependency tree.
@@ -74,11 +90,13 @@ export default defineConfig({
       format: "cjs",
       outDir: "dist-electron",
       dts: false,
-      sourcemap: true,
+      sourcemap: buildEdition !== "corporate",
       outExtensions: () => ({ js: ".cjs" }),
       define: publicConfigDefine,
       outputOptions: { codeSplitting: false },
       entry: ["src/main.ts"],
+      plugins: [corporateArtifactsPlugin(buildEdition)],
+      alias: corporateAliases,
       clean: true,
       deps: {
         alwaysBundle: (id) => !id.startsWith("node:") && !isMainProcessExternal(id),
@@ -91,7 +109,7 @@ export default defineConfig({
       format: "cjs",
       outDir: "dist-electron",
       dts: false,
-      sourcemap: true,
+      sourcemap: buildEdition !== "corporate",
       outExtensions: () => ({ js: ".cjs" }),
       define: publicConfigDefine,
       entry: [
@@ -100,6 +118,8 @@ export default defineConfig({
         "src/snapShot/RegionSnapShotWorker.ts",
         "src/snapShot/SnapShotAccessibilityWorker.ts",
       ],
+      plugins: [corporateArtifactsPlugin(buildEdition)],
+      alias: corporateAliases,
       clean: false,
       deps: {
         alwaysBundle: (id) => !id.startsWith("node:") && !isMainProcessExternal(id),
@@ -112,9 +132,11 @@ export default defineConfig({
       format: "cjs",
       outDir: "dist-electron",
       dts: false,
-      sourcemap: true,
+      sourcemap: buildEdition !== "corporate",
       outExtensions: () => ({ js: ".cjs" }),
       entry: ["src/boot.ts", "src/compileCache.ts", "src/serverCompileCache.ts"],
+      define: publicConfigDefine,
+      plugins: [corporateArtifactsPlugin(buildEdition)],
       clean: false,
       deps: {
         neverBundle: (id) => id === "./main.cjs" || id === "./compileCache.cjs",
@@ -124,10 +146,12 @@ export default defineConfig({
       format: "cjs",
       outDir: "dist-electron",
       dts: false,
-      sourcemap: true,
+      sourcemap: buildEdition !== "corporate",
       outExtensions: () => ({ js: ".cjs" }),
       define: publicConfigDefine,
       entry: ["src/preload.ts"],
+      plugins: [corporateArtifactsPlugin(buildEdition)],
+      alias: corporateAliases,
       deps: {
         // Sandboxed preloads cannot resolve imports inside ASAR; bundle Clerk's bridge.
         alwaysBundle: (id) => id === "@clerk/electron" || id.startsWith("@clerk/electron/"),
@@ -137,9 +161,12 @@ export default defineConfig({
       format: "cjs",
       outDir: "dist-electron",
       dts: false,
-      sourcemap: true,
+      sourcemap: buildEdition !== "corporate",
       outExtensions: () => ({ js: ".cjs" }),
       entry: ["src/preview-pick-preload.ts"],
+      define: publicConfigDefine,
+      plugins: [corporateArtifactsPlugin(buildEdition)],
+      alias: corporateAliases,
       deps: {
         alwaysBundle: (id) =>
           id === "react-grab" ||
@@ -151,18 +178,24 @@ export default defineConfig({
       format: "cjs",
       outDir: "dist-electron",
       dts: false,
-      sourcemap: true,
+      sourcemap: buildEdition !== "corporate",
       outExtensions: () => ({ js: ".cjs" }),
       entry: ["src/preview-pip-preload.ts"],
+      define: publicConfigDefine,
+      plugins: [corporateArtifactsPlugin(buildEdition)],
+      alias: corporateAliases,
     },
     {
       // Sandboxed preloads must be self-contained, without shared runtime chunks.
       format: "cjs",
       outDir: "dist-electron",
       dts: false,
-      sourcemap: true,
+      sourcemap: buildEdition !== "corporate",
       outExtensions: () => ({ js: ".cjs" }),
       entry: ["src/mac-permission-preload.ts"],
+      define: publicConfigDefine,
+      plugins: [corporateArtifactsPlugin(buildEdition)],
+      alias: corporateAliases,
     },
   ],
   test: {

@@ -3,6 +3,7 @@ import * as NodeOS from "node:os";
 import { parsePersistedServerObservabilitySettings } from "@t3tools/shared/serverSettings";
 import { currentDesktopBootstrapToken } from "@t3tools/shared/desktopBootstrapToken";
 import * as HostProcess from "@t3tools/shared/HostProcess";
+import { corporateBuild } from "@t3tools/shared/buildEdition";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as SecureRandom from "effect/crypto/SecureRandom";
@@ -850,7 +851,8 @@ export const make = Effect.gen(function* () {
   // Resolve on each restart so toggling wsl-only takes effect without recreating the pool.
   const describePrimary = Effect.gen(function* () {
     const persistedSettings = yield* settings.get;
-    const wslRequested = persistedSettings.wslOnly && persistedSettings.wslBackendEnabled;
+    const wslRequested =
+      !corporateBuild && persistedSettings.wslOnly && persistedSettings.wslBackendEnabled;
     // When WSL is unavailable its controls are hidden; fall back to Windows to keep recovery possible.
     const useWsl = wslRequested && (yield* wslEnvironment.isAvailable);
     return { useWsl, wslRequested, distro: persistedSettings.wslDistro };
@@ -887,6 +889,14 @@ export const make = Effect.gen(function* () {
     // The span options depend on each request's port and distro.
     resolveWsl: Effect.fnUntraced(
       function* (input) {
+        if (corporateBuild) {
+          return yield* PlatformError.systemError({
+            _tag: "PermissionDenied",
+            module: "ChildProcess",
+            method: "resolveWsl",
+            description: "WSL backends are disabled in the corporate build.",
+          });
+        }
         const shared = yield* sharedInputs;
         return yield* resolveWslStartConfig({ ...shared, ...input }).pipe(
           Effect.provideService(DesktopEnvironment.DesktopEnvironment, environment),

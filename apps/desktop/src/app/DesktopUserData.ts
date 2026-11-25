@@ -5,6 +5,7 @@ import * as PlatformError from "effect/PlatformError";
 import * as Schema from "effect/Schema";
 
 import { isPluginBuild } from "./PluginBuild.ts";
+import { corporateBuild } from "@t3tools/shared/buildEdition";
 
 export class DesktopUserDataInitializationError extends Schema.TaggedError<DesktopUserDataInitializationError>()(
   "DesktopUserDataInitializationError",
@@ -41,6 +42,7 @@ export const resolveUserDataPath = Effect.fn("desktop.userData.resolveUserDataPa
   }) {
     const fs = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
+    if (corporateBuild) return path.join(input.appDataDirectory, "t3code-corporate");
     if (isPluginBuild) return path.join(input.appDataDirectory, "t3code-plugins");
     const names = input.isDevelopment
       ? { current: "t3code-dev", legacy: "T3 Code (Dev)" }

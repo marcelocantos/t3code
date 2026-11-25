@@ -1,6 +1,7 @@
 // @effect-diagnostics nodeBuiltinImport:off - Effect has no incremental digest.
 import * as EffectNodeStream from "@effect/platform-node/NodeStream";
 import * as HostProcess from "@t3tools/shared/HostProcess";
+import { corporateBuild } from "@t3tools/shared/buildEdition";
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -157,7 +158,7 @@ type InstallState =
   | { readonly _tag: "installed"; readonly executable: string }
   | { readonly _tag: "failed"; readonly error: PreviewBrowserInstallError };
 
-export const makePreviewBrowser = Effect.fn("PreviewBrowser.make")(function* (
+const makeStandard = /* @__PURE__ */ Effect.fn("PreviewBrowser.make")(function* (
   options: PreviewBrowserOptions,
 ) {
   const fs = yield* FileSystem.FileSystem;
@@ -437,6 +438,22 @@ export const makePreviewBrowser = Effect.fn("PreviewBrowser.make")(function* (
 
   return PreviewBrowser.of({ executable, installed });
 });
+
+export const makePreviewBrowser = corporateBuild
+  ? Effect.fn("PreviewBrowser.make")(() =>
+      Effect.succeed(
+        PreviewBrowser.of({
+          executable: Effect.fail(
+            new PreviewBrowserInstallError({
+              detail:
+                "The corporate build uses its restricted desktop browser; standalone browser helpers are disabled.",
+            }),
+          ),
+          installed: Effect.succeedNone,
+        }),
+      ),
+    )
+  : makeStandard;
 
 export const layer = Layer.effect(
   PreviewBrowser,

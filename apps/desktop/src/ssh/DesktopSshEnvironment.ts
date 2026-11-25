@@ -4,6 +4,7 @@ import type {
   DesktopSshEnvironmentTarget,
 } from "@t3tools/contracts";
 import { CLI_RELEASE_BASE_URL_ENV } from "@t3tools/shared/cliRelease";
+import { corporateBuild } from "@t3tools/shared/buildEdition";
 import * as NetService from "@t3tools/shared/Net";
 import * as SshAuth from "@t3tools/ssh/auth";
 import { resolveSshTarget } from "@t3tools/ssh/command";
@@ -176,7 +177,7 @@ const makePasswordPrompt = (
 });
 
 /** @public */
-export const make = Effect.gen(function* () {
+const makeStandard = /* @__PURE__ */ Effect.gen(function* () {
   const manager = yield* SshTunnel.SshEnvironmentManager;
   const prompts = yield* DesktopSshPasswordPrompts.DesktopSshPasswordPrompts;
   const runtimeContext = yield* Effect.context<DesktopSshEnvironmentRuntimeServices>();
@@ -207,16 +208,35 @@ export const make = Effect.gen(function* () {
   });
 });
 
-export const layer = (options: DesktopSshEnvironmentLayerOptions = {}) =>
-  Layer.effect(DesktopSshEnvironment, make).pipe(
-    Layer.provide(
-      SshTunnel.SshEnvironmentManager.layer({
-        ...(options.resolveCliRunner === undefined
-          ? {}
-          : { resolveCliRunner: options.resolveCliRunner }),
-        ...(options.resolveLauncherId === undefined
-          ? {}
-          : { resolveLauncherId: options.resolveLauncherId }),
-      }),
-    ),
+const makeCorporate = Effect.sync(() => {
+  const refused = Effect.fail(
+    new SshInvalidTargetError({
+      message: "SSH environments are unavailable in the corporate build.",
+    }),
   );
+  return DesktopSshEnvironment.of({
+    discoverHosts: Effect.fn("desktop.ssh.discoverHosts")(() => Effect.succeed([])),
+    resolveHost: Effect.fn("desktop.ssh.resolveHost")(() => refused),
+    ensureEnvironment: Effect.fn("desktop.ssh.ensureEnvironment")(() => refused),
+    disconnectEnvironment: Effect.fn("desktop.ssh.disconnectEnvironment")(() => Effect.void),
+    closeAllTunnels: Effect.void,
+  });
+});
+
+export const make = corporateBuild ? makeCorporate : makeStandard;
+
+export const layer = (options: DesktopSshEnvironmentLayerOptions = {}) =>
+  corporateBuild
+    ? Layer.effect(DesktopSshEnvironment, makeCorporate)
+    : Layer.effect(DesktopSshEnvironment, makeStandard).pipe(
+        Layer.provide(
+          SshTunnel.SshEnvironmentManager.layer({
+            ...(options.resolveCliRunner === undefined
+              ? {}
+              : { resolveCliRunner: options.resolveCliRunner }),
+            ...(options.resolveLauncherId === undefined
+              ? {}
+              : { resolveLauncherId: options.resolveLauncherId }),
+          }),
+        ),
+      );

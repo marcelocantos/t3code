@@ -9,6 +9,7 @@ import type {
   DesktopSnapShotEvent,
 } from "@t3tools/contracts";
 import { exposeClerkBridge } from "@clerk/electron/preload";
+import { corporateBuild } from "@t3tools/shared/buildEdition";
 import { contextBridge, ipcRenderer, webFrame, webUtils } from "electron";
 
 import * as IpcChannels from "./ipc/channels.ts";
@@ -31,7 +32,7 @@ function isSnapShotEvent(value: unknown): value is DesktopSnapShotEvent {
   );
 }
 
-exposeClerkBridge({ passkeys: true });
+if (!corporateBuild) exposeClerkBridge({ passkeys: true });
 
 // Runs before any app script reads localStorage. See DesktopLegacyLocalStorage.
 try {

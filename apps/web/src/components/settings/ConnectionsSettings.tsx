@@ -44,6 +44,8 @@ import { settingsScopeEnvironmentLabel } from "./settingsScopeAxis";
 import { useAccessEnvironment } from "./useAccessEnvironment";
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
 import { ManagedByOrganization } from "../ManagedPolicy";
+import { corporateBuild } from "@t3tools/shared/buildEdition";
+import { usePrimaryManagedPolicy } from "~/state/managedPolicy";
 import { LocalEnvironmentSetting } from "./LocalEnvironmentSetting";
 import { useSearchableSetting } from "./settingsSearch";
 import { ConnectDeviceApprovalSettings } from "./ConnectDeviceApprovalSettings";
@@ -174,10 +176,20 @@ function LocalVersionStatusLabel() {
 
 /** Environments lists the machines this app connects to; access covers who may reach one of them. */
 export function ConnectionsSettings({ view }: { readonly view: "environments" | "access" }) {
+  if (corporateBuild && view === "environments") return <CorporateEnvironmentsSettings />;
   return view === "access" ? (
     <AccessSettings />
   ) : (
     <ConnectionsSettingsContent view="environments" accessEnvironmentId={null} />
+  );
+}
+
+function CorporateEnvironmentsSettings() {
+  const policy = usePrimaryManagedPolicy();
+  return (
+    <SettingsPageContainer>
+      {policy ? <ManagedByOrganization policy={policy} /> : null}
+    </SettingsPageContainer>
   );
 }
 
@@ -765,12 +777,12 @@ function ConnectionsSettingsContent({
   const visibleDesktopPairingLinks = desktopPairingLinks.filter(
     (pairingLink) => pairingLink.connectDeviceRequest === undefined,
   );
-  const connectDeviceRequests = desktopPairingLinks.filter(
-    (pairingLink) => pairingLink.connectDeviceRequest !== undefined,
-  );
+  const connectDeviceRequests = corporateBuild
+    ? []
+    : desktopPairingLinks.filter((pairingLink) => pairingLink.connectDeviceRequest !== undefined);
   // Older servers omit the list; they cannot hold devices for approval.
   const connectDevices =
-    authAccessChanges.data?.type === "snapshot"
+    !corporateBuild && authAccessChanges.data?.type === "snapshot"
       ? (authAccessChanges.data.payload.connectDevices ?? null)
       : null;
   const updateAccessSettings = useUpdateEnvironmentSettings(accessEnvironmentId);
@@ -1329,6 +1341,7 @@ function ConnectionsSettingsContent({
                   )
                 }
                 control={
+                  !corporateBuild &&
                   primaryVersionMismatch &&
                   primaryEnvironmentId !== null &&
                   primaryServerUpdateState.status !== "running" ? (
@@ -1360,17 +1373,17 @@ function ConnectionsSettingsContent({
                 }
               />
             ) : null}
-            {canManageLocalBackend && desktopBridge ? (
+            {!corporateBuild && canManageLocalBackend && desktopBridge ? (
               <>
                 {renderNetworkAccessRow()}
                 {renderEndpointRows()}
                 {renderTailscaleRow()}
                 {renderWslRow()}
               </>
-            ) : canManageLocalBackend ? (
+            ) : !corporateBuild && canManageLocalBackend ? (
               renderDisabledNetworkAccessRow()
             ) : null}
-            {canReadRelay || canManageRelay ? (
+            {!corporateBuild && (canReadRelay || canManageRelay) ? (
               <CloudLinkRow
                 environmentId={accessEnvironmentId}
                 canReadRelay={canReadRelay}
@@ -1385,7 +1398,8 @@ function ConnectionsSettingsContent({
                 }
               />
             ) : null}
-            {accessServerConfig?.environment.capabilities.previewTunnelSetting ? (
+            {!corporateBuild &&
+            accessServerConfig?.environment.capabilities.previewTunnelSetting ? (
               <SettingsRow
                 title={searchableSetting("preview-tunnel").title}
                 description={gt(

@@ -1,4 +1,5 @@
 import { HOSTED_APP_CHANNEL } from "~/branding";
+import { corporateBuild } from "@t3tools/shared/buildEdition";
 import { isElectron, isSecretsFeatureEnabled } from "~/env";
 import { isMacPlatform, isWindowsPlatform, normalizeSearchText } from "~/lib/utils";
 import { STATIC_KEYBINDING_COMMANDS, type KeybindingCommand } from "@t3tools/contracts";
@@ -167,7 +168,7 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
   {
     heading: msg("Connections"),
     paths: [
-      "/settings/connections",
+      ...(corporateBuild ? [] : (["/settings/connections"] as const)),
       "/settings/access",
       ...(isSecretsFeatureEnabled ? (["/settings/secrets"] as const) : []),
     ],
@@ -1634,6 +1635,7 @@ export function filterAvailableSettingsSearchItems(
   return items.filter(
     (item) =>
       (!item.cloudOnly || availability.hasCloudPublicConfig) &&
+      (!corporateBuild || item.to !== "/settings/connections") &&
       (!item.environmentOnly || availability.hasEnvironment) &&
       (!item.providerSettingsOnly || availability.hasProviderSettingsEnvironment) &&
       (!item.localBackendManagementOnly || availability.canManageLocalBackend) &&

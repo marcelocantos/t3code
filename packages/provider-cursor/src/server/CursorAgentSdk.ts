@@ -25,6 +25,7 @@ import * as Schema from "effect/Schema";
 
 import * as CursorSdk from "./CursorSdk.ts";
 import * as ProviderEventLoggers from "@t3tools/provider-core/server/ProviderEventLoggers";
+import { corporateBuild } from "@t3tools/shared/buildEdition";
 
 export const CURSOR_AGENT_SDK_PROTOCOL = "cursor-agent-sdk.local" as const;
 export const CURSOR_PROVIDER = ProviderDriverKind.make("cursor");
@@ -443,6 +444,18 @@ function subscribeShellStreamOutput(listener: (output: CursorShellStreamOutput) 
 export const makeCursorAgentSdkRunner = Effect.fn("makeCursorAgentSdkRunner")(function* (
   protocolLoggerFor: (input: CursorAgentSdkOpenInput) => CursorAgentSdkProtocolLogger | undefined,
 ) {
+  if (corporateBuild)
+    return CursorAgentSdkRunner.of({
+      open: Effect.fn("CursorAgentSdkRunner.open")(() =>
+        Effect.fail(
+          new CursorAgentSdkRunnerError({
+            method: "open",
+            cause: new Error("Use the independent Cursor ACP CLI in the corporate build."),
+          }),
+        ),
+      ),
+      assertComplete: Effect.void,
+    });
   const sdk = yield* CursorSdk.CursorSdk;
 
   // Prime with cursorsandbox before any Full access run; the SDK caches sandbox support per process.

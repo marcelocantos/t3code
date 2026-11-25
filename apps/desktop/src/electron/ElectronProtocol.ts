@@ -11,6 +11,8 @@ import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 
 import * as Electron from "electron";
+import { corporateBuild } from "@t3tools/shared/buildEdition";
+import { corporateContentSecurityPolicy } from "@t3tools/shared/corporateContentSecurityPolicy";
 
 export const DESKTOP_HOST = "app";
 const DESKTOP_PRODUCTION_SCHEME = "t3code";
@@ -67,6 +69,7 @@ export class ElectronProtocol extends Context.Service<
 >()("@t3tools/desktop/electron/ElectronProtocol") {}
 
 function makeDesktopContentSecurityPolicy(input: DesktopProtocolRegistrationInput): string {
+  if (corporateBuild) return corporateContentSecurityPolicy;
   const clerkOrigin = input.clerkFrontendApiHostname
     ? `https://${input.clerkFrontendApiHostname}`
     : undefined;

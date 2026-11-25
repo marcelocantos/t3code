@@ -18,6 +18,7 @@ import { resolveLinuxDesktopEntryName } from "./DesktopEarlyElectronStartup.ts";
 import { resolveDesktopBaseDir, resolveDesktopStateDir } from "./DesktopStatePaths.ts";
 import { isNightlyDesktopVersion } from "../updates/updateChannels.ts";
 import type { OtlpProtocol } from "@t3tools/shared/observability";
+import { corporateBuild } from "@t3tools/shared/buildEdition";
 
 export interface MakeDesktopEnvironmentInput {
   readonly dirname: string;
@@ -88,7 +89,11 @@ export class DesktopEnvironment extends Context.Service<
 
 // Electron's own name stays "T3 Code Plugins" in the fork: macOS keys the Keychain "Safe Storage"
 // item that protects saved environment secrets to it. Only the name people see is "T3 Code+".
-const APP_BASE_NAME = isPluginBuild ? "T3 Code Plugins" : "T3 Code";
+const APP_BASE_NAME = corporateBuild
+  ? "T3 Code Corporate"
+  : isPluginBuild
+    ? "T3 Code Plugins"
+    : "T3 Code";
 const APP_DISPLAY_BASE_NAME = isPluginBuild ? "T3 Code+" : APP_BASE_NAME;
 
 function resolveDesktopAppStageLabel(input: {
@@ -232,7 +237,11 @@ const make = Effect.fn("desktop.environment.make")(function* (
     branding,
     displayName,
     appUserModelId: Option.getOrElse(config.appUserModelIdOverride, () =>
-      isDevelopment ? "com.t3tools.t3code.dev" : "com.t3tools.t3code",
+      corporateBuild
+        ? "com.t3tools.t3code.corporate"
+        : isDevelopment
+          ? "com.t3tools.t3code.dev"
+          : "com.t3tools.t3code",
     ),
     linuxDesktopEntryName: resolveLinuxDesktopEntryName(isDevelopment),
     linuxApplicationsDir,

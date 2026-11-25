@@ -1,6 +1,8 @@
 import { msg } from "gt-i18n";
 import { translatableDetail } from "../errors/translatable.ts";
 import { EnvironmentId } from "@t3tools/contracts";
+import { corporateBuild } from "@t3tools/shared/buildEdition";
+import { isLocalLoopbackHost } from "@t3tools/shared/hostClassification";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Equal from "effect/Equal";
@@ -222,8 +224,8 @@ export const make = Effect.gen(function* () {
   const driver = yield* ConnectionDriver.ConnectionDriver;
   const wakeups = yield* ConnectionWakeups.ConnectionWakeups;
   const ssh = yield* ClientCapabilities.SshEnvironmentGateway;
-  const persistedTargets = yield* storage.list;
-  const disabledEnvironmentIds = new Set(yield* storage.listDisabled);
+  const persistedTargets = corporateBuild ? [] : yield* storage.list;
+  const disabledEnvironmentIds = new Set(corporateBuild ? [] : yield* storage.listDisabled);
   const loadRoute = Effect.fn("EnvironmentRegistry.loadRoute")(function* (
     target: ConnectionTarget,
   ) {
@@ -546,6 +548,11 @@ export const make = Effect.gen(function* () {
   const assertKnownAddress = Effect.fn("EnvironmentRegistry.assertKnownAddress")(function* (
     route: ConnectionRoute,
   ) {
+    if (corporateBuild)
+      return yield* new ConnectionBlockedError({
+        reason: "permission",
+        detail: "Remote environments are disabled in the corporate build.",
+      });
     const environmentId = route.target.environmentId;
     if ((yield* Ref.get(platformEnvironmentIds)).has(environmentId)) return;
     const saved = (yield* SubscriptionRef.get(entries)).get(environmentId);
@@ -569,6 +576,11 @@ export const make = Effect.gen(function* () {
     registration: ConnectionRegistration,
     options?: { readonly knownAddressOnly?: boolean },
   ) {
+    if (corporateBuild)
+      return yield* new ConnectionBlockedError({
+        reason: "permission",
+        detail: "Remote environments are disabled in the corporate build.",
+      });
     const registered = connectionRegistrationCatalogEntry(registration);
     const environmentId = registered.target.environmentId;
     const route: ConnectionRoute = { target: registered.target, profile: registered.profile };
@@ -853,6 +865,19 @@ export const make = Effect.gen(function* () {
   const reconcilePlatform = Effect.fnUntraced(function* (
     platformRegistrations: ReadonlyArray<PlatformConnectionRegistration>,
   ) {
+    if (corporateBuild)
+      platformRegistrations = platformRegistrations.filter(
+        (registration) =>
+          registration._tag === "PrimaryConnectionRegistration" &&
+          [registration.target.httpBaseUrl, registration.target.wsBaseUrl].every((raw) => {
+            const url = URL.parse(raw);
+            return (
+              url !== null &&
+              ["http:", "https:", "ws:", "wss:"].includes(url.protocol) &&
+              isLocalLoopbackHost(url.hostname)
+            );
+          }),
+      );
     if (Equal.equals(appliedPlatformRegistrations, platformRegistrations)) return;
     appliedPlatformRegistrations = undefined;
     if (yield* applyPlatformRegistrations(platformRegistrations)) {

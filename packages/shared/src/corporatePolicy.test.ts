@@ -17,6 +17,12 @@ describe("corporate policy floor", () => {
         settings: {
           defaultRuntimeMode: { value: "approval-required", locked: true },
           enableProviderUpdateChecks: { value: true, locked: false },
+          deviceHosts: {
+            value: [{ kind: "ssh", id: "remote", label: "Remote", target: "example.invalid" }],
+            locked: false,
+          },
+          easDeviceHosts: { value: [{ id: "cloud", label: "Cloud" }], locked: false },
+          simlockDeviceHostsEnabled: { value: true, locked: false },
           "observability.otlpTracesUrl": { value: "https://collector.example.com", locked: false },
         },
         limits: {
@@ -45,6 +51,10 @@ describe("corporate policy floor", () => {
       expect(result.document.settings).toEqual({
         defaultRuntimeMode: document.settings.defaultRuntimeMode,
         enableProviderUpdateChecks: { value: false, locked: true },
+        deviceHosts: { value: [], locked: true },
+        easDeviceHosts: { value: [], locked: true },
+        simlockDeviceHosts: { value: [], locked: true },
+        simlockDeviceHostsEnabled: { value: false, locked: true },
         observability: {
           value: { otlpTracesUrl: "", otlpMetricsUrl: "", otlpLogsUrl: "" },
           locked: true,

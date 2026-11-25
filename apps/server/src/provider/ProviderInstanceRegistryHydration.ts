@@ -11,6 +11,7 @@ import {
 import * as NodeUtil from "node:util";
 
 import * as HostProcess from "@t3tools/shared/HostProcess";
+import { corporateBuild } from "@t3tools/shared/buildEdition";
 import type * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -87,6 +88,28 @@ export const deriveProviderInstanceConfigMap = (
 };
 
 export const DEV_REPLAY_INSTANCE_ID = ProviderInstanceId.make("devReplay");
+export const CORPORATE_CURSOR_CLI_INSTANCE_ID = ProviderInstanceId.make("corporateCursorCli");
+
+export const seedCorporateCursorCliInstance = Effect.fn(
+  "ProviderInstanceRegistryHydration.seedCorporateCursorCliInstance",
+)(function* () {
+  if (!corporateBuild) return;
+  const settings = yield* Settings.ServerSettingsService;
+  if (
+    (yield* settings.getSettings).providerInstances[CORPORATE_CURSOR_CLI_INSTANCE_ID] !== undefined
+  )
+    return;
+  yield* settings.updateProviderInstance({
+    operation: "upsert",
+    instanceId: CORPORATE_CURSOR_CLI_INSTANCE_ID,
+    instance: {
+      displayName: "Cursor (CLI)",
+      enabled: false,
+      driver: ProviderDriverKind.make("acpRegistry"),
+      config: { source: "local", commandPath: "agent", commandArgs: ["acp"] },
+    },
+  });
+});
 
 /**
  * Dev servers run from source keep a free ACP agent that replays recorded turns, so UI checks
@@ -179,6 +202,11 @@ export const layer: Layer.Layer<
 > = Layer.unwrap(
   Effect.gen(function* () {
     const serverSettings = yield* Settings.ServerSettingsService;
+    yield* seedCorporateCursorCliInstance().pipe(
+      Effect.catchCause((cause) =>
+        Effect.logWarning("Corporate Cursor CLI configuration unavailable", cause),
+      ),
+    );
     yield* seedDevReplayInstance().pipe(
       Effect.catchCause((cause) => Effect.logWarning("Dev replay agent unavailable", cause)),
     );

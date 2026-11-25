@@ -2,6 +2,7 @@
 import * as NodeModule from "node:module";
 import * as NodeSea from "node:sea";
 import * as NodeURL from "node:url";
+import { corporateBuild } from "@t3tools/shared/buildEdition";
 
 import { isEntrypoint } from "./entrypoint.ts";
 
@@ -39,6 +40,14 @@ if (
     runtimeMain: import.meta.main,
   })
 ) {
+  if (corporateBuild && process.versions.t3_corporate_network !== "loopback-v1") {
+    throw new Error("The corporate build requires its bundled loopback-only Node runtime.");
+  }
+  if (corporateBuild && process.argv[2] === "__service-launcher") {
+    throw new Error(
+      "The corporate build uses its local desktop backend; service launchers are excluded.",
+    );
+  }
   // Logs go to stdout and stderr, which may be a closed desktop launcher pipe or a log file on
   // a full disk. Node emits a failed write as an unhandled stream error that crashes the process
   // and skips shutdown, so drop the line instead.

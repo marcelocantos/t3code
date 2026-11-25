@@ -1,4 +1,5 @@
 import * as HostProcess from "@t3tools/shared/HostProcess";
+import { corporateBuild } from "@t3tools/shared/buildEdition";
 import {
   buildEnvironmentCaptureCommand,
   extractEnvironmentValues,
@@ -248,7 +249,7 @@ export const expandHomePath = Effect.fn(function* (input: string) {
 export const resolveBaseDir = Effect.fn(function* (raw: string | undefined) {
   const { join, resolve } = yield* Path.Path;
   if (!raw || raw.trim().length === 0) {
-    return join(yield* HostProcess.HomeDirectory, ".t3");
+    return join(yield* HostProcess.HomeDirectory, corporateBuild ? ".t3-corporate" : ".t3");
   }
   return resolve(yield* expandHomePath(raw.trim()));
 });

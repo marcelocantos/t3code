@@ -3,6 +3,10 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./corporateContentSecurityPolicy": {
+      "types": "./src/corporateContentSecurityPolicy.ts",
+      "import": "./src/corporateContentSecurityPolicy.ts"
+    },
     "./buildEdition": {
       "types": "./src/buildEdition.ts",
       "import": "./src/buildEdition.ts"

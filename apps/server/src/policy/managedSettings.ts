@@ -9,6 +9,7 @@ import {
 } from "@t3tools/contracts";
 import * as Exit from "effect/Exit";
 import * as Schema from "effect/Schema";
+import { corporateBuild } from "@t3tools/shared/buildEdition";
 
 import { mapSettingsSecrets } from "../settingsSecrets.ts";
 
@@ -260,7 +261,8 @@ export function makeManagedSettings(
     if (!(head in ServerSettings.fields) || UNMANAGEABLE_KEYS.has(head)) {
       return { _tag: "Invalid", reason: `"${path}" is not a setting this version can manage` };
     }
-    if (ENVIRONMENT_OVERRIDDEN_KEYS.has(head)) {
+    // Corporate runtimes refuse OTLP export regardless of startup inputs.
+    if (!corporateBuild && ENVIRONMENT_OVERRIDDEN_KEYS.has(head)) {
       return {
         _tag: "Invalid",
         reason: `"${path}" is resolved at startup from each user's environment, settings file and desktop bootstrap input, which a policy cannot override`,

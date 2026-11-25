@@ -1,3 +1,4 @@
+import { corporateBuild } from "@t3tools/shared/buildEdition";
 import {
   type DeviceActionInput,
   type DeviceCloseInput,
@@ -316,8 +317,8 @@ export const makeWithHosts = Effect.fn("DeviceService.makeWithHosts")(function* 
       supportsHostRetry: true,
       supportsToolUpdate: installTool !== undefined,
       supportsToolInspection: true,
-      supportsEasHosts: true,
-      supportsSimlockHosts: true,
+      supportsEasHosts: !corporateBuild,
+      supportsSimlockHosts: !corporateBuild,
       hosts: initialHosts,
       hostStatus: initialSettings.enabled ? "idle" : "disabled",
       hostStatuses: {},
@@ -1108,7 +1109,16 @@ export const makeWithHosts = Effect.fn("DeviceService.makeWithHosts")(function* 
 
   return {
     ...DeviceService.of({
-      testHost,
+      testHost: corporateBuild
+        ? Effect.fn("DeviceService.testHost")((host) =>
+            Effect.fail(
+              new DeviceHostUnavailableError({
+                hostId: host.id,
+                reason: "Remote device hosts are unavailable in the corporate build.",
+              }),
+            ),
+          )
+        : testHost,
       updateTool: Effect.fn("DeviceService.updateTool")(function (tool) {
         return lifecycleLock.withPermit(
           Effect.gen(function* () {
@@ -1476,9 +1486,9 @@ export const make = Effect.gen(function* () {
   const reconcile = Effect.fn("DeviceService.reconcile")(function* (
     configuredHosts: ReadonlyArray<DeviceHostConfig>,
   ) {
-    const next = yield* remoteSshDeviceHosts(configuredHosts).pipe(
-      Effect.provide(localTargetContext),
-    );
+    const next = corporateBuild
+      ? []
+      : yield* remoteSshDeviceHosts(configuredHosts).pipe(Effect.provide(localTargetContext));
     const removed = yield* service.withLifecycleLock(
       Effect.gen(function* () {
         const removed: Array<{ id: string; scope: Scope.Closeable }> = [];
@@ -1686,8 +1696,7 @@ export const make = Effect.gen(function* () {
 
   return {
     ...service,
-    easAccount,
-    simlockIdentity,
+    ...(corporateBuild ? {} : { easAccount, simlockIdentity }),
   };
 });
 

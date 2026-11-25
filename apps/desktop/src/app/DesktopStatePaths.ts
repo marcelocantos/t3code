@@ -1,5 +1,6 @@
 import * as Option from "effect/Option";
 import { isPluginBuild } from "./PluginBuild.ts";
+import { corporateBuild } from "@t3tools/shared/buildEdition";
 
 export type JoinPath = (first: string, ...segments: string[]) => string;
 
@@ -17,7 +18,10 @@ export function resolveDesktopBaseDir(input: {
   readonly t3Home: Option.Option<string>;
 }): string {
   return Option.getOrElse(normalizeConfiguredBaseDir(input.t3Home), () =>
-    input.joinPath(input.homeDirectory, isPluginBuild ? ".t3-plugins" : ".t3"),
+    input.joinPath(
+      input.homeDirectory,
+      corporateBuild ? ".t3-corporate" : isPluginBuild ? ".t3-plugins" : ".t3",
+    ),
   );
 }
 

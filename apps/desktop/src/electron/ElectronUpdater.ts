@@ -1,4 +1,5 @@
 import * as Context from "effect/Context";
+import { corporateBuild } from "@t3tools/shared/buildEdition";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
@@ -100,8 +101,7 @@ export class ElectronUpdater extends Context.Service<
   }
 >()("@t3tools/desktop/electron/ElectronUpdater") {}
 
-/** @public */
-export const make = ElectronUpdater.of({
+const makeStandard = /* @__PURE__ */ ElectronUpdater.of({
   setFeedURL: Effect.fn("ElectronUpdater.setFeedURL")(function (options) {
     return Effect.suspend(() => {
       autoUpdater.setFeedURL(options);
@@ -203,5 +203,44 @@ export const make = ElectronUpdater.of({
     ).pipe(Effect.asVoid);
   }),
 });
+
+const makeCorporate = /* @__PURE__ */ ElectronUpdater.of({
+  setFeedURL: Effect.fn("ElectronUpdater.setFeedURL")(() => Effect.void),
+  setAutoDownload: Effect.fn("ElectronUpdater.setAutoDownload")(() => Effect.void),
+  setAutoInstallOnAppQuit: Effect.fn("ElectronUpdater.setAutoInstallOnAppQuit")(() => Effect.void),
+  setChannel: Effect.fn("ElectronUpdater.setChannel")(() => Effect.void),
+  setAllowPrerelease: Effect.fn("ElectronUpdater.setAllowPrerelease")(() => Effect.void),
+  allowDowngrade: Effect.succeed(false),
+  setAllowDowngrade: Effect.fn("ElectronUpdater.setAllowDowngrade")(() => Effect.void),
+  setFullChangelog: Effect.fn("ElectronUpdater.setFullChangelog")(() => Effect.void),
+  setDisableDifferentialDownload: Effect.fn("ElectronUpdater.setDisableDifferentialDownload")(
+    () => Effect.void,
+  ),
+  checkForUpdates: Effect.fail(
+    new ElectronUpdaterCheckForUpdatesError({
+      channel: null,
+      cause: new Error("Updates are disabled in the corporate build."),
+    }),
+  ),
+  downloadUpdate: Effect.fail(
+    new ElectronUpdaterDownloadUpdateError({
+      channel: null,
+      cause: new Error("Updates are disabled in the corporate build."),
+    }),
+  ),
+  quitAndInstall: Effect.fn("ElectronUpdater.quitAndInstall")((options) =>
+    Effect.fail(
+      new ElectronUpdaterQuitAndInstallError({
+        channel: null,
+        ...options,
+        cause: new Error("Updates are disabled in the corporate build."),
+      }),
+    ),
+  ),
+  on: Effect.fn("ElectronUpdater.on")(() => Effect.void),
+});
+
+/** @public */
+export const make = corporateBuild ? makeCorporate : makeStandard;
 
 export const layer = Layer.succeed(ElectronUpdater, make);
