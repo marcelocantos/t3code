@@ -5,6 +5,8 @@
  * @module DesktopManagedPolicy
  */
 import type { ManagedPolicyDocument } from "@t3tools/contracts";
+import { corporateBuild } from "@t3tools/shared/buildEdition";
+import { corporatePolicy } from "@t3tools/shared/corporatePolicy";
 import {
   layerWindowsRegistry,
   ManagedPolicyFileError,
@@ -37,6 +39,17 @@ export const layer = Layer.effect(
     const { platform } = yield* DesktopEnvironment.DesktopEnvironment;
     const read = yield* Effect.cached(
       readManagedPolicy(platform).pipe(
+        Effect.flatMap((found) =>
+          Effect.gen(function* () {
+            if (!corporateBuild) return found;
+            const source = found?.source ?? "corporate build";
+            const result = corporatePolicy(found?.document);
+            if (result._tag === "Invalid") {
+              return yield* new ManagedPolicyFileError({ path: source, reason: result.reason });
+            }
+            return { source, document: result.document };
+          }),
+        ),
         Effect.provideService(FileSystem.FileSystem, yield* FileSystem.FileSystem),
         Effect.provideService(
           ChildProcessSpawner.ChildProcessSpawner,

@@ -3,6 +3,14 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./buildEdition": {
+      "types": "./src/buildEdition.ts",
+      "import": "./src/buildEdition.ts"
+    },
+    "./corporatePolicy": {
+      "types": "./src/corporatePolicy.ts",
+      "import": "./src/corporatePolicy.ts"
+    },
     "./png": {
       "types": "./src/png.ts",
       "import": "./src/png.ts"

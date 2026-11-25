@@ -26,6 +26,8 @@ import {
 } from "@t3tools/shared/managedPolicyFile";
 
 import { telemetryChannel } from "../config.ts";
+import { corporateBuild } from "@t3tools/shared/buildEdition";
+import { corporatePolicy } from "@t3tools/shared/corporatePolicy";
 import * as ManagedLimits from "./managedLimits.ts";
 import * as ManagedProviders from "./managedProviders.ts";
 import * as ManagedSettings from "./managedSettings.ts";
@@ -80,6 +82,13 @@ export const fromDocument = Effect.fn("ManagedPolicy.fromDocument")(function* (
   path: string,
   document: ManagedPolicyDocument | undefined,
 ) {
+  if (corporateBuild) {
+    const result = corporatePolicy(document);
+    if (result._tag === "Invalid") {
+      return yield* new ManagedPolicyFileError({ path, reason: result.reason });
+    }
+    document = result.document;
+  }
   if (document === undefined) {
     return ManagedPolicy.of({
       path,

@@ -6,8 +6,10 @@ import { defaultInclude, defineConfig } from "vite-plus";
 import { isDesktopRuntimeExternalDependency } from "../../scripts/lib/desktop-external-packages.ts";
 import { parsePluginBuildMode } from "../../scripts/lib/plugin-build-mode.ts";
 import { loadRepoEnv } from "../../scripts/lib/public-config.ts";
+import { parseBuildEdition } from "../../scripts/lib/build-edition.ts";
 
 const repoEnv = loadRepoEnv();
+const buildEdition = parseBuildEdition(process.env.T3CODE_BUILD_EDITION);
 const domTests = ["src/preview/PickPreload.test.ts"];
 
 // Install only bundle externals; the server bundle already carries its dependency tree.
@@ -22,9 +24,10 @@ const devElectronCommand =
     ? "node scripts/dev-electron.mjs"
     : "exec node scripts/dev-electron.mjs";
 const publicConfigDefine = {
+  __T3CODE_BUILD_EDITION__: JSON.stringify(buildEdition),
   __T3CODE_PLUGIN_BUILD__: JSON.stringify(parsePluginBuildMode(process.env.T3CODE_PLUGIN_BUILD)),
   __T3CODE_BUILD_CLERK_PUBLISHABLE_KEY__: JSON.stringify(
-    repoEnv.T3CODE_CLERK_PUBLISHABLE_KEY?.trim() ?? "",
+    buildEdition === "corporate" ? "" : (repoEnv.T3CODE_CLERK_PUBLISHABLE_KEY?.trim() ?? ""),
   ),
 };
 
