@@ -1,3 +1,6 @@
+import * as DirectEndpoints from "../environment/DirectEndpoints.ts";
+import * as RemoteOpenTargets from "../environment/RemoteOpenTargets.ts";
+import { ensureTailscaleServe } from "@t3tools/tailscale";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import { expect, it } from "@effect/vitest";
 import { vi } from "vite-plus/test";
@@ -132,6 +135,13 @@ it.effect("corporate startup does not load saved remote environment links", () =
     const links = Context.get(context, PeerLinks.PeerLinks);
     expect(yield* links.enabled).toBe(false);
     expect(yield* links.list).toEqual([]);
+    const direct = yield* DirectEndpoints.make.pipe(withoutServices);
+    expect(yield* direct.resolveAvailable()).toEqual([]);
+    expect(yield* direct.resolve()).toEqual([]);
+    const remote = yield* RemoteOpenTargets.make.pipe(withoutServices);
+    expect(yield* remote.resolveTargets()).toEqual([]);
+    const serve = yield* Effect.flip(ensureTailscaleServe({ localPort: 0 }).pipe(withoutServices));
+    expect(serve._tag).toBe("TailscaleServeDisabledError");
   }).pipe(Effect.scoped),
 );
 

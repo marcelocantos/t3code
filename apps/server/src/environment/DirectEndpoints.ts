@@ -1,3 +1,4 @@
+import { corporateBuild } from "@t3tools/shared/buildEdition";
 import type { ServerDirectEndpoint } from "@t3tools/contracts";
 import {
   buildTailscaleHttpsBaseUrl,
@@ -102,7 +103,7 @@ export function resolveBoundEndpoints(input: {
 const CLOUD_METADATA_ADDRESS = "169.254.169.254";
 const CLOUD_METADATA_TIMEOUT_MS = 300;
 
-const probeCloudMetadata = Effect.callback<boolean>((resume) => {
+const probeCloudMetadata = /* @__PURE__ */ Effect.callback<boolean>((resume) => {
   const socket = NodeNet.connect({
     host: CLOUD_METADATA_ADDRESS,
     port: 80,
@@ -121,8 +122,7 @@ const probeCloudMetadata = Effect.callback<boolean>((resume) => {
   return Effect.sync(() => socket.destroy());
 });
 
-/** @public */
-export const make = Effect.gen(function* () {
+const makeStandard = /* @__PURE__ */ Effect.gen(function* () {
   const config = yield* ServerConfig.ServerConfig;
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const httpClient = yield* HttpClient.HttpClient;
@@ -185,5 +185,15 @@ export const make = Effect.gen(function* () {
     }),
   });
 });
+
+/** @public */
+export const make = corporateBuild
+  ? Effect.succeed(
+      DirectEndpoints.of({
+        resolveAvailable: Effect.fn("DirectEndpoints.resolveAvailable")(() => Effect.succeed([])),
+        resolve: Effect.fn("DirectEndpoints.resolve")(() => Effect.succeed([])),
+      }),
+    )
+  : makeStandard;
 
 export const layer = Layer.effect(DirectEndpoints, make);

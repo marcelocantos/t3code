@@ -7,6 +7,7 @@ import {
   readTailscaleServeRootHolder,
   readTailscaleStatus,
   type TailscaleCommandError,
+  type TailscaleServeDisabledError,
   type TailscaleServeHttpsDisabledError,
   type TailscaleStderrDiagnostic,
 } from "@t3tools/tailscale";
@@ -25,13 +26,15 @@ const DIAGNOSTIC_EXPLANATIONS: Record<TailscaleStderrDiagnostic, string | undefi
 };
 
 const explainCommandFailure = (
-  error: TailscaleCommandError | TailscaleServeHttpsDisabledError,
+  error: TailscaleCommandError | TailscaleServeHttpsDisabledError | TailscaleServeDisabledError,
 ): string | undefined =>
-  error._tag === "TailscaleServeHttpsDisabledError"
-    ? "HTTPS is not enabled on this tailnet — enable HTTPS certificates at https://login.tailscale.com/admin/dns"
-    : error._tag === "TailscaleCommandExitError" && error.stderrDiagnostic !== undefined
-      ? (DIAGNOSTIC_EXPLANATIONS[error.stderrDiagnostic] ?? "run the command by hand to see why")
-      : undefined;
+  error._tag === "TailscaleServeDisabledError"
+    ? error.message
+    : error._tag === "TailscaleServeHttpsDisabledError"
+      ? "HTTPS is not enabled on this tailnet — enable HTTPS certificates at https://login.tailscale.com/admin/dns"
+      : error._tag === "TailscaleCommandExitError" && error.stderrDiagnostic !== undefined
+        ? (DIAGNOSTIC_EXPLANATIONS[error.stderrDiagnostic] ?? "run the command by hand to see why")
+        : undefined;
 
 export class TailscaleUnavailableError extends Schema.TaggedError<TailscaleUnavailableError>()(
   "TailscaleUnavailableError",

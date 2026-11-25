@@ -1,3 +1,4 @@
+import { corporateBuild } from "@t3tools/shared/buildEdition";
 import { type RemoteOpenTarget } from "@t3tools/contracts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as NetService from "@t3tools/shared/Net";
@@ -19,8 +20,7 @@ export class RemoteOpenTargets extends Context.Service<
   }
 >()("t3/environment/RemoteOpenTargets") {}
 
-/** @public */
-export const make = Effect.gen(function* () {
+const makeStandard = /* @__PURE__ */ Effect.gen(function* () {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const net = yield* NetService.NetService;
 
@@ -98,5 +98,14 @@ export const make = Effect.gen(function* () {
     }),
   });
 });
+
+/** @public */
+export const make = corporateBuild
+  ? Effect.succeed(
+      RemoteOpenTargets.of({
+        resolveTargets: Effect.fn("RemoteOpenTargets.resolveTargets")(() => Effect.succeed([])),
+      }),
+    )
+  : makeStandard;
 
 export const layer = Layer.effect(RemoteOpenTargets, make);

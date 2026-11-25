@@ -1,3 +1,4 @@
+import { corporateBuild } from "@t3tools/shared/buildEdition";
 import { ExecutionEnvironmentDescriptor } from "@t3tools/contracts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as NetService from "@t3tools/shared/Net";
@@ -463,15 +464,25 @@ export class TailscaleServeHttpsDisabledError extends Schema.TaggedError<Tailsca
   }
 }
 
+export class TailscaleServeDisabledError extends Schema.TaggedError<TailscaleServeDisabledError>()(
+  "TailscaleServeDisabledError",
+  {},
+) {
+  override get message(): string {
+    return "Tailscale Serve is excluded from the corporate build.";
+  }
+}
+
 export const ensureTailscaleServe = Effect.fn("tailscale.ensureTailscaleServe")(function* (input: {
   readonly localPort: number;
   readonly servePort?: number;
   readonly localHost?: string;
 }): Effect.fn.Return<
   void,
-  TailscaleCommandError | TailscaleServeHttpsDisabledError,
+  TailscaleCommandError | TailscaleServeHttpsDisabledError | TailscaleServeDisabledError,
   ChildProcessSpawner.ChildProcessSpawner
 > {
+  if (corporateBuild) return yield* new TailscaleServeDisabledError();
   // Without the capability `tailscale serve` prints an enablement notice and exits 0, or blocks on
   // it, having configured nothing either way.
   const status = yield* Effect.option(readTailscaleStatus);
