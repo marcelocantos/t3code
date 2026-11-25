@@ -788,13 +788,11 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
   ProviderInstallation.layer,
   ReplayMarkers.layer,
   Layer.effectDiscard(ProjectSettingsOverrideSweep.sweep),
-).pipe(
-  Layer.provideMerge(
-    PanelPlugins.layer.pipe(
-      Layer.provideMerge(PluginDiscovery.layer),
-      Layer.provideMerge(PluginGateway.layer),
-    ),
+  PanelPlugins.layer.pipe(
+    Layer.provideMerge(PluginDiscovery.layer),
+    Layer.provideMerge(PluginGateway.layer),
   ),
+).pipe(
   Layer.provideMerge(layerOrchestrationApplication),
   // One hub, which the feeders above and the workflow store inside the runtime publish to.
   Layer.provideMerge(MilestoneHub.layer),
