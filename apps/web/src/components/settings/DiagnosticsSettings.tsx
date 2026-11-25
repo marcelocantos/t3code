@@ -1,3 +1,4 @@
+import { corporateBuild } from "@t3tools/shared/buildEdition";
 import { thrownErrorMessage } from "@t3tools/client-runtime/errors";
 import { m as resolveMessage } from "~/i18n/messages";
 import { ProcessSignalActions } from "./ProcessSignalActions";
@@ -1442,7 +1443,7 @@ function DiagnosticsSettingsBody() {
           />
         )}
       </SettingsSection>
-      {exportFormEnvironmentId === environmentId && <TelemetryExportSettings />}
+      {!corporateBuild && exportFormEnvironmentId === environmentId && <TelemetryExportSettings />}
     </SettingsPageContainer>
   );
 }

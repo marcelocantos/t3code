@@ -1635,7 +1635,8 @@ export function filterAvailableSettingsSearchItems(
   return items.filter(
     (item) =>
       (!item.cloudOnly || availability.hasCloudPublicConfig) &&
-      (!corporateBuild || item.to !== "/settings/connections") &&
+      (!corporateBuild ||
+        (item.to !== "/settings/connections" && item.id !== "telemetry-export")) &&
       (!item.environmentOnly || availability.hasEnvironment) &&
       (!item.providerSettingsOnly || availability.hasProviderSettingsEnvironment) &&
       (!item.localBackendManagementOnly || availability.canManageLocalBackend) &&
