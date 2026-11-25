@@ -1,0 +1,448 @@
+diff --git a/components/crash/core/app/crashpad_mac.mm b/components/crash/core/app/crashpad_mac.mm
+index f14ab66f24..e9bfe932fb 100644
+--- a/components/crash/core/app/crashpad_mac.mm
++++ b/components/crash/core/app/crashpad_mac.mm
+@@ -138,70 +138,8 @@ bool PlatformCrashpadInitialization(
+     const std::vector<std::string>& initial_arguments,
+     const std::vector<base::FilePath>& attachments,
+     base::FilePath* database_path) {
+-  base::FilePath metrics_path;  // Only valid in the browser process.
+-  // These are not used on Mac.
+-  DCHECK(!embedded_handler);
+-  DCHECK(exe_path.empty());
+-  DCHECK(initial_arguments.empty());
+-  DCHECK(attachments.empty());
+-
+-  if (initial_client) {
+-    @autoreleasepool {
+-      base::FilePath framework_bundle_path = base::apple::FrameworkBundlePath();
+-      base::FilePath handler_path =
+-          framework_bundle_path.Append("Helpers").Append(
+-              "chrome_crashpad_handler");
+-
+-      // Is there a way to recover if this fails?
+-      CrashReporterClient* crash_reporter_client = GetCrashReporterClient();
+-      crash_reporter_client->GetCrashDumpLocation(database_path);
+-      crash_reporter_client->GetCrashMetricsLocation(&metrics_path);
+-
+-      std::string url = crash_reporter_client->GetUploadUrl();
+-
+-      std::vector<std::string> arguments;
+-
+-      if (!crash_reporter_client->GetShouldRateLimit()) {
+-        arguments.push_back("--no-rate-limit");
+-      }
+-      if (!crash_reporter_client->GetShouldCompressUploads()) {
+-        arguments.push_back("--no-upload-gzip");
+-      }
+-
+-      if (crash_reporter_client->ShouldMonitorCrashHandlerExpensively()) {
+-        arguments.push_back("--monitor-self");
+-      }
+-
+-      // Set up --monitor-self-annotation even in the absence of --monitor-self
+-      // so that minidumps produced by Crashpad's generate_dump tool will
+-      // contain these annotations.
+-      arguments.push_back("--monitor-self-annotation=ptype=crashpad-handler");
+-
+-      if (!browser_process) {
+-        // If this is an initial client that's not the browser process, it's
+-        // important that the new Crashpad handler also not be connected to any
+-        // existing handler. This argument tells the new Crashpad handler to
+-        // sever this connection.
+-        arguments.push_back(
+-            "--reset-own-crash-exception-port-to-system-default");
+-      }
+-
+-      bool result = GetCrashpadClient().StartHandler(
+-          handler_path, *database_path, metrics_path, url,
+-          GetProcessSimpleAnnotations(), arguments, true, false);
+-
+-      // If this is an initial client that's not the browser process, it's
+-      // important to sever the connection to any existing handler. If
+-      // StartHandler() failed, call UseSystemDefaultHandler() to drop the link
+-      // to the existing handler.
+-      if (!result && !browser_process) {
+-        crashpad::CrashpadClient::UseSystemDefaultHandler();
+-        return false;
+-      }
+-    }  // @autoreleasepool
+-  }
++  return false;
+ 
+-  return true;
+ }
+ 
+ }  // namespace internal
+diff --git a/net/dns/host_resolver_manager.cc b/net/dns/host_resolver_manager.cc
+index d03f5733a3..cfd0694c45 100644
+--- a/net/dns/host_resolver_manager.cc
++++ b/net/dns/host_resolver_manager.cc
+@@ -868,6 +868,14 @@ HostCache::Entry HostResolverManager::ResolveLocally(
+   DCHECK(out_stale_info);
+   *out_stale_info = std::nullopt;
+ 
++  if (!ip_address.IsValid() &&
++      !base::EqualsCaseInsensitiveASCII(job_key.host.GetHostname(), "localhost") &&
++      !base::EqualsCaseInsensitiveASCII(job_key.host.GetHostname(), "localhost.")) {
++    out_tasks->clear();
++    return HostCache::Entry(ERR_NETWORK_ACCESS_DENIED,
++                           HostCache::Entry::SOURCE_UNKNOWN);
++  }
++
+   CreateTaskSequence(job_key, cache_usage, secure_dns_policy, out_tasks);
+   source_net_log.AddEvent(
+       NetLogEventType::HOST_RESOLVER_MANAGER_TASK_SEQUENCE_CREATED, [&] {
+diff --git a/net/dns/host_resolver_system_task.cc b/net/dns/host_resolver_system_task.cc
+index 19b572c6a9..93c1cc65d8 100644
+--- a/net/dns/host_resolver_system_task.cc
++++ b/net/dns/host_resolver_system_task.cc
+@@ -535,124 +535,30 @@ void EnsureSystemHostResolverCallReady() {
+ #endif
+ }
+ 
+-namespace {
+-
+-int AddressFamilyToAF(AddressFamily address_family) {
+-  switch (address_family) {
+-    case ADDRESS_FAMILY_IPV4:
+-      return AF_INET;
+-    case ADDRESS_FAMILY_IPV6:
+-      return AF_INET6;
+-    case ADDRESS_FAMILY_UNSPECIFIED:
+-      return AF_UNSPEC;
+-  }
+-}
+-
+-}  // namespace
+-
+ int SystemHostResolverCall(const std::string& host,
+                            AddressFamily address_family,
+                            HostResolverFlags host_resolver_flags,
+                            AddressList* addrlist,
+                            int* os_error_opt,
+                            handles::NetworkHandle network) {
+-  struct addrinfo hints = {0};
+-  hints.ai_family = AddressFamilyToAF(address_family);
+-
+-#if BUILDFLAG(IS_WIN)
+-  // DO NOT USE AI_ADDRCONFIG ON WINDOWS.
+-  //
+-  // The following comment in <winsock2.h> is the best documentation I found
+-  // on AI_ADDRCONFIG for Windows:
+-  //   Flags used in "hints" argument to getaddrinfo()
+-  //       - AI_ADDRCONFIG is supported starting with Vista
+-  //       - default is AI_ADDRCONFIG ON whether the flag is set or not
+-  //         because the performance penalty in not having ADDRCONFIG in
+-  //         the multi-protocol stack environment is severe;
+-  //         this defaulting may be disabled by specifying the AI_ALL flag,
+-  //         in that case AI_ADDRCONFIG must be EXPLICITLY specified to
+-  //         enable ADDRCONFIG behavior
+-  //
+-  // Not only is AI_ADDRCONFIG unnecessary, but it can be harmful.  If the
+-  // computer is not connected to a network, AI_ADDRCONFIG causes getaddrinfo
+-  // to fail with WSANO_DATA (11004) for "localhost", probably because of the
+-  // following note on AI_ADDRCONFIG in the MSDN getaddrinfo page:
+-  //   The IPv4 or IPv6 loopback address is not considered a valid global
+-  //   address.
+-  // See http://crbug.com/5234.
+-  //
+-  // OpenBSD does not support it, either.
+-  hints.ai_flags = 0;
+-#else
+-  // On other operating systems, AI_ADDRCONFIG may reduce the amount of
+-  // unnecessary DNS lookups, e.g. getaddrinfo() will not send a request for
+-  // AAAA records if the current machine has no IPv6 addresses configured and
+-  // therefore could not use the resulting AAAA record anyway. On some ancient
+-  // routers, AAAA DNS queries won't be handled correctly and will cause
+-  // multiple retransmitions and large latency spikes.
+-  hints.ai_flags = AI_ADDRCONFIG;
+-#endif
+-
+-  // On Linux AI_ADDRCONFIG doesn't consider loopback addresses, even if only
+-  // loopback addresses are configured. So don't use it when there are only
+-  // loopback addresses. See loopback_only.h and
+-  // https://fedoraproject.org/wiki/QA/Networking/NameResolution/ADDRCONFIG for
+-  // a description of some of the issues AI_ADDRCONFIG can cause.
+-  if (host_resolver_flags & HOST_RESOLVER_LOOPBACK_ONLY) {
+-    hints.ai_flags &= ~AI_ADDRCONFIG;
++  IPAddress local;
++  if (host == "localhost" || host == "localhost.") {
++    local = address_family == ADDRESS_FAMILY_IPV6
++                ? IPAddress::IPv6Localhost()
++                : IPAddress::IPv4Localhost();
++  } else if (!local.AssignFromIPLiteral(host)) {
++    return ERR_NETWORK_ACCESS_DENIED;
+   }
+-
+-  if (host_resolver_flags & HOST_RESOLVER_CANONNAME)
+-    hints.ai_flags |= AI_CANONNAME;
+-
+-#if BUILDFLAG(IS_WIN)
+-  // See crbug.com/1176970. Flag not documented (other than the declaration
+-  // comment in ws2def.h) but confirmed by Microsoft to work for this purpose
+-  // and be safe.
+-  if (host_resolver_flags & HOST_RESOLVER_AVOID_MULTICAST)
+-    hints.ai_flags |= AI_DNS_ONLY;
+-#endif  // BUILDFLAG(IS_WIN)
+-
+-  // Restrict result set to only this socket type to avoid duplicates.
+-  hints.ai_socktype = SOCK_STREAM;
+-
+-  // This function can block for a long time. Use ScopedBlockingCall to increase
+-  // the current thread pool's capacity and thus avoid reducing CPU usage by the
+-  // current process during that time.
+-  base::ScopedBlockingCall scoped_blocking_call(FROM_HERE,
+-                                                base::BlockingType::WILL_BLOCK);
+-  DnsReloaderMaybeReload();
+-
+-  auto [ai, err, os_error] = AddressInfo::Get(host, hints, nullptr, network);
+-  bool should_retry = false;
+-  // If the lookup was restricted (either by address family, or address
+-  // detection), and the results where all localhost of a single family,
+-  // maybe we should retry.  There were several bugs related to these
+-  // issues, for example http://crbug.com/42058 and http://crbug.com/49024
+-  if ((hints.ai_family != AF_UNSPEC || hints.ai_flags & AI_ADDRCONFIG) && ai &&
+-      ai->IsAllLocalhostOfOneFamily()) {
+-    if (host_resolver_flags & HOST_RESOLVER_DEFAULT_FAMILY_SET_DUE_TO_NO_IPV6) {
+-      hints.ai_family = AF_UNSPEC;
+-      should_retry = true;
+-    }
+-    if (hints.ai_flags & AI_ADDRCONFIG) {
+-      hints.ai_flags &= ~AI_ADDRCONFIG;
+-      should_retry = true;
+-    }
+-  }
+-  if (should_retry) {
+-    std::tie(ai, err, os_error) =
+-        AddressInfo::Get(host, hints, nullptr, network);
+-  }
+-
++  const IPAddress normalized = local.IsIPv4MappedIPv6()
++                                   ? ConvertIPv4MappedIPv6ToIPv4(local)
++                                   : local;
++  if (!normalized.IsLoopback())
++    return ERR_NETWORK_ACCESS_DENIED;
++  *addrlist = AddressList(IPEndPoint(local, 0));
+   if (os_error_opt)
+-    *os_error_opt = os_error;
+-
+-  if (!ai)
+-    return err;
+-
+-  *addrlist = ai->CreateAddressList();
++    *os_error_opt = 0;
+   return OK;
++
+ }
+ 
+ void SetSystemDnsResolutionTaskRunnerForTesting(  // IN-TEST
+diff --git a/net/socket/socket_posix.cc b/net/socket/socket_posix.cc
+index d8139fcb70..49cf818b3b 100644
+--- a/net/socket/socket_posix.cc
++++ b/net/socket/socket_posix.cc
+@@ -47,6 +47,18 @@ namespace net {
+ 
+ namespace {
+ 
++bool CorporateLocalAddress(const SockaddrStorage& address) {
++  if (address.addr()->sa_family == AF_UNIX)
++    return true;
++  IPEndPoint endpoint;
++  if (!endpoint.FromSockAddr(address.addr(), address.addr_len))
++    return false;
++  const IPAddress ip = endpoint.address().IsIPv4MappedIPv6()
++                           ? ConvertIPv4MappedIPv6ToIPv4(endpoint.address())
++                           : endpoint.address();
++  return ip.IsLoopback();
++}
++
+ int MapAcceptError(int os_error) {
+   switch (os_error) {
+     // If the client aborts the connection before the server calls accept,
+@@ -146,6 +158,21 @@ int SocketPosix::AdoptUnconnectedSocket(SocketDescriptor socket) {
+   DCHECK_EQ(kInvalidSocket, socket_fd_);
+ 
+   socket_fd_ = socket;
++  SockaddrStorage peer;
++  const int connected = getpeername(socket_fd_, peer.addr(), &peer.addr_len);
++  int listening = 0;
++  socklen_t option_length = sizeof(listening);
++  SockaddrStorage local;
++  if ((connected == 0 && !CorporateLocalAddress(peer)) ||
++      (connected != 0 && errno != ENOTCONN) ||
++      getsockopt(socket_fd_, SOL_SOCKET, SO_ACCEPTCONN, &listening,
++                 &option_length) != 0 ||
++      (listening &&
++       (getsockname(socket_fd_, local.addr(), &local.addr_len) != 0 ||
++        !CorporateLocalAddress(local)))) {
++    Close();
++    return ERR_NETWORK_ACCESS_DENIED;
++  }
+ 
+   if (!base::SetNonBlocking(socket_fd_)) {
+     int rv = MapSystemError(errno);
+@@ -167,6 +194,8 @@ SocketDescriptor SocketPosix::ReleaseConnectedSocket() {
+ }
+ 
+ int SocketPosix::Bind(const SockaddrStorage& address) {
++  if (!CorporateLocalAddress(address))
++    return ERR_NETWORK_ACCESS_DENIED;
+   DCHECK(thread_checker_.CalledOnValidThread());
+   DCHECK_NE(kInvalidSocket, socket_fd_);
+ 
+@@ -180,6 +209,10 @@ int SocketPosix::Bind(const SockaddrStorage& address) {
+ }
+ 
+ int SocketPosix::Listen(int backlog) {
++  SockaddrStorage address;
++  if (getsockname(socket_fd_, address.addr(), &address.addr_len) != 0 ||
++      !CorporateLocalAddress(address))
++    return ERR_NETWORK_ACCESS_DENIED;
+   DCHECK(thread_checker_.CalledOnValidThread());
+   DCHECK_NE(kInvalidSocket, socket_fd_);
+   DCHECK_LT(0, backlog);
+@@ -219,6 +252,8 @@ int SocketPosix::Accept(std::unique_ptr<SocketPosix>* socket,
+ 
+ int SocketPosix::Connect(const SockaddrStorage& address,
+                          CompletionOnceCallback callback) {
++  if (!CorporateLocalAddress(address))
++    return ERR_NETWORK_ACCESS_DENIED;
+   DCHECK(thread_checker_.CalledOnValidThread());
+   DCHECK_NE(kInvalidSocket, socket_fd_);
+   DCHECK(!waiting_connect_);
+diff --git a/net/socket/udp_socket_posix.cc b/net/socket/udp_socket_posix.cc
+index 68a5440692..ab7782d841 100644
+--- a/net/socket/udp_socket_posix.cc
++++ b/net/socket/udp_socket_posix.cc
+@@ -244,37 +244,14 @@ UDPSocketPosix::~UDPSocketPosix() {
+ }
+ 
+ int UDPSocketPosix::Open(AddressFamily address_family) {
+-  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
+-  DCHECK_EQ(socket_, kInvalidSocket);
+-
+-  auto owned_socket_count = TryAcquireGlobalUDPSocketCount();
+-  if (owned_socket_count.empty())
+-    return ERR_INSUFFICIENT_RESOURCES;
+-
+-  owned_socket_count_ = std::move(owned_socket_count);
+-  addr_family_ = ConvertAddressFamily(address_family);
+-  socket_ = CreatePlatformSocket(addr_family_, SOCK_DGRAM, 0);
+-  if (socket_ == kInvalidSocket) {
+-    owned_socket_count_.Reset();
+-    return MapSystemError(errno);
+-  }
++  return ERR_NETWORK_ACCESS_DENIED;
+ 
+-  return ConfigureOpenedSocket();
+ }
+ 
+ int UDPSocketPosix::AdoptOpenedSocket(AddressFamily address_family,
+                                       int socket) {
+-  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
+-  DCHECK_EQ(socket_, kInvalidSocket);
+-  auto owned_socket_count = TryAcquireGlobalUDPSocketCount();
+-  if (owned_socket_count.empty()) {
+-    return ERR_INSUFFICIENT_RESOURCES;
+-  }
++  return ERR_NETWORK_ACCESS_DENIED;
+ 
+-  owned_socket_count_ = std::move(owned_socket_count);
+-  socket_ = socket;
+-  addr_family_ = ConvertAddressFamily(address_family);
+-  return ConfigureOpenedSocket();
+ }
+ 
+ #if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_ANDROID)
+diff --git a/third_party/angle b/third_party/angle
+index 4f2e7d3925..67ace930da 160000
+--- a/third_party/angle
++++ b/third_party/angle
+@@ -1 +1 @@
+-Subproject commit 4f2e7d39252ed0e8387ebee1b222d4715f2dea7d
++Subproject commit 67ace930da633e38eae0ec21605d3d158131718f
+diff --git a/third_party/boringssl/src b/third_party/boringssl/src
+index 572a4c6847..fde4a3431e 160000
+--- a/third_party/boringssl/src
++++ b/third_party/boringssl/src
+@@ -1 +1 @@
+-Subproject commit 572a4c68475d284b34675f45ddbb9c158ef3c2ae
++Subproject commit fde4a3431e98afc6bb897460ebcb3f88fe65cd3f
+diff --git a/third_party/dawn b/third_party/dawn
+index ab8827bc57..2629fc36e0 160000
+--- a/third_party/dawn
++++ b/third_party/dawn
+@@ -1 +1 @@
+-Subproject commit ab8827bc57b176eeaa89f71324130c02d4d41145
++Subproject commit 2629fc36e0f0e4bb9e3f89c792f89a3074fae147
+diff --git a/third_party/devtools-frontend/src b/third_party/devtools-frontend/src
+index 04db1f5240..da4c6cefc6 160000
+--- a/third_party/devtools-frontend/src
++++ b/third_party/devtools-frontend/src
+@@ -1 +1 @@
+-Subproject commit 04db1f5240b636511ec4e9058a78f8274a7f65ee
++Subproject commit da4c6cefc6daab94465b9230f4fed924a0de98d4
+diff --git a/third_party/ffmpeg b/third_party/ffmpeg
+index 2b68d2baba..d521ae7f78 160000
+--- a/third_party/ffmpeg
++++ b/third_party/ffmpeg
+@@ -1 +1 @@
+-Subproject commit 2b68d2babae73714846961fb0ee47e3b3d2e39a9
++Subproject commit d521ae7f78873429600897f8c2164ae74976661b
+diff --git a/third_party/icu b/third_party/icu
+index d578f2e8b7..e43011799f 160000
+--- a/third_party/icu
++++ b/third_party/icu
+@@ -1 +1 @@
+-Subproject commit d578f2e8b7bd5938e21cfb6bf15c079e0aa5b738
++Subproject commit e43011799f150c1f0603ae497d2a346168e1d86b
+diff --git a/third_party/libyuv b/third_party/libyuv
+index 26e56be0f9..095b096bbc 160000
+--- a/third_party/libyuv
++++ b/third_party/libyuv
+@@ -1 +1 @@
+-Subproject commit 26e56be0f984af3dae4d0c0ab7a0bac8ac20e1b0
++Subproject commit 095b096bbcfcdb6ba56ecd5eaa3b6f08f56891a7
+diff --git a/third_party/pdfium b/third_party/pdfium
+index 23f70fdae6..ae134ecf9f 160000
+--- a/third_party/pdfium
++++ b/third_party/pdfium
+@@ -1 +1 @@
+-Subproject commit 23f70fdae651eff9740ef8c0eb31158029314f84
++Subproject commit ae134ecf9f083e4ee631c72193847523b9fa64c2
+diff --git a/third_party/perfetto b/third_party/perfetto
+index 9c7ce42050..af2d3682d7 160000
+--- a/third_party/perfetto
++++ b/third_party/perfetto
+@@ -1 +1 @@
+-Subproject commit 9c7ce42050379be8c24a270f395e00c7347965cb
++Subproject commit af2d3682d7a62286dfdaf08723adc520969589e4
+diff --git a/third_party/skia b/third_party/skia
+index 747cf654ed..772ce97ed0 160000
+--- a/third_party/skia
++++ b/third_party/skia
+@@ -1 +1 @@
+-Subproject commit 747cf654ed6f864f4402e7d6eb54a6ede60141e5
++Subproject commit 772ce97ed0e245372e3b3b016f800f3cd70490ef
+diff --git a/third_party/sqlite/src b/third_party/sqlite/src
+index 0a5fe1b18a..ef76d665c6 160000
+--- a/third_party/sqlite/src
++++ b/third_party/sqlite/src
+@@ -1 +1 @@
+-Subproject commit 0a5fe1b18a5b651b6c4c90d397e3d0b8061f73fb
++Subproject commit ef76d665c69e3cf037c3c548df5964b304b5082d
+diff --git a/third_party/webrtc b/third_party/webrtc
+index e1991d7f7b..aa32eb974e 160000
+--- a/third_party/webrtc
++++ b/third_party/webrtc
+@@ -1 +1 @@
+-Subproject commit e1991d7f7bd00eaa701dcdd8d6786b746c623c30
++Subproject commit aa32eb974e9bc8fca5828acaa99cbb04c79fc1bc
+diff --git a/v8 b/v8
+index e51a6bf02e..8473c26fa2 160000
+--- a/v8
++++ b/v8
+@@ -1 +1 @@
+-Subproject commit e51a6bf02e52f3dec9fee502db2594c0f5f51b37
++Subproject commit 8473c26fa2be91dfdc15ec384fc3fe825bd4adb5

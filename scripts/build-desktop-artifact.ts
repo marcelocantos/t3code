@@ -41,6 +41,11 @@ import {
   selectCliRuntimeExternalDependencies,
 } from "./lib/cli-external-packages.ts";
 import { parsePluginBuildMode } from "./lib/plugin-build-mode.ts";
+import { parseBuildEdition } from "./lib/build-edition.ts";
+import {
+  verifyCorporateElectronDistribution,
+  verifyCorporatePackagedApp,
+} from "./lib/corporate-electron-distribution.ts";
 import { loadRepoEnv } from "./lib/public-config.ts";
 import { selectDesktopRuntimeExternalDependencies } from "./lib/desktop-external-packages.ts";
 import { resolveCatalogDependencies } from "./lib/resolve-catalog.ts";
@@ -66,13 +71,22 @@ import { ChildProcess, ChildProcessSpawner } from "effect/process";
 const LINUX_ICON_SIZES = [16, 22, 24, 32, 48, 64, 128, 256, 512] as const;
 // "parallel" installs beside the official app; "upgrade" keeps its identity and never updates.
 const PLUGIN_BUILD_MODE = parsePluginBuildMode(process.env.T3CODE_PLUGIN_BUILD);
+const CORPORATE_BUILD = parseBuildEdition(process.env.T3CODE_BUILD_EDITION) === "corporate";
+const CORPORATE_ELECTRON_DIST = process.env.T3CODE_CORPORATE_ELECTRON_DIST?.trim();
 const PLUGIN_BUILD = PLUGIN_BUILD_MODE === "parallel";
-const DESKTOP_APP_ID = PLUGIN_BUILD ? "com.marcelocantos.t3code.plugins" : "com.t3tools.t3code";
+const DESKTOP_APP_ID = CORPORATE_BUILD
+  ? "com.t3tools.t3code.corporate"
+  : PLUGIN_BUILD
+    ? "com.marcelocantos.t3code.plugins"
+    : "com.t3tools.t3code";
 const PLUGIN_MAC_ENTITLEMENTS = "apps/desktop/resources/entitlements.plugins.mac.plist";
 const APPLE_TEAM_ID_PATTERN = /^[A-Z0-9]{10}$/u;
 
 const BuildPlatform = Schema.Literals(["mac", "linux", "win"]);
 const BuildArch = Schema.Literals(["arm64", "x64", "universal"]);
+const CorporateBundleReceipt = Schema.fromJsonString(
+  Schema.Struct({ schemaVersion: Schema.Literal(1), edition: Schema.Literal("corporate") }),
+);
 
 const WorkspaceConfig = Schema.Struct({
   catalog: Schema.optional(Schema.Record(Schema.String, Schema.String)),
@@ -340,6 +354,15 @@ export class BuildCommandFailedError extends Schema.TaggedError<BuildCommandFail
     ].filter((section): section is string => section !== undefined);
     const outputSuffix = outputSections.length > 0 ? `\n\n${outputSections.join("\n\n")}` : "";
     return `Command exited with non-zero exit code (${this.exitCode})${outputSuffix}`;
+  }
+}
+
+export class CorporateDesktopBuildError extends Schema.TaggedError<CorporateDesktopBuildError>()(
+  "CorporateDesktopBuildError",
+  { cause: Schema.Defect() },
+) {
+  override get message() {
+    return "The corporate desktop build requires matching corporate bundles and a verified, patched macOS arm64 Electron distribution.";
   }
 }
 
@@ -1848,7 +1871,11 @@ const buildDesktopBundlesUnlocked = Effect.fn("buildDesktopBundlesUnlocked")(fun
 ) {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
-  const spawnCommand = yield* resolveSpawnCommand("vp", ["run", "build:desktop"]);
+  const spawnCommand = yield* resolveSpawnCommand("vp", [
+    "run",
+    ...(CORPORATE_BUILD ? ["--no-cache"] : []),
+    "build:desktop",
+  ]);
   yield* Effect.acquireUseRelease(
     Effect.forEach(releasePackageFiles, (relativePath) =>
       Effect.gen(function* () {
@@ -2775,6 +2802,7 @@ export function resolvePackageManagerUserAgent(packageManager: string): string {
 }
 
 export function resolveDesktopProductName(version: string): string {
+  if (CORPORATE_BUILD) return "T3 Code Corporate";
   if (PLUGIN_BUILD) return "T3 Code+";
   return resolveDesktopUpdateChannel(version) === "nightly"
     ? "T3 Code (Nightly)"
@@ -2801,7 +2829,10 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
     afterPack: (yield* Path.Path).join(yield* RepoRoot, "scripts/prepare-server-compile-cache.cjs"),
     appId: DESKTOP_APP_ID,
     productName: resolveDesktopProductName(version),
-    artifactName: "T3-Code-${version}-${arch}.${ext}",
+    artifactName: CORPORATE_BUILD
+      ? "T3-Code-Corporate-${version}-${arch}.${ext}"
+      : "T3-Code-${version}-${arch}.${ext}",
+    ...(CORPORATE_BUILD ? { electronDist: CORPORATE_ELECTRON_DIST } : {}),
     electronLanguages: [...DESKTOP_ELECTRON_LANGUAGES],
     files: [
       ...DESKTOP_FILE_EXCLUSIONS,
@@ -2819,7 +2850,23 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
       ? { asar: { smartUnpack: false }, asarUnpack: [WINDOWS_NATIVE_ASAR_UNPACK_GLOB] }
       : { asarUnpack: ["**/node_modules/@transcribe-cpp/**/*.{dylib,so,so.*}"] }),
     extraResources: [
-      ...DESKTOP_EXTRA_RESOURCES,
+      ...DESKTOP_EXTRA_RESOURCES.filter(
+        (resource) => !CORPORATE_BUILD || resource.to !== "node_modules/@cursor",
+      ),
+      ...(CORPORATE_BUILD
+        ? [
+            "provenance.json",
+            "network-evidence.json",
+            "LICENSE",
+            "LICENSES.chromium.html",
+            "NODE-LICENSE",
+            "CORPORATE-PATCH-LICENSE",
+            "CORPORATE-NOTICE",
+          ].map((name) => ({
+            from: `${CORPORATE_ELECTRON_DIST}/${name}`,
+            to: `corporate-runtime/${name}`,
+          }))
+        : []),
       ...(platform === "linux" ? LINUX_CAPTURE_EXTRA_RESOURCES : []),
       ...(platform === "linux" ? LINUX_BROWSER_SECRET_EXTRA_RESOURCES : []),
       ...(platform === "win" ? WINDOWS_SERVER_EXTRA_RESOURCES : []),
@@ -2829,7 +2876,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
   const updateChannel = resolveDesktopUpdateChannel(version);
   // Missing publish config infers a GitHub feed from tokens; staging has no repository, so manifest generation would crash.
   buildConfig.publish = null;
-  if (PLUGIN_BUILD_MODE === "off" && !isDesktopPreviewVersion(version)) {
+  if (!CORPORATE_BUILD && PLUGIN_BUILD_MODE === "off" && !isDesktopPreviewVersion(version)) {
     const publishConfig = yield* resolveGitHubPublishConfig(updateChannel);
     if (publishConfig) {
       buildConfig.publish = [publishConfig];
@@ -2888,17 +2935,19 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
           },
         ],
       },
-      protocols: [
-        {
-          name: "T3 Code",
-          schemes: ["t3code", "t3code-dev"],
-        },
-        {
-          name: "Web site URL",
-          schemes: ["http", "https"],
-          role: "Viewer",
-        },
-      ],
+      protocols: CORPORATE_BUILD
+        ? []
+        : [
+            {
+              name: "T3 Code",
+              schemes: ["t3code", "t3code-dev"],
+            },
+            {
+              name: "Web site URL",
+              schemes: ["http", "https"],
+              role: "Viewer",
+            },
+          ],
       ...(signed ? { sign: path.join(repoRoot, "scripts/sign-macos.ts") } : {}),
       // Plugin builds sign with a Developer ID outside T3's team, so they carry no
       // provisioning profile and only unrestricted entitlements.
@@ -2950,12 +2999,14 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
       category: "Development",
       synopsis: "Desktop GUI for coding agents",
       maintainer: "T3 Tools <hello@t3.codes>",
-      protocols: [
-        {
-          name: "T3 Code",
-          schemes: ["t3code", "t3code-dev"],
-        },
-      ],
+      protocols: CORPORATE_BUILD
+        ? []
+        : [
+            {
+              name: "T3 Code",
+              schemes: ["t3code", "t3code-dev"],
+            },
+          ],
       desktop: {
         entry: {
           // Match Electron's WM_CLASS from setDesktopName so docks use this launcher.
@@ -3594,6 +3645,7 @@ export class MacPackagedAppMissingError extends Schema.TaggedError<MacPackagedAp
 
 export const validateMacPackagedPayload = Effect.fn("desktopArtifact.validateMacPackagedPayload")(
   function* (input: { readonly stageDistDir: string; readonly verbose?: boolean }) {
+    const repoRoot = yield* RepoRoot;
     const fs = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
     const asarPaths: string[] = [];
@@ -3612,6 +3664,13 @@ export const validateMacPackagedPayload = Effect.fn("desktopArtifact.validateMac
     }
     for (const asarPath of asarPaths) {
       yield* verifyPackagedBundleIsSelfContained({ asarPath, verbose: input.verbose ?? false });
+      if (CORPORATE_BUILD) {
+        const appDirectory = path.dirname(path.dirname(path.dirname(asarPath)));
+        yield* Effect.tryPromise({
+          try: () => verifyCorporatePackagedApp(appDirectory, "T3 Code Corporate", repoRoot),
+          catch: (cause) => new CorporateDesktopBuildError({ cause }),
+        });
+      }
     }
     yield* Effect.log(
       `[desktop-artifact] Validated macOS payload (${String(asarPaths.length)} app bundle(s)).`,
@@ -3654,6 +3713,25 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
   const path = yield* Path.Path;
   const fs = yield* FileSystem.FileSystem;
   const hostPlatform = yield* HostProcess.Platform;
+  if (CORPORATE_BUILD) {
+    yield* Effect.tryPromise({
+      try: async () => {
+        if (
+          options.platform !== "mac" ||
+          options.arch !== "arm64" ||
+          CORPORATE_ELECTRON_DIST === undefined ||
+          PLUGIN_BUILD_MODE !== "off" ||
+          options.wslRuntime !== undefined
+        ) {
+          throw new Error(
+            "Select mac/arm64, T3CODE_CORPORATE_ELECTRON_DIST and no plugin or WSL build mode.",
+          );
+        }
+        await verifyCorporateElectronDistribution(CORPORATE_ELECTRON_DIST, repoRoot);
+      },
+      catch: (cause) => new CorporateDesktopBuildError({ cause }),
+    });
+  }
   if (hostPlatform === "linux" && options.platform === "linux") {
     yield* preflightLinuxDesktopBuild(options.arch);
   }
@@ -3709,7 +3787,17 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
         manifestPath: "apps/server/package.json",
         cause,
       }),
-  });
+  }).pipe(
+    Effect.map((dependencies) =>
+      CORPORATE_BUILD
+        ? Object.fromEntries(
+            Object.entries(dependencies).filter(
+              ([name]) => name !== "@cursor/sdk" && !name.startsWith("@statsig/"),
+            ),
+          )
+        : dependencies,
+    ),
+  );
   const resolvedServerRuntimeExternalDependencies = selectCliRuntimeExternalDependencies(
     resolvedServerDependencies,
   );
@@ -3721,14 +3809,28 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
         manifestPath: "apps/desktop/package.json",
         cause,
       }),
-  });
+  }).pipe(
+    Effect.map((dependencies) =>
+      CORPORATE_BUILD
+        ? Object.fromEntries(
+            Object.entries(dependencies).filter(([name]) => !name.startsWith("@clerk/")),
+          )
+        : dependencies,
+    ),
+  );
 
   const appVersion =
     options.version ?? resolveTaggedSourceVersion(repoRoot, serverPackageJson.version);
   const iconAssets = resolveDesktopBuildIconAssets(appVersion);
   const commitHash = yield* resolveGitCommitHash(repoRoot);
   const mkdir = options.keepStage ? fs.makeTempDirectory : fs.makeTempDirectoryScoped;
+  const corporateScratchRoot = CORPORATE_BUILD
+    ? (yield* (yield* ChildProcessSpawner.ChildProcessSpawner).string(
+        ChildProcess.make("scratch-root"),
+      )).trim()
+    : undefined;
   const stageRoot = yield* mkdir({
+    ...(corporateScratchRoot ? { directory: corporateScratchRoot } : {}),
     prefix: `t3code-desktop-${options.platform}-stage-`,
   });
 
@@ -3886,7 +3988,7 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
   yield* fs.copy(stageResourcesDir, stageProdResourcesDir);
 
   const configuredMacPasskeySigning =
-    options.platform === "mac" && options.signed && PLUGIN_BUILD_MODE === "off"
+    !CORPORATE_BUILD && options.platform === "mac" && options.signed && PLUGIN_BUILD_MODE === "off"
       ? yield* Effect.try({
           try: () => resolveMacPasskeySigningConfiguration(loadRepoEnv({ repoRoot })),
           catch: MacPasskeySigningConfigurationResolutionError.fromCause,
@@ -3943,7 +4045,7 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
       ? path.join(stageAppDir, WINDOWS_SERVER_RESOURCE_SOURCE_DIR, WINDOWS_SERVER_ASAR_RESOURCE)
       : undefined;
   const stagePackageJson: StagePackageJson = {
-    name: PLUGIN_BUILD ? "t3code-plugins" : "t3code",
+    name: CORPORATE_BUILD ? "t3code-corporate" : PLUGIN_BUILD ? "t3code-plugins" : "t3code",
     version: appVersion,
     buildVersion: appVersion,
     t3codeCommitHash: commitHash,
@@ -4007,7 +4109,8 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
     }),
     { label: "vp install --prod", verbose: options.verbose },
   );
-  yield* stageClerkPasskeyNativeBinaries(stageAppDir, options.platform, options.arch);
+  if (!CORPORATE_BUILD)
+    yield* stageClerkPasskeyNativeBinaries(stageAppDir, options.platform, options.arch);
   yield* stageKeyringNativeBinaries(stageAppDir, options.platform, options.arch);
 
   if (options.platform === "win" && windowsServerAsarPath) {
@@ -4026,13 +4129,14 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
       verbose: options.verbose,
     });
   }
-  yield* stageCursorSdkPlatformPackages(
-    path.join(
-      options.platform === "win" ? path.join(stageRoot, "server") : stageAppDir,
-      "node_modules",
-    ),
-    path.join(stageProdResourcesDir, "cursor-sdk"),
-  );
+  if (!CORPORATE_BUILD)
+    yield* stageCursorSdkPlatformPackages(
+      path.join(
+        options.platform === "win" ? path.join(stageRoot, "server") : stageAppDir,
+        "node_modules",
+      ),
+      path.join(stageProdResourcesDir, "cursor-sdk"),
+    );
   if (
     options.wslRuntime !== undefined &&
     bundlesWslRuntime({ platform: options.platform, runtimeArchivePath: options.wslRuntime })
@@ -4108,6 +4212,18 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
     "--publish",
     "never",
   ];
+  if (CORPORATE_BUILD) {
+    for (const directory of [
+      distDirs.desktopDist,
+      distDirs.serverDist,
+      path.join(distDirs.serverDist, "client"),
+    ]) {
+      yield* fs.readFileString(path.join(directory, "build-edition.json")).pipe(
+        Effect.flatMap(Schema.decodeEffect(CorporateBundleReceipt)),
+        Effect.mapError((cause) => new CorporateDesktopBuildError({ cause })),
+      );
+    }
+  }
   const builderCommand = yield* resolveSpawnCommand("vp", builderArgs, { env: buildEnv });
   yield* runCommand(
     ChildProcess.make(builderCommand.command, builderCommand.args, {

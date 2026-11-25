@@ -1,5 +1,11 @@
 import type { Plugin } from "vite-plus";
 
+export function isCorporateExcludedModule(id: string): boolean {
+  return /(?:^|\/)(?:@clerk(?:\/|\+)|@statsig(?:\/|\+)|@cursor(?:\/|\+)sdk(?:\/|@|-|$)|electron-updater(?:\/|@|$))/u.test(
+    id.replaceAll("\\", "/"),
+  );
+}
+
 export function corporateArtifactsPlugin(edition: "standard" | "corporate"): Plugin {
   return {
     name: "t3code:corporate-artifacts",
@@ -13,14 +19,12 @@ export function corporateArtifactsPlugin(edition: "standard" | "corporate"): Plu
       const forbidden = new Set<string>();
       for (const chunk of Object.values(bundle)) {
         if (chunk.type !== "chunk") continue;
-        for (const id of Object.keys(chunk.modules)) {
-          const normalized = id.replaceAll("\\", "/");
-          if (
-            normalized.includes("/node_modules/") &&
-            (normalized.includes("/@clerk/") || normalized.includes("/electron-updater/"))
-          ) {
-            forbidden.add(id);
-          }
+        for (const id of [
+          ...Object.keys(chunk.modules),
+          ...chunk.imports,
+          ...chunk.dynamicImports,
+        ]) {
+          if (isCorporateExcludedModule(id)) forbidden.add(id);
         }
       }
       if (forbidden.size > 0) {

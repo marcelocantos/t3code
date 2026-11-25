@@ -284,6 +284,48 @@ DMGs default to the host architecture. Use `--arch` to choose another target and
 to retain packaging files for inspection. Run `vp run dist:desktop:artifact --help` for other
 options.
 
+### Corporate edition
+
+The corporate desktop target is local machine only and currently supports macOS arm64.
+It has a separate app identity, Electron profile and default T3 home (`~/.t3-corporate`).
+Connect, remote environments, hosted sign-in, product telemetry and automatic updates cannot
+be enabled by saved settings or environment variables. Administrator policy can restrict it further.
+
+Build the pinned native Electron distribution first. This requires the macOS 26.5 SDK,
+Apple's Metal compiler and substantial source-build disk space. Build downloads occur on the
+build machine. The source builder uses `scratch-root` and retains its source tree on failure.
+
+```sh
+pueue add --group default --label 'corporate Electron' -- node scripts/build-corporate-electron.ts --sdk-path /Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk --output-dir .t3/corporate-electron
+```
+
+After that task passes, build the application beside the installed edition:
+
+```sh
+T3CODE_BUILD_EDITION=corporate T3CODE_CORPORATE_ELECTRON_DIST="$PWD/.t3/corporate-electron" pueue add --group default --label 'corporate desktop' -- node scripts/build-desktop-artifact.ts --platform mac --arch arm64 --target dir --output-dir .t3/corporate-artifacts
+```
+
+The packager checks source pins, runtime file hashes and patch hashes, reruns the native network
+checks, and requires corporate receipts from every application bundle. It refuses stock Electron;
+setting the build variable alone does not create a restricted runtime. The standalone Node source
+builder (`build:corporate:node --output-dir <new-directory>`) provides the corresponding CLI runtime.
+
+T3's native TCP transports allow loopback; external TCP, DNS and all UDP are denied. This preserves
+the local UI, MCP and local provider transports. Chromium sessions also have request and content
+policies. Corporate browser UI does not use WebRTC; device streams requiring it are unavailable.
+Use `127.0.0.1` or `localhost` for UI services, since Chromium CSP does not accept IPv6 literals.
+
+Install provider and device tools independently. ACP supports configured local executables only;
+registry downloads and managed installers are excluded. Cursor uses the separate, initially disabled
+`Cursor (CLI)` instance (`agent acp`), rather than its in-process SDK. Existing SDK sessions are not
+converted to ACP sessions. Direct external API features, online catalogs, pricing refresh, remote
+media and downloadable themes are unavailable; bundled/local alternatives remain usable.
+
+Harnesses, Git, terminals and independently executed tools retain their own networking and telemetry.
+Opening an explicit external link hands it to the system browser. Native addons and arbitrary FFI
+are outside this socket-wrapper guarantee, and permitted loopback peers can proxy external traffic;
+this edition is not an operating-system sandbox against arbitrary code execution.
+
 ### Prepared server bytecode
 
 Native macOS and Windows desktop artifact builds, and native Linux x64 and ARM64 builds, generate server

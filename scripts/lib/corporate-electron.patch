@@ -1,0 +1,77 @@
+diff --git a/shell/browser/api/electron_api_crash_reporter.cc b/shell/browser/api/electron_api_crash_reporter.cc
+index de88147..4cb3f5a 100644
+--- a/shell/browser/api/electron_api_crash_reporter.cc
++++ b/shell/browser/api/electron_api_crash_reporter.cc
+@@ -135,47 +135,8 @@ void Start(const std::string& submit_url,
+            const std::map<std::string, std::string>& global_extra,
+            const std::map<std::string, std::string>& extra,
+            bool is_node_process) {
+-  TRACE_EVENT0("electron", "crash_reporter::Start");
+-#if !IS_MAS_BUILD()
+-  if (g_crash_reporter_initialized)
+-    return;
+-  g_crash_reporter_initialized = true;
+-  ElectronCrashReporterClient::Create();
+-  ElectronCrashReporterClient::Get()->SetUploadUrl(submit_url);
+-  ElectronCrashReporterClient::Get()->SetCollectStatsConsent(upload_to_server);
+-  ElectronCrashReporterClient::Get()->SetShouldRateLimit(rate_limit);
+-  ElectronCrashReporterClient::Get()->SetShouldCompressUploads(compress);
+-  ElectronCrashReporterClient::Get()->SetGlobalAnnotations(global_extra);
+-  std::string process_type = is_node_process ? "node" : GetProcessType();
+-#if BUILDFLAG(IS_LINUX)
+-  for (const auto& pair : extra)
+-    electron::crash_keys::SetCrashKey(pair.first, pair.second);
+-  {
+-    electron::ScopedAllowBlockingForElectron allow_blocking;
+-    ::crash_reporter::InitializeCrashpad(IsBrowserProcess(), process_type);
+-  }
+-  if (ignore_system_crash_handler) {
+-    crashpad::CrashpadInfo::GetCrashpadInfo()
+-        ->set_system_crash_reporter_forwarding(crashpad::TriState::kDisabled);
+-  }
+-#elif BUILDFLAG(IS_MAC)
+-  for (const auto& pair : extra)
+-    electron::crash_keys::SetCrashKey(pair.first, pair.second);
+-  ::crash_reporter::InitializeCrashpad(IsBrowserProcess(), process_type);
+-  if (ignore_system_crash_handler) {
+-    crashpad::CrashpadInfo::GetCrashpadInfo()
+-        ->set_system_crash_reporter_forwarding(crashpad::TriState::kDisabled);
+-  }
+-#elif BUILDFLAG(IS_WIN)
+-  for (const auto& pair : extra)
+-    electron::crash_keys::SetCrashKey(pair.first, pair.second);
+-  base::FilePath user_data_dir;
+-  base::PathService::Get(chrome::DIR_USER_DATA, &user_data_dir);
+-  ::crash_reporter::InitializeCrashpadWithEmbeddedHandler(
+-      IsBrowserProcess(), process_type, base::WideToUTF8(user_data_dir.value()),
+-      base::FilePath());
+-#endif
+-#endif
++  return;
++
+ }
+ 
+ }  // namespace electron::api::crash_reporter
+@@ -237,19 +198,13 @@ v8::Local<v8::Value> GetUploadedReports(v8::Isolate* isolate) {
+ #endif
+ 
+ void SetUploadToServer(bool upload) {
+-#if !IS_MAS_BUILD()
+-  ElectronCrashReporterClient::Get()->SetCollectStatsConsent(upload);
+-  // Reads the consent set above back through IsRunningUnattended().
+-  crash_reporter::SetUploadConsent(upload);
+-#endif
++  return;
++
+ }
+ 
+ bool GetUploadToServer() {
+-#if IS_MAS_BUILD()
+   return false;
+-#else
+-  return ElectronCrashReporterClient::Get()->GetCollectStatsConsent();
+-#endif
++
+ }
+ 
+ v8::Local<v8::Value> GetParameters(v8::Isolate* isolate) {

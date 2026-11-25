@@ -93,7 +93,7 @@ const bundledDev = bundledDevEnv === "1" || bundledDevEnv === "true";
 const rolldownWatchExclude = [/[\\/]node_modules[\\/]/];
 
 const buildSourcemap: boolean | "hidden" =
-  sourcemapEnv === "0" || sourcemapEnv === "false"
+  buildEdition === "corporate" || sourcemapEnv === "0" || sourcemapEnv === "false"
     ? false
     : sourcemapEnv === "hidden"
       ? "hidden"

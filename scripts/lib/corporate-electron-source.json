@@ -1,0 +1,9 @@
+{
+  "version": "44.10.1",
+  "commit": "7436db97ffc521bcd98707eaa3e057c2b5bb0423",
+  "chromium": "152.0.7977.169",
+  "node": "24.22.1",
+  "depotToolsCommit": "ac31fc680158b9ad57e4020e53943a6abd85fcd7",
+  "sdk": "26.5",
+  "gnArgs": "import(\"//electron/build/args/release.gn\") target_cpu=\"arm64\" use_remoteexec=false use_siso=false symbol_level=0 is_debug=false mac_sdk_path=\"//out/Corporate/sdk/CorporateMacOSX26.5.sdk\" node_enable_inspector=false"
+}

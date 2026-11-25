@@ -1,0 +1,401 @@
+diff --git a/lib/dns.js b/lib/dns.js
+index 5452e732..f9f2dee0 100644
+--- a/lib/dns.js
++++ b/lib/dns.js
+@@ -22,6 +22,7 @@
+ 'use strict';
+ 
+ const {
++  StringPrototypeToLowerCase,
+   ObjectDefineProperties,
+   ObjectDefineProperty,
+   Symbol,
+@@ -211,6 +212,18 @@ function lookup(hostname, options, callback) {
+     return {};
+   }
+ 
++  if (StringPrototypeToLowerCase(hostname) === 'localhost' ||
++      StringPrototypeToLowerCase(hostname) === 'localhost.') {
++    if (all && family === 0) {
++      const addresses = dnsOrder === 'ipv6first' ?
++        [{ address: '::1', family: 6 }, { address: '127.0.0.1', family: 4 }] :
++        [{ address: '127.0.0.1', family: 4 }, { address: '::1', family: 6 }];
++      process.nextTick(callback, null, addresses);
++      return {};
++    }
++    hostname = family === 6 || (family === 0 && dnsOrder === 'ipv6first') ?
++      '::1' : '127.0.0.1';
++  }
+   const matchedFamily = isIP(hostname);
+   if (matchedFamily) {
+     if (all) {
+diff --git a/lib/internal/dns/promises.js b/lib/internal/dns/promises.js
+index 90c8b981..276538a6 100644
+--- a/lib/internal/dns/promises.js
++++ b/lib/internal/dns/promises.js
+@@ -1,5 +1,6 @@
+ 'use strict';
+ const {
++  StringPrototypeToLowerCase,
+   ArrayPrototypeMap,
+   FunctionPrototypeCall,
+   ObjectDefineProperty,
+@@ -141,6 +142,17 @@ function createLookupPromise(family, hostname, all, hints, dnsOrder) {
+       return;
+     }
+ 
++    if (StringPrototypeToLowerCase(hostname) === 'localhost' ||
++        StringPrototypeToLowerCase(hostname) === 'localhost.') {
++      if (all && family === 0) {
++        resolve(dnsOrder === 'ipv6first' ?
++          [{ address: '::1', family: 6 }, { address: '127.0.0.1', family: 4 }] :
++          [{ address: '127.0.0.1', family: 4 }, { address: '::1', family: 6 }]);
++        return;
++      }
++      hostname = family === 6 || (family === 0 && dnsOrder === 'ipv6first') ?
++        '::1' : '127.0.0.1';
++    }
+     const matchedFamily = isIP(hostname);
+ 
+     if (matchedFamily !== 0) {
+diff --git a/src/cares_wrap.cc b/src/cares_wrap.cc
+index a61a8c62..1be45ed7 100644
+--- a/src/cares_wrap.cc
++++ b/src/cares_wrap.cc
+@@ -1781,34 +1781,9 @@ Maybe<int> ReverseTraits::Parse(QueryReverseWrap* wrap,
+ namespace {
+ template <class Wrap>
+ static void Query(const FunctionCallbackInfo<Value>& args) {
+-  ChannelWrap* channel;
+-  ASSIGN_OR_RETURN_UNWRAP(&channel, args.This());
+-
+-  CHECK_EQ(false, args.IsConstructCall());
+-  CHECK(args[0]->IsObject());
+-  CHECK(args[1]->IsString());
+-
+-  Local<Object> req_wrap_obj = args[0].As<Object>();
+-  Local<String> string = args[1].As<String>();
+-  auto wrap = std::make_unique<Wrap>(channel, req_wrap_obj);
+-
+-  node::Utf8Value utf8name(args.GetIsolate(), string);
+-  auto plain_name = utf8name.ToStringView();
+-  std::string name = ada::idna::to_ascii(plain_name);
++  args.GetReturnValue().Set(UV_EACCES);
++  return;
+ 
+-  // Ensure c-ares did not fall back to loopback resolver.
+-  channel->EnsureServers();
+-
+-  channel->ModifyActivityQueryCount(1);
+-  int err = wrap->Send(name.c_str());
+-  if (err) {
+-    channel->ModifyActivityQueryCount(-1);
+-  } else {
+-    // Release ownership of the pointer allowing the ownership to be transferred
+-    USE(wrap.release());
+-  }
+-
+-  args.GetReturnValue().Set(err);
+ }
+ 
+ void AfterGetAddrInfo(uv_getaddrinfo_t* req, int status, struct addrinfo* res) {
+@@ -1965,97 +1940,16 @@ void ConvertIpv6StringToBuffer(const FunctionCallbackInfo<Value>& args) {
+ }
+ 
+ void GetAddrInfo(const FunctionCallbackInfo<Value>& args) {
+-  Environment* env = Environment::GetCurrent(args);
+-
+-  CHECK(args[0]->IsObject());
+-  CHECK(args[1]->IsString());
+-  CHECK(args[2]->IsInt32());
+-  CHECK(args[4]->IsUint32());
+-  Local<Object> req_wrap_obj = args[0].As<Object>();
+-  node::Utf8Value hostname(env->isolate(), args[1]);
+-  std::string ascii_hostname = ada::idna::to_ascii(hostname.ToStringView());
+-
+-  int32_t flags = 0;
+-  if (args[3]->IsInt32()) {
+-    flags = args[3].As<Int32>()->Value();
+-  }
++  args.GetReturnValue().Set(UV_EACCES);
++  return;
+ 
+-  int family;
+-
+-  switch (args[2].As<Int32>()->Value()) {
+-    case 0:
+-      family = AF_UNSPEC;
+-      break;
+-    case 4:
+-      family = AF_INET;
+-      break;
+-    case 6:
+-      family = AF_INET6;
+-      break;
+-    default:
+-      UNREACHABLE("bad address family");
+-  }
+-
+-  Local<Uint32> order = args[4].As<Uint32>();
+-
+-  auto req_wrap =
+-      std::make_unique<GetAddrInfoReqWrap>(env, req_wrap_obj, order->Value());
+-
+-  struct addrinfo hints;
+-  memset(&hints, 0, sizeof(hints));
+-  hints.ai_family = family;
+-  hints.ai_socktype = SOCK_STREAM;
+-  hints.ai_flags = flags;
+-
+-  TRACE_EVENT_NESTABLE_ASYNC_BEGIN2(TRACING_CATEGORY_NODE2(dns, native),
+-                                    "lookup",
+-                                    req_wrap.get(),
+-                                    "hostname",
+-                                    TRACE_STR_COPY(ascii_hostname.data()),
+-                                    "family",
+-                                    family == AF_INET    ? "ipv4"
+-                                    : family == AF_INET6 ? "ipv6"
+-                                                         : "unspec");
+-
+-  int err = req_wrap->Dispatch(
+-      uv_getaddrinfo, AfterGetAddrInfo, ascii_hostname.data(), nullptr, &hints);
+-  if (err == 0)
+-    // Release ownership of the pointer allowing the ownership to be transferred
+-    USE(req_wrap.release());
+-
+-  args.GetReturnValue().Set(err);
+ }
+ 
+ 
+ void GetNameInfo(const FunctionCallbackInfo<Value>& args) {
+-  Environment* env = Environment::GetCurrent(args);
++  args.GetReturnValue().Set(UV_EACCES);
++  return;
+ 
+-  CHECK(args[0]->IsObject());
+-  CHECK(args[1]->IsString());
+-  CHECK(args[2]->IsUint32());
+-  Local<Object> req_wrap_obj = args[0].As<Object>();
+-  node::Utf8Value ip(env->isolate(), args[1]);
+-  const unsigned port = args[2]->Uint32Value(env->context()).FromJust();
+-  struct sockaddr_storage addr;
+-
+-  CHECK(uv_ip4_addr(*ip, port, reinterpret_cast<sockaddr_in*>(&addr)) == 0 ||
+-        uv_ip6_addr(*ip, port, reinterpret_cast<sockaddr_in6*>(&addr)) == 0);
+-
+-  auto req_wrap = std::make_unique<GetNameInfoReqWrap>(env, req_wrap_obj);
+-
+-  TRACE_EVENT_NESTABLE_ASYNC_BEGIN2(
+-      TRACING_CATEGORY_NODE2(dns, native), "lookupService", req_wrap.get(),
+-      "ip", TRACE_STR_COPY(*ip), "port", port);
+-
+-  int err = req_wrap->Dispatch(uv_getnameinfo,
+-                               AfterGetNameInfo,
+-                               reinterpret_cast<struct sockaddr*>(&addr),
+-                               NI_NAMEREQD);
+-  if (err == 0)
+-    // Release ownership of the pointer allowing the ownership to be transferred
+-    USE(req_wrap.release());
+-
+-  args.GetReturnValue().Set(err);
+ }
+ 
+ 
+diff --git a/src/node_process_object.cc b/src/node_process_object.cc
+index 5f5af634..a2d3fd20 100644
+--- a/src/node_process_object.cc
++++ b/src/node_process_object.cc
+@@ -91,6 +91,13 @@ static void SetVersions(Isolate* isolate, Local<Object> versions) {
+                             v8::ReadOnly)
+         .Check();
+   }
++  versions
++      ->DefineOwnProperty(
++          context,
++          FIXED_ONE_BYTE_STRING(isolate, "t3_corporate_network"),
++          FIXED_ONE_BYTE_STRING(isolate, "loopback-v1"),
++          static_cast<v8::PropertyAttribute>(v8::ReadOnly | v8::DontDelete))
++      .Check();
+ }
+ 
+ MaybeLocal<Object> CreateProcessObject(Realm* realm) {
+diff --git a/src/stream_wrap.cc b/src/stream_wrap.cc
+index 26472fc8..670c1d69 100644
+--- a/src/stream_wrap.cc
++++ b/src/stream_wrap.cc
+@@ -20,6 +20,7 @@
+ // USE OR OTHER DEALINGS IN THE SOFTWARE.
+ 
+ #include "stream_wrap.h"
++#include "t3_corporate_network.h"
+ #include "stream_base-inl.h"
+ 
+ #include "env-inl.h"
+@@ -264,6 +265,15 @@ static MaybeLocal<Object> AcceptHandle(Environment* env,
+   if (uv_accept(parent->stream(), stream))
+     ABORT();
+ 
++  if constexpr (std::is_same<WrapType, TCPWrap>::value) {
++    if (!T3CorporateTcpHandleAllowed(reinterpret_cast<uv_tcp_t*>(stream))) {
++      wrap->Close();
++      errors::TriggerUncaughtException(
++          env->isolate(), UVException(env->isolate(), UV_EACCES, "accept"), {});
++      return Local<Object>();
++    }
++  }
++
+   return scope.Escape(wrap_obj);
+ }
+ 
+diff --git a/src/t3_corporate_network.h b/src/t3_corporate_network.h
+new file mode 100644
+index 00000000..fcb357f4
+--- /dev/null
++++ b/src/t3_corporate_network.h
+@@ -0,0 +1,49 @@
++// Copyright 2026 Marcelo Cantos
++// SPDX-License-Identifier: Apache-2.0
++#ifndef SRC_T3_CORPORATE_NETWORK_H_
++#define SRC_T3_CORPORATE_NETWORK_H_
++
++#include <cstring>
++#include "uv.h"
++
++namespace node {
++
++inline bool T3CorporateLoopback(const sockaddr* address) {
++  constexpr unsigned char kIPv4LoopbackPrefix = 127;
++  constexpr unsigned char kIPv6Loopback[] = {
++      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1};
++  constexpr unsigned char kIPv4MappedPrefix[] = {
++      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff};
++  if (address->sa_family == AF_INET) {
++    const auto* ipv4 = reinterpret_cast<const sockaddr_in*>(address);
++    const auto* bytes = reinterpret_cast<const unsigned char*>(&ipv4->sin_addr);
++    return bytes[0] == kIPv4LoopbackPrefix;
++  }
++  if (address->sa_family == AF_INET6) {
++    const auto* ipv6 = reinterpret_cast<const sockaddr_in6*>(address);
++    const auto* bytes = reinterpret_cast<const unsigned char*>(&ipv6->sin6_addr);
++    return std::memcmp(bytes, kIPv6Loopback, sizeof(kIPv6Loopback)) == 0 ||
++           (std::memcmp(bytes, kIPv4MappedPrefix, sizeof(kIPv4MappedPrefix)) == 0 &&
++            bytes[sizeof(kIPv4MappedPrefix)] == kIPv4LoopbackPrefix);
++  }
++  return false;
++}
++
++
++inline bool T3CorporateTcpHandleAllowed(uv_tcp_t* handle) {
++  sockaddr_storage address;
++  int length = sizeof(address);
++  const int peer = uv_tcp_getpeername(
++      handle, reinterpret_cast<sockaddr*>(&address), &length);
++  if (peer != 0 && peer != UV_ENOTCONN) return false;
++  if (peer == 0 && !T3CorporateLoopback(reinterpret_cast<sockaddr*>(&address)))
++    return false;
++  length = sizeof(address);
++  return uv_tcp_getsockname(
++             handle, reinterpret_cast<sockaddr*>(&address), &length) == 0 &&
++         T3CorporateLoopback(reinterpret_cast<sockaddr*>(&address));
++}
++
++}  // namespace node
++
++#endif  // SRC_T3_CORPORATE_NETWORK_H_
+diff --git a/src/tcp_wrap.cc b/src/tcp_wrap.cc
+index 7ed24661..1c15cfa1 100644
+--- a/src/tcp_wrap.cc
++++ b/src/tcp_wrap.cc
+@@ -20,6 +20,7 @@
+ // USE OR OTHER DEALINGS IN THE SOFTWARE.
+ 
+ #include "tcp_wrap.h"
++#include "t3_corporate_network.h"
+ #ifdef _WIN32
+ #include <winsock2.h>
+ #include <ws2tcpip.h>
+@@ -365,18 +366,9 @@ void TCPWrap::SetSimultaneousAccepts(const FunctionCallbackInfo<Value>& args) {
+ #endif
+ 
+ void TCPWrap::Open(const FunctionCallbackInfo<Value>& args) {
+-  TCPWrap* wrap;
+-  ASSIGN_OR_RETURN_UNWRAP(
+-      &wrap, args.This(), args.GetReturnValue().Set(UV_EBADF));
+-  int64_t val;
+-  if (!args[0]->IntegerValue(args.GetIsolate()->GetCurrentContext()).To(&val))
+-    return;
+-  int fd = static_cast<int>(val);
+-  int err = uv_tcp_open(&wrap->handle_, fd);
++  args.GetReturnValue().Set(UV_EACCES);
++  return;
+ 
+-  if (err == 0) wrap->set_fd(fd);
+-
+-  args.GetReturnValue().Set(err);
+ }
+ 
+ BaseObject::TransferMode TCPWrap::GetTransferMode() const {
+@@ -470,6 +462,10 @@ BaseObjectPtr<BaseObject> TCPWrap::TransferData::Deserialize(
+   wrap->set_fd(socket_);
+   socket_ = -1;
+ #endif
++  if (!T3CorporateTcpHandleAllowed(&wrap->handle_)) {
++    wrap->Close();
++    return {};
++  }
+   return BaseObjectPtr<BaseObject>(wrap);
+ }
+ 
+@@ -497,6 +493,9 @@ void TCPWrap::Bind(const FunctionCallbackInfo<Value>& args,
+ 
+   T addr;
+   int err = uv_ip_addr(*ip_address, port, &addr);
++  if (err == 0 && !T3CorporateLoopback(reinterpret_cast<const sockaddr*>(&addr))) {
++    err = UV_EACCES;
++  }
+ 
+   if (err == 0) {
+     err = uv_tcp_bind(
+@@ -521,8 +520,17 @@ void TCPWrap::Listen(const FunctionCallbackInfo<Value>& args) {
+   int backlog;
+   if (!args[0]->Int32Value(env->context()).To(&backlog)) return;
+ 
+-  int err = uv_listen(
+-      reinterpret_cast<uv_stream_t*>(&wrap->handle_), backlog, OnConnection);
++  sockaddr_storage address;
++  int length = sizeof(address);
++  int err = uv_tcp_getsockname(
++      &wrap->handle_, reinterpret_cast<sockaddr*>(&address), &length);
++  if (err == 0 && !T3CorporateLoopback(reinterpret_cast<sockaddr*>(&address))) {
++    err = UV_EACCES;
++  }
++  if (err == 0) {
++    err = uv_listen(
++        reinterpret_cast<uv_stream_t*>(&wrap->handle_), backlog, OnConnection);
++  }
+   args.GetReturnValue().Set(err);
+ }
+ 
+@@ -556,6 +564,9 @@ void TCPWrap::Connect(const FunctionCallbackInfo<Value>& args,
+ 
+   T addr;
+   int err = uv_ip_addr(*ip_address, port, &addr);
++  if (err == 0 && !T3CorporateLoopback(reinterpret_cast<const sockaddr*>(&addr))) {
++    err = UV_EACCES;
++  }
+ 
+   if (err == 0) {
+     AsyncHooks::DefaultTriggerAsyncIdScope trigger_scope(wrap);
+diff --git a/src/udp_wrap.cc b/src/udp_wrap.cc
+index e09cd7a5..fb0aad23 100644
+--- a/src/udp_wrap.cc
++++ b/src/udp_wrap.cc
+@@ -270,7 +270,7 @@ void UDPWrap::RegisterExternalReferences(ExternalReferenceRegistry* registry) {
+ void UDPWrap::New(const FunctionCallbackInfo<Value>& args) {
+   CHECK(args.IsConstructCall());
+   Environment* env = Environment::GetCurrent(args);
+-  new UDPWrap(env, args.This());
++  THROW_ERR_ACCESS_DENIED(env->isolate(), "UDP is disabled in the corporate runtime.");
+ }
+ 
+ 

@@ -1,0 +1,7 @@
+{
+  "version": "26.13.1",
+  "commit": "e9c277643b0249c50f6e6de5413be8a88ea11b6a",
+  "archive": "repos/nodejs/node/tarball/v26.13.1",
+  "sha256": "71771dc2cd5519caceb112c097b70cdca3d9d138307344d7ff8bd78387491585",
+  "configure": ["--ninja", "--without-npm", "--without-inspector", "--without-ffi"]
+}
