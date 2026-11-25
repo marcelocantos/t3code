@@ -9,7 +9,42 @@ import { listPackage } from "@electron/asar";
 import { isCorporateExcludedModule } from "./corporate-artifacts.ts";
 import source from "./corporate-electron-source.json" with { type: "json" };
 
+const EXCLUDED_NATIVE_COMPONENTS = new Set([
+  "squirrel.framework",
+  "reactiveobjc.framework",
+  "mantle.framework",
+  "shipit",
+  "shipit.app",
+  "chrome_crashpad_handler",
+]);
+
+export async function verifyCorporateNativePayload(appDirectory: string) {
+  const visit = async (directory: string): Promise<void> => {
+    for (const entry of await NodeFSP.readdir(directory, { withFileTypes: true })) {
+      const full = NodePath.join(directory, entry.name);
+      NodeAssert.ok(
+        !EXCLUDED_NATIVE_COMPONENTS.has(entry.name.toLowerCase()),
+        "Excluded native component: " + full,
+      );
+      if (entry.isDirectory()) await visit(full);
+    }
+  };
+  await visit(appDirectory);
+  const framework = NodePath.join(
+    appDirectory,
+    "Contents/Frameworks/Electron Framework.framework/Versions/A/Electron Framework",
+  );
+  const linked = NodeChildProcess.execFileSync("/usr/bin/otool", ["-L", framework], {
+    encoding: "utf8",
+  });
+  NodeAssert.ok(
+    !/(?:Squirrel|ReactiveObjC|Mantle)\.framework/iu.test(linked),
+    "Corporate Electron still links an updater framework.",
+  );
+}
+
 export async function verifyCorporateElectronDistribution(directory: string, repoRoot: string) {
+  await verifyCorporateNativePayload(NodePath.join(directory, "Electron.app"));
   const root = NodePath.resolve(directory);
   const receipt = JSON.parse(
     await NodeFSP.readFile(NodePath.join(root, "provenance.json"), "utf8"),
@@ -114,6 +149,7 @@ export async function verifyCorporatePackagedApp(
   executableName: string,
   repoRoot: string,
 ) {
+  await verifyCorporateNativePayload(appDirectory);
   const resources = NodePath.join(appDirectory, "Contents/Resources");
   const asar = NodePath.join(resources, "app.asar");
   for (const name of listPackage(asar, { isPack: false })) {
@@ -148,6 +184,19 @@ export async function verifyCorporatePackagedApp(
   );
   NodeAssert.equal(receipt.commit, source.commit);
   NodeAssert.equal(receipt.oraclePassed, true);
+  const framework = NodePath.join(
+    appDirectory,
+    "Contents/Frameworks/Electron Framework.framework/Versions/A/Electron Framework",
+  );
+  const hash = NodeCrypto.createHash("sha256");
+  for await (const chunk of NodeFS.createReadStream(framework)) hash.update(chunk);
+  NodeAssert.equal(
+    hash.digest("hex"),
+    receipt.files[
+      "Electron.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Electron Framework"
+    ]?.sha256,
+    "Packaged Electron Framework changed from the native-verified distribution.",
+  );
   const runtime = NodePath.join(appDirectory, "Contents/MacOS", executableName);
   NodeChildProcess.execFileSync(
     process.execPath,

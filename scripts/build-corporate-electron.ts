@@ -10,6 +10,7 @@ import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
 import * as NodeUtil from "node:util";
 import source from "./lib/corporate-electron-source.json" with { type: "json" };
+import { verifyCorporateNativePayload } from "./lib/corporate-electron-distribution.ts";
 
 const host = Effect.runSync(
   Effect.all({ platform: HostProcess.Platform, arch: HostProcess.Architecture }),
@@ -131,7 +132,22 @@ await run(
   [`-j${jobs}`, "-C", "out/Corporate", "electron:electron_dist_zip"],
   src,
 );
-const runtime = NodePath.join(build, "Electron.app/Contents/MacOS/Electron");
+await NodeFSP.mkdir(output);
+await run("ditto", ["-xk", NodePath.join(build, "dist.zip"), output]);
+await NodeFSP.rm(
+  NodePath.join(
+    output,
+    "Electron.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Helpers/chrome_crashpad_handler",
+  ),
+);
+for (const framework of ["Squirrel.framework", "ReactiveObjC.framework", "Mantle.framework"]) {
+  await NodeFSP.rm(NodePath.join(output, "Electron.app/Contents/Frameworks", framework), {
+    recursive: true,
+    force: true,
+  });
+}
+await verifyCorporateNativePayload(NodePath.join(output, "Electron.app"));
+const runtime = NodePath.join(output, "Electron.app/Contents/MacOS/Electron");
 await run(
   process.execPath,
   [
@@ -160,14 +176,6 @@ await run(
     NodePath.join(task, "network-evidence.json"),
   ],
   src,
-);
-await NodeFSP.mkdir(output);
-await run("ditto", ["-xk", NodePath.join(build, "dist.zip"), output]);
-await NodeFSP.rm(
-  NodePath.join(
-    output,
-    "Electron.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Helpers/chrome_crashpad_handler",
-  ),
 );
 await NodeFSP.copyFile(
   NodePath.join(src, "third_party/electron_node/LICENSE"),

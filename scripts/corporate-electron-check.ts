@@ -65,7 +65,7 @@ const port = address.port;
 const udpPort = udp.address().port;
 
 const probe = String.raw`
-const {app, BrowserWindow, session, net, crashReporter} = require('electron');
+const {app, BrowserWindow, session, net, crashReporter, autoUpdater} = require('electron');
 const assert = require('node:assert/strict');
 const config = JSON.parse(process.env.T3_CORPORATE_NETWORK_PROBE);
 app.setPath('userData', config.profile);
@@ -73,6 +73,10 @@ app.on('window-all-closed', () => {});
 async function main() {
   await app.whenReady();
   if (!config.control) {
+    assert.throws(() => autoUpdater.setFeedURL({}), /excluded from the corporate build/);
+    assert.throws(() => autoUpdater.setFeedURL({url:config.external + '/updates'}), /excluded from the corporate build/);
+    assert.equal(autoUpdater.getFeedURL(), '');
+    autoUpdater.checkForUpdates();
     crashReporter.start({submitURL:config.external + '/crash', uploadToServer:true});
     assert.equal(crashReporter.getUploadToServer(), false, 'Crash upload cannot be enabled');
     crashReporter.setUploadToServer(true);
@@ -86,6 +90,10 @@ async function main() {
     const bypass = await current.fetch(config.external + '/bypass', {bypassCustomProtocolHandlers:true}).then(() => true, () => false);
     const window = new BrowserWindow({show:false, webPreferences:{session:current, sandbox:true, contextIsolation:true, nodeIntegration:false}});
     await window.loadURL(config.local + '/page');
+    if (!config.control && name === 'default') {
+      autoUpdater.quitAndInstall();
+      assert.equal(window.isDestroyed(), false, 'The excluded updater cannot close application windows');
+    }
     const renderer = await window.webContents.executeJavaScript('(' + String(async function(local, external) {
       const fetchAllowed = await fetch(external + '/renderer').then(() => true, () => false);
       const ws = url => new Promise(resolve => { const socket = new WebSocket(url); socket.onopen = () => { socket.close(); resolve(true); }; socket.onerror = () => resolve(false); });
@@ -115,7 +123,7 @@ async function main() {
     assert.equal(process.versions.t3_corporate_network, 'loopback-v1');
     await assert.rejects(session.defaultSession.resolveHost('corporate-network.invalid'));
   }
-  console.log('CORPORATE_ELECTRON_CHECK=' + JSON.stringify({control:config.control, nativeMarker:process.versions.t3_corporate_network ?? null, results, netExternal}));
+  console.log('CORPORATE_ELECTRON_CHECK=' + JSON.stringify({control:config.control, nativeMarker:process.versions.t3_corporate_network ?? null, updaterDisabled:!config.control, results, netExternal}));
   app.exit(0);
 }
 main().catch(error => {console.error(error); app.exit(1);});
@@ -186,7 +194,7 @@ try {
     await NodeFSP.writeFile(values.output, JSON.stringify(evidence, null, 2) + "\n");
   await NodeFSP.rm(task, { recursive: true });
   console.log(
-    "PASS: native Chromium sessions and WebRTC deny non-loopback networking; local HTTP/WS works.",
+    "PASS: native Chromium sessions and WebRTC deny non-loopback networking; local HTTP/WS works; native updater is excluded.",
   );
 } finally {
   for (const socket of sockets) socket.destroy();
