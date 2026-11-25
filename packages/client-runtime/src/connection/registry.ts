@@ -2,7 +2,7 @@ import { msg } from "gt-i18n";
 import { translatableDetail } from "../errors/translatable.ts";
 import { EnvironmentId } from "@t3tools/contracts";
 import { corporateBuild } from "@t3tools/shared/buildEdition";
-import { isLocalLoopbackHost } from "@t3tools/shared/hostClassification";
+import { isCorporateLoopbackHost } from "@t3tools/shared/hostClassification";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Equal from "effect/Equal";
@@ -874,7 +874,7 @@ export const make = Effect.gen(function* () {
             return (
               url !== null &&
               ["http:", "https:", "ws:", "wss:"].includes(url.protocol) &&
-              isLocalLoopbackHost(url.hostname)
+              isCorporateLoopbackHost(url.hostname)
             );
           }),
       );

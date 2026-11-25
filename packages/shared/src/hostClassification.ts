@@ -76,8 +76,11 @@ const isSpecialPurposeIpv4Address = (parts: readonly number[]): boolean =>
 export const isLocalLoopbackHost = (host: string): boolean => {
   const normalized = normalizeHostname(host);
   if (normalized === "localhost" || normalized === "::1") return true;
-  return (parseIpv4Address(normalized) ?? parseIpv4MappedIpv6Address(normalized))?.[0] === 127;
+  return parseIpv4Address(normalized)?.[0] === 127;
 };
+
+export const isCorporateLoopbackHost = (host: string): boolean =>
+  isLocalLoopbackHost(host) || parseIpv4MappedIpv6Address(host)?.[0] === 127;
 
 /** MagicDNS or fd7a:115c:a1e0::/48 identifies Tailscale; shared 100.64.0.0/10 addresses alone do not. */
 export const isTailnetHost = (host: string): boolean => {

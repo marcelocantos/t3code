@@ -1,5 +1,5 @@
 import type { App, Session } from "electron";
-import { isLocalLoopbackHost } from "@t3tools/shared/hostClassification";
+import { isCorporateLoopbackHost } from "@t3tools/shared/hostClassification";
 
 export function allowsCorporateRequest(rawUrl: string): boolean {
   const url = URL.parse(rawUrl);
@@ -9,7 +9,7 @@ export function allowsCorporateRequest(rawUrl: string): boolean {
     case "https:":
     case "ws:":
     case "wss:":
-      return isLocalLoopbackHost(url.hostname);
+      return isCorporateLoopbackHost(url.hostname);
     case "file:":
       return url.hostname === "" || url.hostname === "localhost";
     case "t3code:":

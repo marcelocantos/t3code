@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { isLocalLoopbackHost, isPublicFaviconHost } from "./hostClassification.ts";
+import {
+  isCorporateLoopbackHost,
+  isLocalLoopbackHost,
+  isPublicFaviconHost,
+} from "./hostClassification.ts";
 
 it.each([
   ["localhost", true],
@@ -8,9 +12,9 @@ it.each([
   ["127.0.0.1", true],
   ["127.12.34.56", true],
   ["[::1]", true],
-  ["[::ffff:127.0.0.1]", true],
-  ["::ffff:7f00:1", true],
-  ["::ffff:7fff:ffff", true],
+  ["[::ffff:127.0.0.1]", false, true],
+  ["::ffff:7f00:1", false, true],
+  ["::ffff:7fff:ffff", false, true],
   ["0.0.0.0", false],
   ["::", false],
   ["192.168.1.1", false],
@@ -18,8 +22,9 @@ it.each([
   ["localhost.example.com", false],
   ["app.localhost", false],
   ["127.0.0.1.example.com", false],
-])("classifies loopback host %s as %s", (host, expected) => {
+])("classifies loopback host %s as %s", (host, expected, corporateExpected = expected) => {
   expect(isLocalLoopbackHost(host)).toBe(expected);
+  expect(isCorporateLoopbackHost(host)).toBe(corporateExpected);
 });
 
 describe("isPublicFaviconHost", () => {
