@@ -15,6 +15,7 @@ import * as Semaphore from "effect/Semaphore";
 import { HttpClient, HttpClientResponse } from "effect/http";
 
 import { writeFileStringAtomically } from "@t3tools/shared/atomicWrite";
+import { corporateBuild } from "@t3tools/shared/buildEdition";
 import { ServerConfig } from "../config.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import { hasValidClaudeManifestAdapters } from "./ClaudeModelManifest.ts";
@@ -206,7 +207,7 @@ const BundledOnlyModelManifest: ModelManifest["Service"] = {
 
 const layerBundledOnly = Layer.succeed(ModelManifest, BundledOnlyModelManifest);
 
-export const make = Effect.gen(function* () {
+const makeStandard = /* @__PURE__ */ Effect.gen(function* () {
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const config = yield* ServerConfig;
@@ -287,6 +288,8 @@ export const make = Effect.gen(function* () {
     refreshInBackground: Effect.forkIn(guardedRefresh, serviceScope).pipe(Effect.asVoid),
   });
 });
+
+export const make = corporateBuild ? Effect.succeed(BundledOnlyModelManifest) : makeStandard;
 
 export const layer = Layer.effect(ModelManifest, make);
 

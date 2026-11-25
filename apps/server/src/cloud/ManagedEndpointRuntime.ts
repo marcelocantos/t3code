@@ -1,4 +1,5 @@
 import type { RelayManagedEndpointRuntimeConfig } from "@t3tools/contracts/relay";
+import { corporateBuild } from "@t3tools/shared/buildEdition";
 import { RotatingFileSink, RotatingFileSinkError } from "@t3tools/shared/logging";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as RelayClient from "@t3tools/shared/relayClient";
@@ -8,6 +9,7 @@ import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import { identity } from "effect/Function";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as Logger from "effect/Logger";
@@ -225,7 +227,7 @@ const stopConnector = (connector: ActiveConnector | null) =>
     : Effect.void;
 
 /** @public */
-export const make = Effect.gen(function* () {
+const makeStandard = /* @__PURE__ */ Effect.gen(function* () {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const relayClient = yield* RelayClient.RelayClient;
   const relayClientLedger = yield* RelayClientLedger.RelayClientLedger;
@@ -983,5 +985,26 @@ export const make = Effect.gen(function* () {
   yield* Effect.addFinalizer(() => runtime.applyConfig(null));
   return runtime;
 });
+
+export const make = corporateBuild
+  ? Effect.succeed(
+      CloudManagedEndpointRuntime.of({
+        applyConfig: Effect.fn("CloudManagedEndpointRuntime.applyConfig")(() =>
+          Effect.succeed({ status: "disabled" }),
+        ),
+        inspectConnector: Effect.succeed(null),
+        readinessChanged: Stream.empty,
+        recoveryRequests: Stream.empty,
+        requestRecovery: Effect.fn("CloudManagedEndpointRuntime.requestRecovery")(
+          () => Effect.void,
+        ),
+        restartConnector: Effect.fn("CloudManagedEndpointRuntime.restartConnector")(() =>
+          Effect.succeed(false),
+        ),
+        tunnelConnected: Stream.empty,
+        withLinkStateLock: identity,
+      }),
+    )
+  : makeStandard;
 
 export const layer = Layer.effect(CloudManagedEndpointRuntime, make);

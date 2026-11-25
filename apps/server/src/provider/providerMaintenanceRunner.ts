@@ -8,6 +8,7 @@ import {
   type ServerProviderUpdateState,
 } from "@t3tools/contracts";
 import { resolveSpawnCommand } from "@t3tools/shared/shell";
+import { corporateBuild } from "@t3tools/shared/buildEdition";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
@@ -317,7 +318,7 @@ function makeUpdateState(input: {
 }
 
 /** @public */
-export const make = Effect.fn("ProviderMaintenanceRunner.make")(function* () {
+const makeStandard = /* @__PURE__ */ Effect.fn("ProviderMaintenanceRunner.make")(function* () {
   const providerRegistry = yield* ProviderRegistry.ProviderRegistry;
   const manifestService = yield* ModelManifest.ModelManifest;
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
@@ -723,5 +724,22 @@ export const make = Effect.fn("ProviderMaintenanceRunner.make")(function* () {
     updateProvider,
   });
 });
+
+export const make = corporateBuild
+  ? Effect.fn("ProviderMaintenanceRunner.make")(() =>
+      Effect.succeed(
+        ProviderMaintenanceRunner.of({
+          updateProvider: Effect.fn("ProviderMaintenanceRunner.updateProvider")((target) =>
+            Effect.fail(
+              new ServerProviderUpdateError({
+                provider: typeof target === "string" ? target : target.provider,
+                reason: "Install and update provider CLIs outside T3 Code in the corporate build.",
+              }),
+            ),
+          ),
+        }),
+      ),
+    )
+  : makeStandard;
 
 export const layer = Layer.effect(ProviderMaintenanceRunner, make());

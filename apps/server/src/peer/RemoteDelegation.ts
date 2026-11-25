@@ -1,3 +1,4 @@
+import { corporateBuild } from "@t3tools/shared/buildEdition";
 import {
   CommandId,
   type EnvironmentId,
@@ -152,7 +153,7 @@ const isFinal = (error: OrchestratorMcpFailure) =>
   error.code === "thread_not_found" ||
   error.code === "run_not_found";
 
-const make = Effect.gen(function* () {
+const makeStandard = /* @__PURE__ */ Effect.gen(function* () {
   const followRetry = yield* FollowRetrySchedule;
   const forwarding = yield* PeerForwarding.PeerForwarding;
   const links = yield* PeerLinks.PeerLinks;
@@ -1009,7 +1010,10 @@ const make = Effect.gen(function* () {
         remote.stopCount,
       ).pipe(
         Effect.tapError((cause) =>
-          Effect.logWarning("remote-delegation.cancel-record-failed", { taskId: task.id, cause }),
+          Effect.logWarning("remote-delegation.cancel-record-failed", {
+            taskId: task.id,
+            cause,
+          }),
         ),
         Effect.mapError(
           () =>
@@ -1068,6 +1072,24 @@ const make = Effect.gen(function* () {
 
   return RemoteDelegation.of({ delegate, followUp, cancel, runStatus, start });
 });
+
+const make = corporateBuild
+  ? Effect.sync(() => {
+      const refused = Effect.fail(
+        new OrchestratorMcpFailure({
+          code: "capability_denied",
+          message: "Remote delegation is unavailable in the corporate build.",
+        }),
+      );
+      return RemoteDelegation.of({
+        delegate: Effect.fn("RemoteDelegation.delegate")(() => refused),
+        followUp: Effect.fn("RemoteDelegation.followUp")(() => refused),
+        cancel: Effect.fn("RemoteDelegation.cancel")(() => refused),
+        runStatus: Effect.fn("RemoteDelegation.runStatus")(() => Effect.succeed(null)),
+        start: Effect.fn("RemoteDelegation.start")(() => Effect.void),
+      });
+    })
+  : makeStandard;
 
 /** A defect, logged, as a failure, so a retry covers it. */
 const failOnDefect = <A, E, R>(effect: Effect.Effect<A, E, R>) =>

@@ -1,4 +1,5 @@
 import type { AgentAwarenessThread } from "../orchestration-v2/ProjectionStore.ts";
+import { corporateBuild } from "@t3tools/shared/buildEdition";
 import {
   isListedThreadLineage,
   type EnvironmentId,
@@ -423,7 +424,7 @@ export function resolveAgentAwarenessRelayActiveThreadIds(input: {
 }
 
 /** @public */
-export const make = Effect.gen(function* () {
+const makeStandard = /* @__PURE__ */ Effect.gen(function* () {
   const secrets = yield* ServerSecretStore.ServerSecretStore;
   const serverEnvironment = yield* ServerEnvironment.ServerEnvironment;
   const threads = yield* ThreadManagement.ThreadManagementService;
@@ -717,7 +718,10 @@ export const make = Effect.gen(function* () {
       reason: snapshot.reason,
     }).pipe(withRelayClientTracing);
     if (state !== null && childRequestId !== undefined) {
-      childAlertByThread.set(threadId, { requestId: childRequestId, updatedAt: state.updatedAt });
+      childAlertByThread.set(threadId, {
+        requestId: childRequestId,
+        updatedAt: state.updatedAt,
+      });
     }
     publishConfirmDeadlines.delete(threadId);
     heldCompletions.delete(threadId);
@@ -1002,5 +1006,16 @@ export const make = Effect.gen(function* () {
     start,
   });
 });
+
+export const make = corporateBuild
+  ? Effect.succeed(
+      AgentAwarenessRelay.of({
+        publishThread: Effect.fn("AgentAwarenessRelay.publishThread")(() => Effect.void),
+        drain: Effect.void,
+        requestCatchUp: Effect.fn("AgentAwarenessRelay.requestCatchUp")(() => Effect.void),
+        start: Effect.fn("AgentAwarenessRelay.start")(() => Effect.void),
+      }),
+    )
+  : makeStandard;
 
 export const layer = Layer.effect(AgentAwarenessRelay, make);

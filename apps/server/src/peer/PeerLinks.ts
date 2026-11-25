@@ -1,3 +1,4 @@
+import { corporateBuild } from "@t3tools/shared/buildEdition";
 import {
   AuthMcpClientAccess,
   AuthMcpRegistrationError,
@@ -232,7 +233,7 @@ export const LoopbackHost = Context.Reference<(host: string) => boolean>(
 const linkLimitsHold = (peer: { readonly capabilities: ExecutionEnvironmentCapabilities }) =>
   peer.capabilities.mcpModeLimitHeader === true && peer.capabilities.linkFence === true;
 
-const make = Effect.gen(function* () {
+const makeStandard = /* @__PURE__ */ Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   const secrets = yield* ServerSecretStore.ServerSecretStore;
   const random = yield* SecureRandom.SecureRandom;
@@ -757,5 +758,27 @@ const make = Effect.gen(function* () {
     recordExpiry,
   });
 });
+
+const make = corporateBuild
+  ? Effect.sync(() => {
+      const refused = Effect.fail(
+        new PeerLinkError({
+          reason: "disabled",
+          message: "Linked environments are unavailable in the corporate build.",
+        }),
+      );
+      return PeerLinks.of({
+        enabled: Effect.succeed(false),
+        link: Effect.fn("PeerLinks.link")(() => refused),
+        linkUnlessLinked: Effect.fn("PeerLinks.linkUnlessLinked")(() => refused),
+        list: Effect.succeed([]),
+        get: Effect.fn("PeerLinks.get")(() => Effect.succeedNone),
+        unlink: Effect.fn("PeerLinks.unlink")(() => Effect.succeed(false)),
+        resolve: Effect.fn("PeerLinks.resolve")(() => refused),
+        recordOutcome: Effect.fn("PeerLinks.recordOutcome")(() => Effect.void),
+        recordExpiry: Effect.fn("PeerLinks.recordExpiry")(() => Effect.void),
+      });
+    })
+  : makeStandard;
 
 export const layer = Layer.effect(PeerLinks, make);

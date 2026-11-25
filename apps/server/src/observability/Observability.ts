@@ -1,4 +1,5 @@
 import * as HostProcess from "@t3tools/shared/HostProcess";
+import { corporateBuild } from "@t3tools/shared/buildEdition";
 import * as HttpObservability from "@t3tools/shared/httpObservability";
 import { makeLocalFileTracer, makeTraceSink } from "@t3tools/shared/observability";
 import * as SharedObservability from "@t3tools/shared/observability";
@@ -55,7 +56,7 @@ export const layer = Layer.unwrap(
             }),
         });
         const delegate =
-          config.otlpTracesUrl === undefined
+          corporateBuild || config.otlpTracesUrl === undefined
             ? undefined
             : yield* OtlpTracer.make({
                 url: config.otlpTracesUrl,
@@ -84,7 +85,7 @@ export const layer = Layer.unwrap(
     ).pipe(Layer.provide(OtlpExporter.layerFlusher), Layer.provideMerge(layerSerialization));
 
     const metricsLayer =
-      config.otlpMetricsUrl === undefined
+      corporateBuild || config.otlpMetricsUrl === undefined
         ? Layer.empty
         : OtlpMetrics.layer({
             url: config.otlpMetricsUrl,

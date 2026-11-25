@@ -9,6 +9,7 @@ import {
   type ProviderSetupInput,
 } from "@t3tools/contracts";
 import { resolveCommandPath } from "@t3tools/shared/shell";
+import { corporateBuild } from "@t3tools/shared/buildEdition";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -49,7 +50,7 @@ export class ProviderInstallation extends Context.Service<
   }
 >()("t3/provider/providerInstallation") {}
 
-const make = Effect.fn("makeProviderInstallation")(function* () {
+const makeStandard = /* @__PURE__ */ Effect.fn("makeProviderInstallation")(function* () {
   const antigravityInstallation = yield* AntigravityInstallation.AntigravityInstallation;
   const codexInstallation = yield* CodexInstallation.CodexInstallation;
   const instances = yield* ProviderInstanceRegistry.ProviderInstanceRegistry;
@@ -251,5 +252,30 @@ const make = Effect.fn("makeProviderInstallation")(function* () {
 
   return { start, cancel, subscribe, remove };
 });
+
+const make = corporateBuild
+  ? Effect.fn("makeProviderInstallation")(() => {
+      const refusal = (instanceId: ProviderInstanceId, operation: string) =>
+        new ProviderSetupError({
+          instanceId,
+          operation,
+          detail: "Manage provider installations outside T3 Code in the corporate build.",
+        });
+      return Effect.succeed(
+        ProviderInstallation.of({
+          start: Effect.fn("ProviderInstallation.start")((input) =>
+            Effect.fail(refusal(input.instanceId, "install")),
+          ),
+          cancel: Effect.fn("ProviderInstallation.cancel")((input) =>
+            Effect.fail(refusal(input.instanceId, "cancel")),
+          ),
+          subscribe: (input) => Stream.fail(refusal(input.instanceId, "subscribe")),
+          remove: Effect.fn("ProviderInstallation.remove")((input) =>
+            Effect.fail(refusal(input.instanceId, "remove")),
+          ),
+        }),
+      );
+    })
+  : makeStandard;
 
 export const layer = Layer.effect(ProviderInstallation, make());

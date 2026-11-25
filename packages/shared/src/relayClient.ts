@@ -27,6 +27,7 @@ import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/http";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import { isWindowsRenameLock } from "./atomicWrite.ts";
 import * as HostProcess from "./HostProcess.ts";
+import { corporateBuild } from "./buildEdition.ts";
 
 export const CLOUDFLARED_VERSION = "2026.10.4";
 // Minimum for --output support and the eMudhra fix, which 2026.10.2 macOS builds lack.
@@ -265,7 +266,7 @@ const wrapInstallFailure =
       ),
     );
 
-export const makeCloudflaredRelayClient = Effect.fn("cloudflared.make")(function* (
+const makeStandard = /* @__PURE__ */ Effect.fn("cloudflared.make")(function* (
   options: CloudflaredRelayClientOptions,
 ): Effect.fn.Return<
   RelayClientShape,
@@ -355,7 +356,12 @@ export const makeCloudflaredRelayClient = Effect.fn("cloudflared.make")(function
       });
       return null;
     }
-    return { status: "available", executablePath, source, version } satisfies AvailableRelayClient;
+    return {
+      status: "available",
+      executablePath,
+      source,
+      version,
+    } satisfies AvailableRelayClient;
   });
 
   // Newer managed folders may belong to another server; never use or prune them.
@@ -428,7 +434,10 @@ export const makeCloudflaredRelayClient = Effect.fn("cloudflared.make")(function
       yield* fileSystem.remove(path.join(managedRoot, version), { recursive: true }).pipe(
         Effect.tap(() => Effect.logInfo("Removed an older managed relay client", { version })),
         Effect.catch((cause) =>
-          Effect.logDebug("Could not remove an older managed relay client", { version, cause }),
+          Effect.logDebug("Could not remove an older managed relay client", {
+            version,
+            cause,
+          }),
         ),
       );
     }
@@ -708,6 +717,25 @@ export const makeCloudflaredRelayClient = Effect.fn("cloudflared.make")(function
 
   return RelayClient.of({ resolve, install, installWithProgress, pruneManagedVersions });
 });
+
+export const makeCloudflaredRelayClient = corporateBuild
+  ? Effect.fn("cloudflared.make")(() => {
+      const refused = Effect.fail(
+        new RelayClientInstallError({
+          reason: "managed_by_policy",
+          message: "T3 Connect is unavailable in the corporate build.",
+        }),
+      );
+      return Effect.succeed(
+        RelayClient.of({
+          resolve: Effect.succeed({ status: "missing", version: CLOUDFLARED_VERSION }),
+          install: refused,
+          installWithProgress: Effect.fn("cloudflared.installWithProgress")(() => refused),
+          pruneManagedVersions: Effect.void,
+        }),
+      );
+    })
+  : makeStandard;
 
 export const layerCloudflared = (options: CloudflaredRelayClientOptions) =>
   Layer.effect(RelayClient, makeCloudflaredRelayClient(options));

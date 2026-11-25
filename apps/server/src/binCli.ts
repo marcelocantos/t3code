@@ -1,4 +1,5 @@
 import { doctorCommand } from "./cli/doctor.ts";
+import { corporateBuild } from "@t3tools/shared/buildEdition";
 import { policyCommand } from "./cli/policy.ts";
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
@@ -91,11 +92,9 @@ export const makeCli = ({ cloudEnabled = hasCloudPublicConfig } = {}) =>
       browserCommand,
       projectCommand,
       threadCommand,
-      upCommand,
-      statusCommand,
+      ...(corporateBuild ? [] : [upCommand, statusCommand]),
       serviceCommand,
-      updateCommand,
-      installCommand,
+      ...(corporateBuild ? [] : [updateCommand, installCommand]),
       uninstallCommand,
       // bin.ts runs the bare service invocation; this keeps flags and help working like other commands.
       Command.make("__service-launcher").pipe(
@@ -105,7 +104,7 @@ export const makeCli = ({ cloudEnabled = hasCloudPublicConfig } = {}) =>
       ),
       claudeHistoryCommand,
       speechWorkerCommand,
-      sshHelperCommand,
+      ...(corporateBuild ? [] : [sshHelperCommand]),
 
       servicePreflightCommand,
       themeCommand,
@@ -113,7 +112,7 @@ export const makeCli = ({ cloudEnabled = hasCloudPublicConfig } = {}) =>
       doctorCommand,
       policyCommand,
       triageCommand,
-      cloudEnabled ? connectCommand : connectUnavailableCommand,
+      ...(corporateBuild ? [] : [cloudEnabled ? connectCommand : connectUnavailableCommand]),
     ]),
   );
 
@@ -122,13 +121,17 @@ export const cli = makeCli();
 export function runCli() {
   extendConnectionAttemptTimeout();
   keepOutboundFetchOnHttp1();
-  offerCliInstall({
-    args: process.argv.slice(2),
-    // A child started over IPC (a service launcher) has no one to answer.
-    interactive: Boolean(process.stdin.isTTY && process.stdout.isTTY) && process.send === undefined,
-    foreground: inTerminalForeground,
-    confirm: confirmCliInstall,
-  }).pipe(
+  (corporateBuild
+    ? Effect.succeed(true)
+    : offerCliInstall({
+        args: process.argv.slice(2),
+        // A child started over IPC (a service launcher) has no one to answer.
+        interactive:
+          Boolean(process.stdin.isTTY && process.stdout.isTTY) && process.send === undefined,
+        foreground: inTerminalForeground,
+        confirm: confirmCliInstall,
+      })
+  ).pipe(
     // The offer handles its own errors; even an unexpected defect must not stop the command.
     Effect.catchDefect(() => Effect.succeed(true)),
     Effect.flatMap((proceed) =>

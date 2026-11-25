@@ -4,6 +4,7 @@ import type {
   OtlpSignal,
 } from "@t3tools/contracts";
 import { layerOtlpSerialization } from "@t3tools/shared/observability";
+import { corporateBuild } from "@t3tools/shared/buildEdition";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -37,7 +38,7 @@ const emptyExport = (
   }
 };
 
-const make = Effect.gen(function* () {
+const makeStandard = /* @__PURE__ */ Effect.gen(function* () {
   const config = yield* ServerConfig.ServerConfig;
   const httpClient = yield* HttpClient.HttpClient;
 
@@ -85,5 +86,15 @@ const make = Effect.gen(function* () {
 
   return OtlpEndpointCheck.of({ check });
 });
+
+const make = corporateBuild
+  ? Effect.succeed(
+      OtlpEndpointCheck.of({
+        check: Effect.fn("OtlpEndpointCheck.check")(() =>
+          Effect.succeed({ _tag: "Unreachable", timedOut: false }),
+        ),
+      }),
+    )
+  : makeStandard;
 
 export const layer = Layer.effect(OtlpEndpointCheck, make);

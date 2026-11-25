@@ -1,4 +1,5 @@
 import * as Cause from "effect/Cause";
+import { corporateBuild } from "./buildEdition.ts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -152,7 +153,7 @@ export function layer(
   resource: RelayClientTracingResource,
   options?: { readonly isEnabled?: () => boolean },
 ): Layer.Layer<never, never, HttpClient.HttpClient> {
-  if (config === null) {
+  if (corporateBuild || config === null) {
     return Layer.succeed(RelayClientTracer, Option.none());
   }
 

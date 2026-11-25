@@ -17,6 +17,18 @@ export function corporatePolicy(document?: ManagedPolicyDocument) {
       schemaVersion: 1,
       organization: "Corporate edition",
       ...document,
+      settings: {
+        ...Object.fromEntries(
+          Object.entries(document?.settings ?? {}).filter(
+            ([name]) => name !== "observability" && !name.startsWith("observability."),
+          ),
+        ),
+        enableProviderUpdateChecks: { value: false, locked: true },
+        observability: {
+          value: { otlpTracesUrl: "", otlpMetricsUrl: "", otlpLogsUrl: "" },
+          locked: true,
+        },
+      },
       limits: {
         ...document?.limits,
         clients: [first, ...rest] as const,

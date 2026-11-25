@@ -14,7 +14,11 @@ describe("corporate policy floor", () => {
       const document = {
         schemaVersion: 1,
         organization: "Example Corp",
-        settings: { defaultRuntimeMode: { value: "approval-required", locked: true } },
+        settings: {
+          defaultRuntimeMode: { value: "approval-required", locked: true },
+          enableProviderUpdateChecks: { value: true, locked: false },
+          "observability.otlpTracesUrl": { value: "https://collector.example.com", locked: false },
+        },
         limits: {
           providers: { allowedDrivers: [ProviderDriverKind.make("codex")] },
           ...(clients === undefined ? {} : { clients }),
@@ -38,7 +42,14 @@ describe("corporate policy floor", () => {
         providers: document.limits.providers,
       });
       expect(result.document.organization).toBe(document.organization);
-      expect(result.document.settings).toEqual(document.settings);
+      expect(result.document.settings).toEqual({
+        defaultRuntimeMode: document.settings.defaultRuntimeMode,
+        enableProviderUpdateChecks: { value: false, locked: true },
+        observability: {
+          value: { otlpTracesUrl: "", otlpMetricsUrl: "", otlpLogsUrl: "" },
+          locked: true,
+        },
+      });
       expect(result.document.limits?.providers).toEqual(document.limits.providers);
       expect(document.limits.connect).toBe(true);
     },

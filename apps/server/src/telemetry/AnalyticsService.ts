@@ -19,6 +19,7 @@ import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientRequest from "effect/http/HttpClientRequest";
 import * as HttpClientResponse from "effect/http/HttpClientResponse";
 
+import { corporateBuild } from "@t3tools/shared/buildEdition";
 import packageJson from "../../package.json" with { type: "json" };
 import * as ServerConfig from "../config.ts";
 import * as ManagedPolicy from "../policy/ManagedPolicy.ts";
@@ -118,7 +119,7 @@ function serverOsFromNodePlatform(platform: string): ClientOs {
 
 /** @public */
 /** @public */
-export const make = Effect.gen(function* () {
+const makeStandard = /* @__PURE__ */ Effect.gen(function* () {
   const telemetryConfig = yield* TelemetryEnvConfig;
   const hostEnvironment = yield* HostProcess.Environment;
   const awaitingShellConsent = hostEnvironment.T3CODE_DESKTOP_SHELL_DISCOVERY_PENDING === "1";
@@ -360,5 +361,15 @@ export const make = Effect.gen(function* () {
 
   return AnalyticsService.of({ record, flush, recordOwners });
 });
+
+export const make = corporateBuild
+  ? Effect.succeed(
+      AnalyticsService.of({
+        record: Effect.fn("AnalyticsService.record")(() => Effect.void),
+        flush: Effect.void,
+        recordOwners: Effect.fn("AnalyticsService.recordOwners")(() => Effect.void),
+      }),
+    )
+  : makeStandard;
 
 export const layer = Layer.effect(AnalyticsService, make);

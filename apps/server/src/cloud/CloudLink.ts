@@ -3,6 +3,7 @@ import {
   type EnvironmentCloudPreferencesRequest,
   type EnvironmentCloudRelayConfigResult,
 } from "@t3tools/contracts";
+import { corporateBuild } from "@t3tools/shared/buildEdition";
 import {
   RelayCloudEnvironmentHealthProofPayload,
   type RelayCloudEnvironmentHealthRequest,
@@ -510,7 +511,7 @@ export class CloudLink extends Context.Service<
   }
 >()("t3/cloud/CloudLink") {}
 
-const make = Effect.gen(function* () {
+const makeStandard = /* @__PURE__ */ Effect.gen(function* () {
   const secrets = yield* ServerSecretStore.ServerSecretStore;
   const environment = yield* ServerEnvironment.ServerEnvironment;
   const endpointRuntime = yield* ManagedEndpointRuntime.CloudManagedEndpointRuntime;
@@ -1371,7 +1372,10 @@ const make = Effect.gen(function* () {
             { concurrency: 10 },
           );
           yield* setCliDesiredCloudLink(false).pipe(withSecrets);
-          return { ok: true, endpointRuntimeStatus } satisfies EnvironmentCloudRelayConfigResult;
+          return {
+            ok: true,
+            endpointRuntimeStatus,
+          } satisfies EnvironmentCloudRelayConfigResult;
         }),
       );
     },
@@ -1692,7 +1696,9 @@ const make = Effect.gen(function* () {
     yield* unlink().pipe(
       Effect.tap(() => Effect.logInfo("T3 Connect is off by managed policy; unlinked.")),
       Effect.catch((cause) =>
-        Effect.logWarning("Failed to unlink T3 Connect turned off by managed policy", { cause }),
+        Effect.logWarning("Failed to unlink T3 Connect turned off by managed policy", {
+          cause,
+        }),
       ),
     );
     const refused = Effect.fn("CloudLink.refusedByPolicy")(function* () {
@@ -1736,5 +1742,55 @@ const make = Effect.gen(function* () {
     releaseManagedTunnelOnShutdown,
   });
 });
+
+const make = corporateBuild
+  ? Effect.sync(() => {
+      const refused = Effect.fail(
+        new ManagedLimits.ManagedPolicyRefusedError({
+          organization: "Corporate edition",
+          action: "T3 Connect",
+        }),
+      );
+      return CloudLink.of({
+        linkProof: Effect.fn("CloudLink.linkProof")(() => refused),
+        applyRelayConfig: Effect.fn("CloudLink.applyRelayConfig")(() => refused),
+        linkState: Effect.fn("CloudLink.linkState")(() =>
+          Effect.succeed({
+            linked: false,
+            cloudUserId: null,
+            relayUrl: null,
+            relayIssuer: null,
+            managedTunnelActive: false,
+            publishAgentActivity: false,
+            holdWebhooksWhileOffline: false,
+          }),
+        ),
+        unlink: Effect.fn("CloudLink.unlink")(() =>
+          Effect.succeed({ ok: true, endpointRuntimeStatus: { status: "disabled" } }),
+        ),
+        updatePreferences: Effect.fn("CloudLink.updatePreferences")(() => refused),
+        updateLiveActivityPreference: Effect.fn("CloudLink.updateLiveActivityPreference")(
+          () => refused,
+        ),
+        answerHealthRequest: Effect.fn("CloudLink.answerHealthRequest")(() => refused),
+        mintCredential: Effect.fn("CloudLink.mintCredential")(() => refused),
+        reconcileDesiredLinkIfStillDesired: Effect.fn(
+          "CloudLink.reconcileDesiredLinkIfStillDesired",
+        )(() => Effect.succeed(null)),
+        registerManagedTunnelRecovery: Effect.fn("CloudLink.registerManagedTunnelRecovery")(() =>
+          Effect.succeed({ status: "not_linked" }),
+        ),
+        recoverManagedTunnel: Effect.fn("CloudLink.recoverManagedTunnel")(() =>
+          Effect.succeed(false),
+        ),
+        startManagedTunnelIfOriginConfirmed: Effect.fn(
+          "CloudLink.startManagedTunnelIfOriginConfirmed",
+        )(() => Effect.succeed(false)),
+        releaseManagedTunnelOnShutdown: Effect.fn("CloudLink.releaseManagedTunnelOnShutdown")(() =>
+          Effect.succeed(false),
+        ),
+      });
+    })
+  : makeStandard;
 
 export const layer = Layer.effect(CloudLink, make);
