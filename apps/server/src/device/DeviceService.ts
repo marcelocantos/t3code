@@ -1,3 +1,4 @@
+import { resolveDeviceNodeExecutable } from "./DeviceToolchain.ts";
 import { corporateBuild } from "@t3tools/shared/buildEdition";
 import {
   type DeviceActionInput,
@@ -36,7 +37,7 @@ import {
 import { extractPng } from "@t3tools/shared/png";
 import { SshCommandError } from "@t3tools/ssh/errors";
 import * as FileSystem from "effect/FileSystem";
-import { resolveNodeExecutable, nodeRuntimeUnavailableMessage } from "@t3tools/shared/nodeRuntime";
+import { nodeRuntimeUnavailableMessage } from "@t3tools/shared/nodeRuntime";
 import * as Path from "effect/Path";
 import {
   DeviceToolchainInstallError,
@@ -315,7 +316,7 @@ export const makeWithHosts = Effect.fn("DeviceService.makeWithHosts")(function* 
   const stateRef = yield* SynchronizedRef.make<ServiceState>({
     state: {
       supportsHostRetry: true,
-      supportsToolUpdate: installTool !== undefined,
+      supportsToolUpdate: !corporateBuild && installTool !== undefined,
       supportsToolInspection: true,
       supportsEasHosts: !corporateBuild,
       supportsSimlockHosts: !corporateBuild,
@@ -1315,7 +1316,7 @@ export const make = Effect.gen(function* () {
         }),
     ),
   );
-  const agentCli = resolveNodeExecutable("Device automation").pipe(
+  const agentCli = resolveDeviceNodeExecutable("Device automation").pipe(
     Effect.andThen(ensureAgentDevice(config.baseDir)),
     Effect.provideService(FileSystem.FileSystem, fs),
     Effect.provideService(Path.Path, path),
@@ -1375,7 +1376,7 @@ export const make = Effect.gen(function* () {
     // Best effort: an unreachable host fails fast in the launcher's connection check, and the
     // launcher goes either way. Only a failed or timed-out close can leave the device claimed.
     release: (launcher) =>
-      resolveNodeExecutable("Device automation").pipe(
+      resolveDeviceNodeExecutable("Device automation").pipe(
         Effect.flatMap((node) =>
           runner.run({
             command: node,
@@ -1462,7 +1463,7 @@ export const make = Effect.gen(function* () {
     yield* Effect.context<Effect.Services<ReturnType<typeof SimlockDeviceHost.make>>>();
   const simlockAgentCli = Effect.fn("DeviceService.simlockAgentCli")(
     function* (hostId: string) {
-      const nodePath = yield* resolveNodeExecutable("Device automation");
+      const nodePath = yield* resolveDeviceNodeExecutable("Device automation");
       const tool = yield* ensureAgentDevice(config.baseDir).pipe(
         Effect.mapError(
           (cause) =>

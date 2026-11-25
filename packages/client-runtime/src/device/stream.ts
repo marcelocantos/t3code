@@ -1,5 +1,7 @@
 // @effect-diagnostics globalFetch:off globalTimers:off - This browser and WebView transport runs without an Effect runtime.
 
+import { corporateBuild } from "@t3tools/shared/buildEdition";
+
 import {
   createDuoControl,
   type DuoCommand,
@@ -546,7 +548,7 @@ export function createDeviceStreamClient(
       if (released) return;
       const failure = resolve(msg("Could not receive the device stream. Reconnect to try again."));
       // An <img> cannot read the 409 that a WebRTC-only serve-sim answers with.
-      if (typeof RTCPeerConnection === "undefined") fail(failure);
+      if (corporateBuild || typeof RTCPeerConnection === "undefined") fail(failure);
       else void switchToWebRtc(failure, false);
     };
     image.addEventListener("load", check);
@@ -1080,7 +1082,7 @@ export function createDeviceStreamClient(
    */
   const switchToWebRtc = async (failure: string, locked: boolean) => {
     const session = generation;
-    if (typeof RTCPeerConnection === "undefined") return fail(failure);
+    if (corporateBuild || typeof RTCPeerConnection === "undefined") return fail(failure);
     const settings = (await probeWebRtc()) ?? (locked ? { transport: "webrtc" as const } : null);
     if (stopped || generation !== session) return;
     if (!settings) return fail(failure);
@@ -1306,7 +1308,7 @@ export function createDeviceStreamClient(
     const settings = await probeWebRtc();
     if (stopped || generation !== session) return;
     if (settings) {
-      if (typeof RTCPeerConnection === "undefined")
+      if (corporateBuild || typeof RTCPeerConnection === "undefined")
         return fail(resolve(msg("This browser cannot receive the device's WebRTC stream.")));
       if (!target.videoOnly) connectAndroid(true);
       void readWebRtc(settings);

@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
+const buildEdition = vi.hoisted(() => ({ corporateBuild: false }));
+vi.mock("@t3tools/shared/buildEdition", () => buildEdition);
+
 import {
   createDeviceStreamClient,
   AvccDemuxer,
@@ -572,6 +575,7 @@ describe("shared device stream readiness and recovery", () => {
 
 describe("Android WebRTC device streams", () => {
   afterEach(() => {
+    buildEdition.corporateBuild = false;
     vi.useRealTimers();
     vi.unstubAllGlobals();
   });
@@ -669,36 +673,49 @@ describe("Android WebRTC device streams", () => {
     return { client, events, fetch, peers, videos, sockets, present };
   }
 
-  it("streams over WebRTC when serve-emu advertises it, with input that reconnects on its own", async () => {
-    const { client, events, fetch, peers, videos, sockets, present } = setup();
-    client.start();
-    await vi.advanceTimersByTimeAsync(0);
-    expect(fetch.mock.calls.map(([url]) => url)).toEqual([
-      "https://test/api/device-hub/vendor/serve-emu/api?device=session-1&hostId=eas",
-      "https://test/api/device-hub/vendor/serve-emu/webrtc/offer?device=session-1&hostId=eas",
-    ]);
-    expect(peers[0]?.setRemoteDescription).toHaveBeenCalledWith({
-      type: "answer",
-      sdp: "answer-sdp",
-    });
-    peers[0]?.ontrack?.({ streams: [{}], track: {} });
-    videos[0]?.callback?.();
-    expect(present).toHaveBeenCalledWith(videos[0], 400, 800);
-    expect(events.onStatus).toHaveBeenLastCalledWith("streaming", undefined);
+  it.each([false, true])(
+    "honours the WebRTC capability boundary (corporate=%s)",
+    async (corporate) => {
+      buildEdition.corporateBuild = corporate;
+      const { client, events, fetch, peers, videos, sockets, present } = setup();
+      client.start();
+      await vi.advanceTimersByTimeAsync(0);
+      if (corporate) {
+        expect(peers).toEqual([]);
+        expect(fetch.mock.calls.map(([url]) => url)).toEqual([
+          "https://test/api/device-hub/vendor/serve-emu/api?device=session-1&hostId=eas",
+        ]);
+        expect(events.onStatus).toHaveBeenLastCalledWith("error", expect.any(String));
+        client.stop();
+        return;
+      }
+      expect(fetch.mock.calls.map(([url]) => url)).toEqual([
+        "https://test/api/device-hub/vendor/serve-emu/api?device=session-1&hostId=eas",
+        "https://test/api/device-hub/vendor/serve-emu/webrtc/offer?device=session-1&hostId=eas",
+      ]);
+      expect(peers[0]?.setRemoteDescription).toHaveBeenCalledWith({
+        type: "answer",
+        sdp: "answer-sdp",
+      });
+      peers[0]?.ontrack?.({ streams: [{}], track: {} });
+      videos[0]?.callback?.();
+      expect(present).toHaveBeenCalledWith(videos[0], 400, 800);
+      expect(events.onStatus).toHaveBeenLastCalledWith("streaming", undefined);
 
-    expect(sockets.map((socket) => socket.url)).toEqual([
-      "wss://test/api/device-hub/vendor/serve-emu/ws?device=session-1&video=0&hostId=eas",
-    ]);
-    sockets[0]!.onopen?.();
-    client.pressButton("back");
-    expect(sockets[0]!.send).toHaveBeenCalledWith(JSON.stringify({ type: "back" }));
-    events.onStatus.mockClear();
-    sockets[0]!.onclose?.({ code: 1001, reason: "going away" });
-    await vi.advanceTimersByTimeAsync(1_000);
-    expect(sockets[1]?.url).toContain("video=0");
-    expect(peers).toHaveLength(1);
-    expect(peers[0]?.close).not.toHaveBeenCalled();
-    expect(events.onStatus).not.toHaveBeenCalled();
-    client.stop();
-  });
+      expect(sockets.map((socket) => socket.url)).toEqual([
+        "wss://test/api/device-hub/vendor/serve-emu/ws?device=session-1&video=0&hostId=eas",
+      ]);
+      sockets[0]!.onopen?.();
+      client.pressButton("back");
+      expect(sockets[0]!.send).toHaveBeenCalledWith(JSON.stringify({ type: "back" }));
+      events.onStatus.mockClear();
+      sockets[0]!.onclose?.({ code: 1001, reason: "going away" });
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(sockets[1]?.url).toContain("video=0");
+      expect(peers).toHaveLength(1);
+      expect(peers[0]?.close).not.toHaveBeenCalled();
+      expect(events.onStatus).not.toHaveBeenCalled();
+      client.stop();
+    },
+  );
 });

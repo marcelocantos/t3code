@@ -1,3 +1,4 @@
+import * as HostProcess from "@t3tools/shared/HostProcess";
 import { expect, it } from "@effect/vitest";
 import { vi } from "vite-plus/test";
 import * as Context from "effect/Context";
@@ -18,6 +19,9 @@ import * as ProviderMaintenance from "../provider/providerMaintenanceRunner.ts";
 import * as ProviderInstallation from "../provider/providerInstallation.ts";
 import * as PreviewBrowser from "../preview/PreviewBrowser.ts";
 import * as DeviceService from "../device/DeviceService.ts";
+import * as DeviceToolchain from "../device/DeviceToolchain.ts";
+import * as FileSystem from "effect/FileSystem";
+import * as NodePath from "@effect/platform-node/NodePath";
 import * as ServerSettings from "../serverSettings.ts";
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { DeviceHostId } from "@t3tools/contracts";
@@ -146,6 +150,23 @@ it.effect("corporate managed installers do not acquire download or process servi
     expect(refused.detail).toBe(
       "Manage provider installations outside T3 Code in the corporate build.",
     );
+    expect(
+      yield* DeviceToolchain.resolveDeviceNodeExecutable("Device automation").pipe(
+        Effect.provideService(HostProcess.ExecutablePath, "/patched-t3-runtime"),
+        withoutServices,
+      ),
+    ).toBe("/patched-t3-runtime");
+    const deviceInstall = yield* Effect.flip(
+      DeviceToolchain.ensureDeviceHub("/unused").pipe(
+        Effect.provideService(
+          FileSystem.FileSystem,
+          FileSystem.makeNoop({ exists: () => Effect.succeed(false) }),
+        ),
+        Effect.provide(NodePath.layer),
+        withoutServices,
+      ),
+    );
+    expect(deviceInstall.reason).toBe("managed_by_policy");
     const browser = yield* PreviewBrowser.makePreviewBrowser({ baseDir: "/unused" }).pipe(
       withoutServices,
     );

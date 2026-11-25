@@ -1,3 +1,6 @@
+import { corporateBuild } from "@t3tools/shared/buildEdition";
+import * as HostProcess from "@t3tools/shared/HostProcess";
+import { resolveNodeExecutable } from "@t3tools/shared/nodeRuntime";
 import type { DeviceToolVersions } from "@t3tools/contracts";
 // npm exposes entry files before extraction completes; their presence does not prove a usable tree.
 import * as Duration from "effect/Duration";
@@ -37,11 +40,13 @@ export class DeviceToolchainInstallError extends Schema.TaggedError<DeviceToolch
     tool: Schema.String,
     step: Schema.String,
     exitCode: Schema.optional(Schema.Number),
-    reason: Schema.optional(Schema.Literal("npm_not_found")),
+    reason: Schema.optional(Schema.Literals(["npm_not_found", "managed_by_policy"])),
     cause: Schema.optional(Schema.Defect()),
   },
 ) {
   override get message(): string {
+    if (this.reason === "managed_by_policy")
+      return "Install device tools outside T3 Code in the corporate build.";
     if (this.reason === "npm_not_found")
       return "Device support needs npm, which is not on the T3 server's PATH. Install npm (it comes with Node.js from nodejs.org), restart T3 Code, then retry.";
     const suffix = this.exitCode === undefined ? "" : ` (exit code ${this.exitCode})`;
@@ -107,11 +112,17 @@ const installTool = Effect.fn("DeviceToolchain.installTool")(function* (
 ) {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
-  const runner = yield* ProcessRunner.ProcessRunner;
   const fail = (step: string) => (cause: unknown) =>
     new DeviceToolchainInstallError({ tool: spec.name, step, cause });
 
   if (yield* isInstalled(fs, paths, spec.version)) return paths;
+  if (corporateBuild)
+    return yield* new DeviceToolchainInstallError({
+      tool: spec.name,
+      step: "checking the preinstalled tool",
+      reason: "managed_by_policy",
+    });
+  const runner = yield* ProcessRunner.ProcessRunner;
 
   const parentDir = path.dirname(paths.installDir);
   yield* fs
@@ -279,3 +290,13 @@ export const deviceToolVersions = Effect.fn("DeviceToolchain.versions")(function
     } satisfies DeviceToolVersions;
   }).pipe(Effect.orElseSucceed(() => undefined));
 });
+
+export const resolveDeviceNodeExecutable = Effect.fn("DeviceToolchain.resolveNodeExecutable")(
+  function* (
+    feature: Parameters<typeof resolveNodeExecutable>[0],
+    environment?: NodeJS.ProcessEnv,
+  ) {
+    if (corporateBuild) return yield* HostProcess.ExecutablePath;
+    return yield* resolveNodeExecutable(feature, environment);
+  },
+);

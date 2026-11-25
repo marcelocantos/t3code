@@ -1,6 +1,6 @@
 // @effect-diagnostics globalJsonInEffect:off - JSON string literals embed paths safely into generated JavaScript.
 import * as HostProcess from "@t3tools/shared/HostProcess";
-import { resolveNodeExecutable } from "@t3tools/shared/nodeRuntime";
+import { resolveDeviceNodeExecutable } from "./DeviceToolchain.ts";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
@@ -232,7 +232,7 @@ const writeLauncher = Effect.fn("AgentDeviceShim.writeLauncher")(function* (inpu
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const platform = yield* HostProcess.Platform;
-  const node = yield* resolveNodeExecutable("Device automation");
+  const node = yield* resolveDeviceNodeExecutable("Device automation");
   yield* fs.makeDirectory(input.dir, { recursive: true });
   const launcherPath = path.join(input.dir, "agent-device-launcher.mjs");
   yield* fs.writeFileString(launcherPath, launcherSource(node, input.entryPath, input.boundArgs));

@@ -1,3 +1,4 @@
+import { corporateBuild } from "@t3tools/shared/buildEdition";
 import {
   ACP_REGISTRY_MAX_AGENTS,
   AcpRegistryOperationError,
@@ -648,7 +649,7 @@ function searchRank(agent: AcpRegistryAgent, query: string): number | undefined 
   return undefined;
 }
 
-export const makeAcpRegistryCatalog = Effect.fn("AcpRegistryCatalog.make")(function* (
+const makeStandard = /* @__PURE__ */ Effect.fn("AcpRegistryCatalog.make")(function* (
   input: AcpRegistryCatalogOptions,
 ): Effect.fn.Return<
   AcpRegistryCatalog["Service"],
@@ -2136,3 +2137,64 @@ export const makeAcpRegistryCatalog = Effect.fn("AcpRegistryCatalog.make")(funct
     uninstallManagedBinary,
   });
 });
+
+const makeCorporate = /* @__PURE__ */ Effect.fn("AcpRegistryCatalog.make")(function* (
+  _input: AcpRegistryCatalogOptions,
+) {
+  const platform = yield* HostProcess.Platform;
+  const hostEnvironment = yield* HostProcess.Environment;
+  const resolveExecutable = yield* SpawnExecutableResolution;
+  const unavailable = new AcpRegistryError({
+    reason: "registry_unavailable",
+    detail:
+      "Install ACP agents independently and configure a local command in the corporate build.",
+  });
+  const localCommand = Effect.fn("AcpRegistryCatalog.localCommand")(function* (
+    settings: AcpRegistrySettings,
+    environment: NodeJS.ProcessEnv,
+  ) {
+    if (settings.source !== "local") return yield* unavailable;
+    const command = settings.commandPath.trim();
+    if (platform === "win32" && /\.(?:cmd|bat)$/iu.test(command))
+      return yield* new AcpRegistryError({
+        reason: "runner_unavailable",
+        detail:
+          "Local ACP commands launch without a shell. Configure the underlying executable and script arguments.",
+      });
+    return command ? resolveExecutable(command, platform, environment) : undefined;
+  });
+  return AcpRegistryCatalog.of({
+    search: Effect.fn("AcpRegistryCatalog.search")(() => Effect.succeed({ agents: [] })),
+    prepare: Effect.fn("AcpRegistryCatalog.prepare")(() => Effect.fail(unavailable)),
+    uninstallManagedBinary: Effect.fn("AcpRegistryCatalog.uninstallManagedBinary")(() =>
+      Effect.fail(unavailable),
+    ),
+    inspect: Effect.fn("AcpRegistryCatalog.inspect")(function* (settings, environment) {
+      const command = yield* localCommand(settings, environment ?? hostEnvironment);
+      if (!settings.commandPath.trim()) return { status: "unconfigured" };
+      return command === undefined
+        ? { status: "missing_runner", version: null, distribution: "local" }
+        : {
+            status: "ready",
+            agentId: settings.commandPath.trim(),
+            version: null,
+            distribution: "local",
+          };
+    }),
+    resolve: Effect.fn("AcpRegistryCatalog.resolve")(function* (settings, cwd, environment) {
+      const env = environment ?? hostEnvironment;
+      const command = yield* localCommand(settings, env);
+      if (command === undefined)
+        return yield* new AcpRegistryError({
+          reason: settings.commandPath.trim() ? "runner_unavailable" : "agent_not_configured",
+          detail: "Local ACP executable is not available on this environment's PATH.",
+        });
+      return {
+        distribution: "local",
+        spawn: { command, args: settings.commandArgs, cwd, env, shell: false },
+      };
+    }),
+  });
+});
+
+export const makeAcpRegistryCatalog = corporateBuild ? makeCorporate : makeStandard;

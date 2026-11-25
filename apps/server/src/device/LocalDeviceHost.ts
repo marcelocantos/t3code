@@ -1,3 +1,5 @@
+import { corporateBuild } from "@t3tools/shared/buildEdition";
+import { resolveDeviceNodeExecutable } from "./DeviceToolchain.ts";
 import { pruneLocalDeviceTools } from "./deviceToolMaintenance.ts";
 import { deviceToolInstallMessage } from "@t3tools/contracts";
 // The hub runs at origin root; T3 strips its prefix and the Device panel derives stream URLs from it.
@@ -10,10 +12,7 @@ import {
 } from "@t3tools/contracts";
 import { waitForHttpReady } from "@t3tools/shared/httpReadiness";
 import * as HostProcess from "@t3tools/shared/HostProcess";
-import {
-  resolveNodeExecutable,
-  type NodeRuntimeUnavailableError,
-} from "@t3tools/shared/nodeRuntime";
+import { type NodeRuntimeUnavailableError } from "@t3tools/shared/nodeRuntime";
 import * as NetService from "@t3tools/shared/Net";
 import { isCommandAvailable } from "@t3tools/shared/shell";
 import * as Clock from "effect/Clock";
@@ -198,7 +197,12 @@ const deviceHostEnvironment = (
 const hubEnvironment = Effect.fn("LocalDeviceHost.hubEnvironment")(function* (
   environment: NodeJS.ProcessEnv,
 ) {
-  const env: NodeJS.ProcessEnv = { ...environment, FORCE_COLOR: "0", NO_COLOR: "1" };
+  const env: NodeJS.ProcessEnv = {
+    ...environment,
+    FORCE_COLOR: "0",
+    NO_COLOR: "1",
+    ...(corporateBuild ? { ELECTRON_RUN_AS_NODE: "1" } : {}),
+  };
   const platform = yield* HostProcess.Platform;
   const uid = yield* HostProcess.UserId;
   if (env.ANDROID_HOME) {
@@ -541,6 +545,7 @@ export const make = Effect.fn("LocalDeviceHost.make")(function* () {
     const existing = yield* readDaemonFile().pipe(Effect.option);
     const daemonEnvironment: NodeJS.ProcessEnv = {
       ...(yield* currentHostEnvironment),
+      ...(corporateBuild ? { ELECTRON_RUN_AS_NODE: "1" } : {}),
       AGENT_DEVICE_STATE_DIR: stateDir,
       AGENT_DEVICE_DAEMON_SERVER_MODE: "http",
       // Disable the five-minute idle timeout; the server owns shutdown.
@@ -648,9 +653,10 @@ export const make = Effect.fn("LocalDeviceHost.make")(function* () {
     ]);
     if (!entryPath) return;
     const hostEnvironment = yield* currentHostEnvironment;
-    const nodePath = yield* resolveNodeExecutable("Local device support", hostEnvironment).pipe(
-      Effect.provideService(HostProcess.Platform, hostPlatform),
-    );
+    const nodePath = yield* resolveDeviceNodeExecutable(
+      "Local device support",
+      hostEnvironment,
+    ).pipe(Effect.provideService(HostProcess.Platform, hostPlatform));
     yield* runner.run({
       command: nodePath,
       args: [
@@ -660,7 +666,11 @@ export const make = Effect.fn("LocalDeviceHost.make")(function* () {
         "--state-dir",
         agentDeviceStateDir(path, config.stateDir),
       ],
-      env: { ...hostEnvironment, AGENT_DEVICE_NO_UPDATE_NOTIFIER: "1" },
+      env: {
+        ...hostEnvironment,
+        ...(corporateBuild ? { ELECTRON_RUN_AS_NODE: "1" } : {}),
+        AGENT_DEVICE_NO_UPDATE_NOTIFIER: "1",
+      },
       timeout: Duration.seconds(10),
       timeoutBehavior: "timedOutResult",
     });
@@ -680,7 +690,7 @@ export const make = Effect.fn("LocalDeviceHost.make")(function* () {
       const alive = yield* running.hub.child.isRunning.pipe(Effect.orElseSucceed(() => false));
       if (alive) return running;
     }
-    const nodePath = yield* resolveNodeExecutable(
+    const nodePath = yield* resolveDeviceNodeExecutable(
       "Local device support",
       yield* currentHostEnvironment,
     ).pipe(
