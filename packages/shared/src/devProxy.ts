@@ -8,16 +8,6 @@ export const DEV_PROXIED_PATH_PREFIXES = [
   "/mcp",
 ] as const;
 
-/** Preserve origins for OAuth metadata validation and /ws cookie-session Origin/Host checks. */
-export const DEV_PROXIED_ORIGIN_PRESERVING_PREFIXES: ReadonlySet<string> = new Set([
-  // Sandboxed plugin CSP sources must match the browser-facing origin.
-  "/api/plugin-panels",
-  "/oauth",
-  "/.well-known",
-  "/mcp",
-  "/ws",
-]);
-
 export function isDevProxiedPath(pathname: string): boolean {
   return DEV_PROXIED_PATH_PREFIXES.some(
     (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),

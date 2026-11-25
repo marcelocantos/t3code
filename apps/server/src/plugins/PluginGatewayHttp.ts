@@ -230,4 +230,6 @@ export const layer = HttpRouter.add(
     Effect.provideService(FetchHttpClient.RequestInit, { redirect: "manual", credentials: "omit" }),
     Effect.provide(FetchHttpClient.layer),
   ),
+  // The path carries the panel's bearer token; spans record it as REDACTED.
+  { redactedParams: ["*"] },
 );

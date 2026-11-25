@@ -388,6 +388,142 @@
         "apps/web/src/components/ChatMarkdown.tsx is not a repeat yet but sits high in hotFiles with 51 fork lines in upstream's most-churned rendering file. Candidate: wrap MarkdownAnchor in a fork-only withPluginLinks() (takeover href/text, PluginLinkHover) so CHAT_MARKDOWN_COMPONENTS.a changes in one line, and route the file-link chip wrap through one call. Feasibility depends on exporting ChatMarkdownRendererContext and computing canUseShellActions outside useChatMarkdownState; revisit if it conflicts again.",
         "One-off, no follow-up: ThreadNavigationSidebar.tsx and http.ts (repeats, but one import line and one predicate line, cheap to resolve), mobile settings-search.ts, mobile-preferences.ts and the three ThreadDetails* files (caused by the one-time i18n sweep or an end-of-struct append collision)."
       ]
+    },
+    {
+      "tag": "v0.1.12",
+      "date": "2026-11-26",
+      "upstreamCommits": 1092,
+      "conflicts": [
+        {
+          "file": "apps/desktop/package.json",
+          "cause": "version-line",
+          "resolution": "Kept the fork's 0.8.0; took upstream's side of every other line."
+        },
+        {
+          "file": "apps/mobile/app.config.ts",
+          "cause": "adjacent-edit",
+          "resolution": "Took upstream's removal of extra.secretsFeatureEnabled and kept the fork's iosPersonalTeamBuild: isIosReducedCapabilityBuild on the next line."
+        },
+        {
+          "file": "apps/mobile/src/components/ui/AppBar.android.test.tsx",
+          "cause": "adjacent-edit",
+          "resolution": "Both sides appended a test at the same spot; kept the fork's in-workspace sheet title test and upstream's inline-search header test."
+        },
+        {
+          "file": "apps/server/package.json",
+          "cause": "version-line",
+          "resolution": "Kept the fork's 0.8.0; took upstream's side of every other line."
+        },
+        {
+          "file": "apps/server/src/http.ts",
+          "cause": "upstream-refactor",
+          "resolution": "Upstream split CORS into wildcard and dev dispatch and replaced the path-based isSignedUrlRequest with per-route redactedParams. Kept the fork's PLUGIN_GATEWAY_PREFIX CORS bypass in the new dispatch; the gateway's token redaction moved to { redactedParams: [\"*\"] } on its route in plugins/PluginGatewayHttp.ts, so http.ts no longer lists it."
+        },
+        {
+          "file": "apps/server/src/ws.test.ts",
+          "cause": "inline-registry",
+          "resolution": "Kept the fork's PanelPlugins and PluginDiscovery mocks and upstream's PeerThreadRelay and PeerClientPairing mocks in the unused-services list."
+        },
+        {
+          "file": "apps/server/src/ws.ts",
+          "cause": "adjacent-edit",
+          "resolution": "Took upstream's ServerSettings.SettingsClient type for settingsClient and kept the fork's peer parameter after it."
+        },
+        {
+          "file": "apps/web/package.json",
+          "cause": "version-line",
+          "resolution": "Kept the fork's 0.8.0; took upstream's side of every other line."
+        },
+        {
+          "file": "apps/web/src/components/ChatMarkdown.tsx",
+          "cause": "upstream-refactor",
+          "resolution": "Upstream replaced the anchor's Tooltip with SharedTooltipTrigger; the fork's PluginLinkHover now wraps SharedTooltipTrigger instead."
+        },
+        {
+          "file": "apps/web/src/components/chat/ThreadDetailsPanel.tsx",
+          "cause": "adjacent-edit",
+          "resolution": "Kept both imports (fork ThreadPluginPanels, upstream ThreadRepositorySections)."
+        },
+        {
+          "file": "apps/web/src/i18n/translations/de.json",
+          "cause": "adjacent-edit",
+          "resolution": "Both sides added keys at the same place in the generated catalog; kept both blocks, then i18n:generate dropped keys no source uses and added upstream's new ones. i18n:check passes and i18n:untranslated reports 0."
+        },
+        {
+          "file": "apps/web/src/i18n/translations/en.json",
+          "cause": "adjacent-edit",
+          "resolution": "Both sides added keys at the same place in the generated catalog; kept both blocks, then i18n:generate dropped keys no source uses and added upstream's new ones. i18n:check passes and i18n:untranslated reports 0."
+        },
+        {
+          "file": "apps/web/src/i18n/translations/es.json",
+          "cause": "adjacent-edit",
+          "resolution": "Both sides added keys at the same place in the generated catalog; kept both blocks, then i18n:generate dropped keys no source uses and added upstream's new ones. i18n:check passes and i18n:untranslated reports 0."
+        },
+        {
+          "file": "apps/web/src/i18n/translations/fr.json",
+          "cause": "adjacent-edit",
+          "resolution": "Both sides added keys at the same place in the generated catalog; kept both blocks, then i18n:generate dropped keys no source uses and added upstream's new ones. i18n:check passes and i18n:untranslated reports 0."
+        },
+        {
+          "file": "apps/web/src/i18n/translations/ja.json",
+          "cause": "adjacent-edit",
+          "resolution": "Both sides added keys at the same place in the generated catalog; kept both blocks, then i18n:generate dropped keys no source uses and added upstream's new ones. i18n:check passes and i18n:untranslated reports 0."
+        },
+        {
+          "file": "apps/web/src/i18n/translations/ko.json",
+          "cause": "adjacent-edit",
+          "resolution": "Both sides added keys at the same place in the generated catalog; kept both blocks, then i18n:generate dropped keys no source uses and added upstream's new ones. i18n:check passes and i18n:untranslated reports 0."
+        },
+        {
+          "file": "apps/web/src/i18n/translations/pt-BR.json",
+          "cause": "adjacent-edit",
+          "resolution": "Both sides added keys at the same place in the generated catalog; kept both blocks, then i18n:generate dropped keys no source uses and added upstream's new ones. i18n:check passes and i18n:untranslated reports 0."
+        },
+        {
+          "file": "apps/web/src/i18n/translations/ru.json",
+          "cause": "adjacent-edit",
+          "resolution": "Both sides added keys at the same place in the generated catalog; kept both blocks, then i18n:generate dropped keys no source uses and added upstream's new ones. i18n:check passes and i18n:untranslated reports 0."
+        },
+        {
+          "file": "apps/web/src/i18n/translations/sv.json",
+          "cause": "adjacent-edit",
+          "resolution": "Both sides added keys at the same place in the generated catalog; kept both blocks, then i18n:generate dropped keys no source uses and added upstream's new ones. i18n:check passes and i18n:untranslated reports 0."
+        },
+        {
+          "file": "apps/web/src/i18n/translations/zh.json",
+          "cause": "adjacent-edit",
+          "resolution": "Both sides added keys at the same place in the generated catalog; kept both blocks, then i18n:generate dropped keys no source uses and added upstream's new ones. i18n:check passes and i18n:untranslated reports 0."
+        },
+        {
+          "file": "apps/web/vite.config.ts",
+          "cause": "upstream-refactor",
+          "resolution": "Took upstream's changeOrigin: false for every prefix (DEV_PROXIED_ORIGIN_PRESERVING_PREFIXES is gone) and kept ws: true for the fork's /api/plugin-panels prefix."
+        },
+        {
+          "file": "packages/client-runtime/package.json",
+          "cause": "inline-registry",
+          "resolution": "Both sides appended exports at the end of the map; kept upstream's ./pull-request-references and the fork's five ./state/plugin* entries after it."
+        },
+        {
+          "file": "packages/contracts/package.json",
+          "cause": "version-line",
+          "resolution": "Kept the fork's 0.8.0; took upstream's side of every other line."
+        },
+        {
+          "file": "packages/shared/src/devProxy.ts",
+          "cause": "upstream-refactor",
+          "resolution": "Took upstream's deletion of DEV_PROXIED_ORIGIN_PRESERVING_PREFIXES, which drops the fork's /api/plugin-panels entry in it; origins are now preserved for every prefix."
+        }
+      ],
+      "notes": "b8c03dfa7c moves the fork's PanelPlugins layer from the layerRuntimeCoreDependenciesBase pipe into the end of its Layer.mergeAll list, because upstream added a pipe step and the fork's made 21, past pipe's limit. The layer still gets its requirements from the later provideMerge steps and still exposes PanelPlugins, PluginDiscovery and PluginGateway; no mergeAll sibling consumes them, so the move changes nothing. The plugin gateway path, which carries the panel's token, is now traced with the token recorded as REDACTED rather than untraced, and its handler keeps withLoggerDisabled. Reviewed by a second agent: all resolutions keep both sides' intent; server, web and mobile typecheck, i18n:check, and the PluginGatewayHttp, PanelPlugins, http, ws and AppBar.android tests pass.",
+      "followUps": [
+        "version-line repeats a third time (the same 4 package.json files as v0.1.10 and v0.1.11); the v0.1.11 merge-driver follow-up still stands.",
+        "apps/server/src/http.ts is a repeat (v0.1.10, v0.1.11, v0.1.12, an upstream-refactor each time). Its remaining fork code is the PLUGIN_GATEWAY_PREFIX import and CORS bypass line. Mount PluginGatewayHttp.layer outside the layers that layerBrowserApiCors is provided to in server.ts (one line there), so the gateway skips CORS without http.ts naming it; first confirm that a non-global HttpRouter.middleware applies only to the routes it is provided to.",
+        "apps/web/src/components/ChatMarkdown.tsx is a repeat (v0.1.11, v0.1.12), as the v0.1.11 follow-up anticipated. Wrap MarkdownAnchor in a fork-only withPluginLinks() in components/plugins so CHAT_MARKDOWN_COMPONENTS.a changes in one line, and route the file-link chip wrap through one call.",
+        "The 10 apps/web i18n catalogs top hotFiles (80 fork lines each) and conflicted for the first time; the 10 mobile catalogs (90 fork lines) are next. They are generated, so resolve them mechanically: a fork-only merge driver for apps/*/src/i18n/translations/*.json, registered per clone in .git/info/attributes like the version-line driver, takes the key union of both sides (upstream's value wins on a clash), and the merge step then runs i18n:generate.",
+        "Cleanup, not a repeat: with changeOrigin: false for every prefix, the fork's separate /api/plugin-panels entry in packages/shared/src/devProxy.ts DEV_PROXIED_PATH_PREFIXES and its ws: true clause in apps/web/vite.config.ts duplicate /api. Removing both leaves the fork no lines in either file.",
+        "One-off, no follow-up: mobile app.config.ts, AppBar.android.test.tsx, ws.ts and ws.test.ts, client-runtime package.json (append collisions or a neighbouring upstream line), and ThreadDetailsPanel.tsx (a repeat from v0.1.11, but one import line each time)."
+      ]
     }
   ]
 }
