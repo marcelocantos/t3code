@@ -120,6 +120,20 @@ index 5f5af63..a2d3fd2 100644
  }
  
  MaybeLocal<Object> CreateProcessObject(Realm* realm) {
+diff --git a/src/node_report_utils.cc b/src/node_report_utils.cc
+index d4eb52c..c85f8b4 100644
+--- a/src/node_report_utils.cc
++++ b/src/node_report_utils.cc
+@@ -28,7 +28,8 @@ static void ReportEndpoint(uv_handle_t* h,
+ 
+   writer->json_objectstart(name);
+   if (!exclude_network &&
+-      uv_getnameinfo(h->loop, &endpoint, nullptr, addr, NI_NUMERICSERV) == 0) {
++      uv_getnameinfo(h->loop, &endpoint, nullptr, addr,
++                     NI_NUMERICSERV | NI_NUMERICHOST) == 0) {
+     host = endpoint.host;
+     DCHECK_EQ(port, std::stoi(endpoint.service));
+     writer->json_keyvalue("host", host);
 diff --git a/src/stream_wrap.cc b/src/stream_wrap.cc
 index a1416b1..c408ccb 100644
 --- a/src/stream_wrap.cc

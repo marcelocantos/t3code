@@ -99,6 +99,9 @@ const probe = String.raw`
       server.listen(0, host);
       await once(server, 'listening');
       const port = server.address().port;
+      const endpoint = process.report.getReport().libuv.find(handle => handle.type === 'tcp' && handle.localEndpoint?.port === port)?.localEndpoint;
+      assert.ok(endpoint, 'The live local listener must appear in the diagnostic report');
+      assert.equal(endpoint.host, endpoint.ip4 ?? endpoint.ip6, 'Diagnostic reports must avoid reverse DNS');
       const response = await fetch('http://[' + (host.includes(':') ? host : '::ffff:' + host) + ']:' + port);
       assert.equal(await response.text(), 'local-ui-ok');
       assert.equal(await (await fetch('http://localhost:' + port)).text(), 'local-ui-ok');
@@ -121,7 +124,8 @@ const probe = String.raw`
     assert.equal(output, 'harness-network-ok', 'Harness networking must survive the parent restriction');
     assert.equal(process.versions.t3_corporate_network, 'loopback-v1');
     assert.equal(process.features.inspector, false, 'The corporate runtime must exclude the Node inspector');
-    console.log('PASS: external TCP, mapped addresses, wildcard binds, UDP and DNS denied; local HTTP/WS and harness networking preserved');
+    assert.throws(() => require('node:quic'), { code: 'ERR_UNKNOWN_BUILTIN_MODULE' }, 'QUIC must not bypass the UDP restriction');
+    console.log('PASS: external TCP, mapped addresses, wildcard binds, UDP and DNS denied; local HTTP/WS, numeric diagnostic reports and harness networking preserved');
   })().catch(error => { console.error(error); process.exitCode = 1; });
 `;
 
