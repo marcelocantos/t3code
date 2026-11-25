@@ -372,6 +372,7 @@ it.effect("lets a cut blocking delegate_task wake its parent like an async task"
           Layer.mock(ProjectionStore.ProjectionStoreV2)({
             getRecoveryThreadIds: () => Effect.succeed([threadId]),
             getRuntimeRecoveryProjection: () => Effect.succeed(projection),
+            getThreadRecords: () => Effect.succeed(projection),
           }),
           Layer.mock(EventSink.EventSinkV2)({
             commitCommand: (input) => {
