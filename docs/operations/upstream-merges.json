@@ -388,6 +388,155 @@
         "apps/web/src/components/ChatMarkdown.tsx is not a repeat yet but sits high in hotFiles with 51 fork lines in upstream's most-churned rendering file. Candidate: wrap MarkdownAnchor in a fork-only withPluginLinks() (takeover href/text, PluginLinkHover) so CHAT_MARKDOWN_COMPONENTS.a changes in one line, and route the file-link chip wrap through one call. Feasibility depends on exporting ChatMarkdownRendererContext and computing canUseShellActions outside useChatMarkdownState; revisit if it conflicts again.",
         "One-off, no follow-up: ThreadNavigationSidebar.tsx and http.ts (repeats, but one import line and one predicate line, cheap to resolve), mobile settings-search.ts, mobile-preferences.ts and the three ThreadDetails* files (caused by the one-time i18n sweep or an end-of-struct append collision)."
       ]
+    },
+    {
+      "tag": "v0.1.13",
+      "date": "2026-11-27",
+      "upstreamCommits": 1493,
+      "conflicts": [
+        {
+          "file": "apps/desktop/package.json",
+          "cause": "version-line",
+          "resolution": "Kept the fork's 0.8.0; took upstream's side of every other line."
+        },
+        {
+          "file": "apps/mobile/app.config.ts",
+          "cause": "adjacent-edit",
+          "resolution": "Upstream bumped the mobile version to 2.4.0 on the line after the fork's plugin-build scheme ternary. Kept the fork's scheme: isPluginBuild ? PLUGIN_BUILD_IDENTITY.scheme : variant.scheme and took upstream's 2.4.0 (the fork's 2.3.0 was upstream's old value)."
+        },
+        {
+          "file": "apps/mobile/src/components/ui/AppBar.android.test.tsx",
+          "cause": "adjacent-edit",
+          "resolution": "Replayed #13's resolution cleanly: the fork's in-workspace sheet title test and upstream's inline-search header test."
+        },
+        {
+          "file": "apps/mobile/src/features/threads/ThreadRouteScreen.tsx",
+          "cause": "upstream-refactor",
+          "resolution": "Upstream removed renderThreadRouteBody and inlined its JSX, so the fork's onOpenPluginsInspector prop sat in deleted code. Took upstream's inlined body and re-added the prop on the inlined ThreadHeader; the fork's other plugin-inspector code (import, pluginThreadRef, hasPluginPanels, handleOpenPluginsInspector, renderPluginsInspector, the plugins pane entry) merged unchanged. The fork's diff against v0.1.13 equals its diff against the merge base apart from indentation."
+        },
+        {
+          "file": "apps/server/package.json",
+          "cause": "version-line",
+          "resolution": "Kept the fork's 0.8.0; took upstream's side of every other line."
+        },
+        {
+          "file": "apps/server/src/http.ts",
+          "cause": "upstream-refactor",
+          "resolution": "Replayed #13's resolution cleanly: the fork's PLUGIN_GATEWAY_PREFIX CORS bypass in upstream's wildcard/dev dispatch."
+        },
+        {
+          "file": "apps/server/src/ws.test.ts",
+          "cause": "inline-registry",
+          "resolution": "Replayed #13's resolution cleanly: the fork's PanelPlugins and PluginDiscovery mocks beside upstream's in the unused-services list."
+        },
+        {
+          "file": "apps/server/src/ws.ts",
+          "cause": "adjacent-edit",
+          "resolution": "Replayed #13's resolution cleanly: upstream's ServerSettings.SettingsClient parameter and the fork's peer parameter after it."
+        },
+        {
+          "file": "apps/web/package.json",
+          "cause": "version-line",
+          "resolution": "Kept the fork's 0.8.0; took upstream's side of every other line."
+        },
+        {
+          "file": "apps/web/src/components/ChatMarkdown.tsx",
+          "cause": "upstream-refactor",
+          "resolution": "Replayed #13's resolution cleanly: the fork's PluginLinkHover wrapping upstream's SharedTooltipTrigger."
+        },
+        {
+          "file": "apps/web/src/components/chat/ThreadDetailsCard.tsx",
+          "cause": "inline-registry",
+          "resolution": "Upstream added [data-thread-details-issue-list] and [data-thread-details-repository-overflow] to the scrolling-lists selector the fork had extended with [data-thread-plugin-panels]. Kept all three, the fork's last, and merged the two comments into one."
+        },
+        {
+          "file": "apps/web/src/components/chat/ThreadDetailsPanel.tsx",
+          "cause": "adjacent-edit",
+          "resolution": "Replayed #13's resolution cleanly: both imports (fork ThreadPluginPanels, upstream ThreadRepositorySections)."
+        },
+        {
+          "file": "apps/web/src/i18n/translations/de.json",
+          "cause": "adjacent-edit",
+          "resolution": "Replayed with #13's catalog as the fork side; both sides added keys at the same place. Resolved by a key-level three-way JSON merge (no key clashes), then i18n:generate for web, mobile and desktop, which only reordered keys. Every fork and upstream key is present; i18n:check passes and i18n:untranslated reports 0."
+        },
+        {
+          "file": "apps/web/src/i18n/translations/en.json",
+          "cause": "adjacent-edit",
+          "resolution": "Replayed with #13's catalog as the fork side; both sides added keys at the same place. Resolved by a key-level three-way JSON merge (no key clashes), then i18n:generate for web, mobile and desktop, which only reordered keys. Every fork and upstream key is present; i18n:check passes and i18n:untranslated reports 0."
+        },
+        {
+          "file": "apps/web/src/i18n/translations/es.json",
+          "cause": "adjacent-edit",
+          "resolution": "Replayed with #13's catalog as the fork side; both sides added keys at the same place. Resolved by a key-level three-way JSON merge (no key clashes), then i18n:generate for web, mobile and desktop, which only reordered keys. Every fork and upstream key is present; i18n:check passes and i18n:untranslated reports 0."
+        },
+        {
+          "file": "apps/web/src/i18n/translations/fr.json",
+          "cause": "adjacent-edit",
+          "resolution": "Replayed with #13's catalog as the fork side; both sides added keys at the same place. Resolved by a key-level three-way JSON merge (no key clashes), then i18n:generate for web, mobile and desktop, which only reordered keys. Every fork and upstream key is present; i18n:check passes and i18n:untranslated reports 0."
+        },
+        {
+          "file": "apps/web/src/i18n/translations/ja.json",
+          "cause": "adjacent-edit",
+          "resolution": "Replayed with #13's catalog as the fork side; both sides added keys at the same place. Resolved by a key-level three-way JSON merge (no key clashes), then i18n:generate for web, mobile and desktop, which only reordered keys. Every fork and upstream key is present; i18n:check passes and i18n:untranslated reports 0."
+        },
+        {
+          "file": "apps/web/src/i18n/translations/ko.json",
+          "cause": "adjacent-edit",
+          "resolution": "Replayed with #13's catalog as the fork side; both sides added keys at the same place. Resolved by a key-level three-way JSON merge (no key clashes), then i18n:generate for web, mobile and desktop, which only reordered keys. Every fork and upstream key is present; i18n:check passes and i18n:untranslated reports 0."
+        },
+        {
+          "file": "apps/web/src/i18n/translations/pt-BR.json",
+          "cause": "adjacent-edit",
+          "resolution": "Replayed with #13's catalog as the fork side; both sides added keys at the same place. Resolved by a key-level three-way JSON merge (no key clashes), then i18n:generate for web, mobile and desktop, which only reordered keys. Every fork and upstream key is present; i18n:check passes and i18n:untranslated reports 0."
+        },
+        {
+          "file": "apps/web/src/i18n/translations/ru.json",
+          "cause": "adjacent-edit",
+          "resolution": "Replayed with #13's catalog as the fork side; both sides added keys at the same place. Resolved by a key-level three-way JSON merge (no key clashes), then i18n:generate for web, mobile and desktop, which only reordered keys. Every fork and upstream key is present; i18n:check passes and i18n:untranslated reports 0."
+        },
+        {
+          "file": "apps/web/src/i18n/translations/sv.json",
+          "cause": "adjacent-edit",
+          "resolution": "Replayed with #13's catalog as the fork side; both sides added keys at the same place. Resolved by a key-level three-way JSON merge (no key clashes), then i18n:generate for web, mobile and desktop, which only reordered keys. Every fork and upstream key is present; i18n:check passes and i18n:untranslated reports 0."
+        },
+        {
+          "file": "apps/web/src/i18n/translations/zh.json",
+          "cause": "adjacent-edit",
+          "resolution": "Replayed with #13's catalog as the fork side; both sides added keys at the same place. Resolved by a key-level three-way JSON merge (no key clashes), then i18n:generate for web, mobile and desktop, which only reordered keys. Every fork and upstream key is present; i18n:check passes and i18n:untranslated reports 0."
+        },
+        {
+          "file": "apps/web/vite.config.ts",
+          "cause": "upstream-refactor",
+          "resolution": "Replayed #13's resolution cleanly: upstream's changeOrigin: false for every prefix, with the fork's cors: { preflightContinue: true } and its /api/plugin-panels ws clause kept."
+        },
+        {
+          "file": "packages/client-runtime/package.json",
+          "cause": "inline-registry",
+          "resolution": "Replayed #13's resolution cleanly: upstream's ./pull-request-references export and the fork's five ./state/plugin* exports after it."
+        },
+        {
+          "file": "packages/contracts/package.json",
+          "cause": "version-line",
+          "resolution": "Kept the fork's 0.8.0; took upstream's side of every other line."
+        },
+        {
+          "file": "packages/shared/src/devProxy.ts",
+          "cause": "upstream-refactor",
+          "resolution": "Replayed #13's resolution cleanly: upstream's deletion of DEV_PROXIED_ORIGIN_PRESERVING_PREFIXES, which drops the fork's /api/plugin-panels entry in it; the fork's /api/plugin-panels entry in DEV_PROXIED_PATH_PREFIXES stays."
+        }
+      ],
+      "notes": "This merge supersedes PR #13 (https://github.com/marcelocantos/t3code/pull/13, the v0.1.12 merge), because v0.1.13 contains v0.1.12; #13 and its ledger entry do not land on main, so the report's priorMerges omit v0.1.12, in which 24 of these 26 files also conflicted (all but ThreadRouteScreen.tsx and ThreadDetailsCard.tsx). Each conflicted file was resolved by replaying #13's resolved file (cfb9b8afb6) with git merge-file against v0.1.12 and v0.1.13, which carried #13's resolution plus upstream's v0.1.12 to v0.1.13 delta; 9 files replayed cleanly and 17 were finished by hand (the 4 version lines, app.config.ts, ThreadRouteScreen.tsx, ThreadDetailsCard.tsx and the 10 web catalogs). Follow-up 69b8dc18ab is a cherry-pick of #13's b8c03dfa7c and is still needed: v0.1.13's layerRuntimeCoreDependenciesBase pipe already has 20 steps, the merge made 21, and the commit moves the fork's PanelPlugins layer into the end of the mergeAll list, giving 20. Reviewed by a second agent: the fork's diff against v0.1.13 matches its diff against the merge base in every file except the expected ones (version lines, catalog order, re-indented ThreadRouteScreen.tsx code, merged selectors, upstream-deleted devProxy set); the merge's only change outside the conflicted files is the mobile catalogs' key order from i18n:generate. One defect: the replay covered only conflicted files, so #13's single non-conflicted edit, { redactedParams: [\"*\"] } on the gateway route in apps/server/src/plugins/PluginGatewayHttp.ts, was not carried, and with upstream's path-based isSignedUrlRequest gone, gateway spans record the panel's bearer token in the path. The follow-up fix(server) commit that redacts the gateway path token restores it.",
+      "followUps": [
+        "Replays of a superseded merge PR must also diff its non-conflicted files (git diff <merge-tree of the PR's parents> <PR merge commit>) and carry those edits; this merge lost #13's gateway redaction that way (restored by the follow-up fix(server) commit).",
+        "version-line repeats a fourth time (the same 4 package.json files in v0.1.10 to v0.1.13); the version-line merge driver (🎯T20) still stands.",
+        "apps/server/src/http.ts is a repeat (v0.1.10 to v0.1.13). It replayed cleanly this time, but only because #13 had done the work; the 🎯T40 move (mount PluginGatewayHttp.layer outside the routes layerBrowserApiCors applies to, in one server.ts line) still stands.",
+        "apps/web/src/components/ChatMarkdown.tsx is a repeat (v0.1.11 to v0.1.13); the 🎯T41 fork-only withPluginLinks() wrapper still stands.",
+        "The 10 apps/web i18n catalogs are a repeat (v0.1.12, v0.1.13) and again needed a hand-written key-level JSON merge; the 🎯T42 per-clone merge driver that takes the key union and then runs i18n:generate still stands, and would have resolved this merge's 10 catalogs without hand work.",
+        "apps/mobile/src/features/threads/ThreadRouteScreen.tsx is a repeat (v0.1.10, v0.1.13), an upstream-refactor each time, with 21 fork lines spread through upstream's busiest mobile thread file. Move the fork's plugin-inspector wiring (pluginThreadRef, useThreadHasPluginPanels, handleOpenPluginsInspector, renderPluginsInspector) into a fork-only hook, e.g. useThreadPluginsInspector in features/threads/ThreadPluginPanels.tsx, returning the pane entry and the header callback, so the upstream file keeps one import, one hook call, one pane-list entry at the end of the list and one ThreadHeader prop.",
+        "apps/mobile/app.config.ts is a repeat (v0.1.10, v0.1.13) with 66 fork lines; this time the fork's scheme line sat beside upstream's version bump. Apply the plugin-build identity as one fork-only override at the end of the config (name and scheme from PLUGIN_BUILD_IDENTITY when isPluginBuild) so upstream's name, scheme and version lines stay untouched.",
+        "Cleanup, still open from v0.1.12: with changeOrigin: false for every prefix, the fork's /api/plugin-panels entry in packages/shared/src/devProxy.ts and its ws clause in apps/web/vite.config.ts duplicate /api; removing both leaves the fork one line (cors: { preflightContinue: true }) in vite.config.ts and none in devProxy.ts.",
+        "One-off, no follow-up: AppBar.android.test.tsx, ws.ts, ws.test.ts, client-runtime package.json and ThreadDetailsPanel.tsx (repeats from v0.1.12, but replayed with no hand work), and ThreadDetailsCard.tsx (first conflict, one selector line)."
+      ]
     }
   ]
 }
