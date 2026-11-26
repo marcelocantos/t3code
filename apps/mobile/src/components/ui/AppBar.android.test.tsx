@@ -9,11 +9,12 @@ vi.mock("react-native", () => ({
   Keyboard: { dismiss: () => {} },
   BackHandler: { addEventListener: () => ({ remove: () => {} }) },
 }));
+const useIsFocusedMock = vi.fn<() => boolean>(() => {
+  throw new Error("Couldn't find a navigation object.");
+});
 // React Navigation throws this outside a navigator, as for the Arrange threads sheet.
 vi.mock("@react-navigation/native", () => ({
-  useIsFocused: () => {
-    throw new Error("Couldn't find a navigation object.");
-  },
+  useIsFocused: () => useIsFocusedMock(),
 }));
 vi.mock("./AndroidScreenHeader.android", () => ({
   AndroidScreenHeader: (props: { readonly title: string }) => <h1>{props.title}</h1>,
@@ -22,7 +23,11 @@ vi.mock("./WorkspaceAppBar.android", () => ({
   useHasWorkspaceAppBar: () => workspace.present,
   WorkspaceAppBar: () => null,
 }));
-vi.mock("./Menu", () => ({ Menu: (props: { readonly children?: ReactNode }) => props.children }));
+vi.mock("./AndroidAnchoredMenu.android", () => ({
+  AndroidAnchoredMenu: (props: {
+    readonly children?: ReactNode | ((open: () => void) => ReactNode);
+  }) => (typeof props.children === "function" ? props.children(() => {}) : props.children),
+}));
 vi.mock("./ScreenHeaderButton.android", () => ({ ScreenHeaderButton: () => null }));
 vi.mock("./SearchField", () => ({ SearchField: () => null }));
 vi.mock("./Button", () => ({ Button: () => null }));
@@ -71,4 +76,29 @@ it("keeps a sheet's title in the sheet when the sheet opens inside the workspace
   act(() => root.render(<AppBar sheet title="Counter details" />));
 
   expect(container.textContent).toBe("Counter details");
+});
+
+it("does not mount the hidden screen header while inline search is active", () => {
+  useIsFocusedMock.mockReturnValueOnce(true);
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  roots.push(root);
+
+  act(() =>
+    root.render(
+      <AppBar
+        title="Archived threads"
+        search={{
+          mode: "inline",
+          value: "",
+          placeholder: "Search",
+          onChangeText: () => {},
+        }}
+      />,
+    ),
+  );
+
+  expect(container.querySelector("h1")).toBeNull();
 });
