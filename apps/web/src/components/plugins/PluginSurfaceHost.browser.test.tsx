@@ -260,3 +260,63 @@ it("opens a composer page in a modal that sizes itself, prompts the thread and c
   await expect.element(modal).not.toBeInTheDocument();
   expect(host.submit).toHaveBeenCalledWith("frame:sketch", "See my sketch.");
 });
+
+it.each([360, 800])(
+  "keeps a tall %i px web card above or below its link at its width, sized to the room there",
+  async (width) => {
+    const viewport = { width: window.innerWidth, height: window.innerHeight };
+    await page.viewport(1200, 900);
+    await using _viewport = {
+      [Symbol.asyncDispose]: () => page.viewport(viewport.width, viewport.height),
+    };
+    function DocumentLink() {
+      const host = usePluginSurfaceHost();
+      return (
+        <button
+          style={{ position: "fixed", left: 560, bottom: 120 }}
+          onClick={(event) =>
+            host.tree.open({
+              id: host.tree.newId(),
+              parentId: null,
+              presentation: "popover",
+              title: "Document card",
+              anchor: event.currentTarget,
+              side: "bottom",
+              align: "start",
+              size: { width, height: 900 },
+              content: {
+                kind: "web",
+                url: `${gateway}panel.html`,
+                bridgeSurfaceId: "link:doc",
+                gatewayUrl: `${gateway}panel.html`,
+              },
+              route: { kind: "link" },
+              panelTitle: "Document card",
+              agentSource: "link",
+            })
+          }
+        >
+          Document link
+        </button>
+      );
+    }
+    await using screen = await render(
+      <PluginSurfaceHost>
+        <DocumentLink />
+      </PluginSurfaceHost>,
+    );
+    const link = screen.getByRole("button", { name: "Document link" });
+    await link.click();
+    const frame = page.getByTitle("Document card", { exact: true });
+    await expect.element(frame).toBeVisible();
+    const anchor = link.element().getBoundingClientRect();
+    const popup = document.querySelector("[data-plugin-surface]")!.getBoundingClientRect();
+    // Too tall for either side, it stays on the vertical axis rather than squeezing beside the link.
+    expect(popup.bottom <= anchor.top || popup.top >= anchor.bottom).toBe(true);
+    expect(popup.width).toBeGreaterThanOrEqual(width);
+    expect(popup.top).toBeGreaterThanOrEqual(0);
+    expect(popup.bottom).toBeLessThanOrEqual(900);
+    // The frame fits the room, so only the page inside it scrolls.
+    expect(frame.element().getBoundingClientRect().height).toBeLessThanOrEqual(popup.height);
+  },
+);

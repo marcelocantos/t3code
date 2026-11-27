@@ -61,6 +61,10 @@ const WEB_MODAL_SIZE = { width: 800, height: 720 };
 const MAXIMIZED_EXTENT = "calc(100vw - 2rem)";
 /** The popup's height less its header and panel padding. */
 const MAXIMIZED_FRAME_HEIGHT = "calc(100dvh - 2rem - 7rem)";
+/** A popover chosen above or below its anchor may flip, but never squeezes into the strip beside it. */
+const VERTICAL_ONLY = { side: "flip", align: "shift", fallbackAxisSide: "none" } as const;
+/** The popover's padding and border, which its frame leaves room for inside the available height. */
+const POPOVER_CHROME_HEIGHT = "1.5rem";
 const LINK_CARD_CACHE_LIMIT = 200;
 /** Link cards fetched this page session, by environment, plugin, link and URL. */
 const linkCardCache = new Map<string, PluginLinkCard>();
@@ -862,6 +866,9 @@ function SurfaceNodeView({ node, blocked }: { node: PluginSurfaceNode; blocked: 
           side={node.side}
           align={node.align}
           sideOffset={6}
+          {...(node.side === "top" || node.side === "bottom"
+            ? { collisionAvoidance: VERTICAL_ONLY }
+            : {})}
           padding="compact"
           liveContent
           instant
@@ -968,7 +975,13 @@ function SurfaceContentView({ node }: { node: PluginSurfaceNode }) {
         <PluginFrame
           src={content.url}
           title={node.title}
-          height={node.maximized === true ? MAXIMIZED_FRAME_HEIGHT : size.height}
+          height={
+            node.maximized === true
+              ? MAXIMIZED_FRAME_HEIGHT
+              : node.presentation === "popover"
+                ? `min(${size.height}px, calc(var(--available-height) - ${POPOVER_CHROME_HEIGHT}))`
+                : size.height
+          }
           nodeId={node.id}
           ownSurfaceId={content.bridgeSurfaceId}
           gatewayUrl={content.gatewayUrl}
